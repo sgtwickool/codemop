@@ -80,7 +80,14 @@ def test_webhook_with_valid_signature():
     assert data["action"] == "opened"
 
 def test_webhook_non_pr_event():
-    os.environ["GITHUB_WEBHOOK_SECRET"] = "test_secret"
+    # Test without webhook secret first (should be allowed for non-PR events)
+    if "GITHUB_WEBHOOK_SECRET" in os.environ:
+        del os.environ["GITHUB_WEBHOOK_SECRET"]
+    
+    # Reload app to pick up removed env var
+    from importlib import reload
+    import src.main
+    reload(src.main)
 
     payload = {"ref": "refs/heads/main"}
 
