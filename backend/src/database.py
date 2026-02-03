@@ -82,3 +82,27 @@ def update_pr_status(db, github_id: int, status: str):
         db.commit()
         db.refresh(db_pr)
     return db_pr
+
+# Suggestion storage functions
+def create_suggestion(db, suggestion_data: dict):
+    """Create a new suggestion record in the database"""
+    db_suggestion = Suggestion(
+        pr_id=suggestion_data.get("pr_id"),
+        line_number=suggestion_data.get("line_number"),
+        file_path=suggestion_data.get("file_path"),
+        description=suggestion_data.get("description"),
+        fix=suggestion_data.get("fix"),
+        confidence=suggestion_data.get("confidence")
+    )
+    db.add(db_suggestion)
+    db.commit()
+    db.refresh(db_suggestion)
+    return db_suggestion
+
+def get_suggestions_by_pr_id(db, pr_id: int):
+    """Get all suggestions for a specific PR"""
+    return db.query(Suggestion).filter(Suggestion.pr_id == pr_id).all()
+
+def get_suggestion_by_id(db, suggestion_id: int):
+    """Get suggestion by ID"""
+    return db.query(Suggestion).filter(Suggestion.id == suggestion_id).first()
