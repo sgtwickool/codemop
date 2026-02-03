@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, Request, HTTPException, Header
+from fastapi import FastAPI, Request, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import hmac
 import hashlib
@@ -7,12 +7,18 @@ from typing import Optional
 from pydantic import BaseModel
 import logging
 from datetime import datetime
+from database import get_db, create_pr, update_pr_status, init_db
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
+
+# Initialize database on startup
+@app.on_event("startup")
+def on_startup():
+    init_db()
 
 # CORS configuration
 app.add_middleware(
@@ -67,8 +73,28 @@ async def handle_github_webhook(
     logger.info(f"Author: {pr_data.get('user', {}).get('login')}")
     logger.info(f"Branch: {pr_data.get('head', {}).get('ref')}")
 
+    # Store PR data in database
+    db = next(get_db())
+    try:
+        pr_record = create_pr(db, {
+            "github_id": pr_number,
+            "repo_name": repo_data.get("name"),
+            "repo_full_name": repo_data.get("full_name"),
+            "branch": pr_data.get("head", {}).get("ref"),
+            "author": pr_data.get("user", {}).get("login"),
+            "title": pr_data.get("title"),
+            "status": action,
+            "github_url": pr_data.get("html_url"),
+            "diff_url": pr_data.get("diff_url")
+        })
+        logger.info(f"Stored PR #{pr_number} in database with ID {pr_record.id}")
+    except Exception as e:
+        logger.error(f"Failed to store PR data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
     # Here you would:
-    # 1. Store PR data in database
     # 2. Trigger AI analysis
     # 3. Return appropriate response
 
@@ -77,6 +103,7 @@ async def handle_github_webhook(
         "pr_number": pr_number,
         "action": action,
         "repository": repo_data.get("full_name"),
+        "database_id": pr_record.id,
         "timestamp": datetime.utcnow().isoformat()
     }
 
