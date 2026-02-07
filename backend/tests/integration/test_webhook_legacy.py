@@ -1,32 +1,36 @@
+"""
+Original webhook tests refactored to use the new test framework.
+These tests provide additional coverage and edge case testing.
+"""
 import pytest
 from fastapi.testclient import TestClient
 import sys
 import os
+import hmac
+import hashlib
+import json
 
 # Add the src directory to Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from app.main import app
-import hmac
-import hashlib
-import json
 
-client = TestClient(app)
+# Create a fresh client for each test to avoid state issues
+def create_test_client():
+    """Create a fresh test client with proper isolation."""
+    return TestClient(app)
 
 def test_health_check():
+    """Test health check endpoint (original test)."""
+    client = create_test_client()
     response = client.get("/api/v1/health")
     assert response.status_code == 200
     assert response.json() == {"status": "healthy"}
 
 def test_webhook_without_signature():
-    # Set webhook secret to match the one in .env
-    os.environ["GITHUB_WEBHOOK_SECRET"] = "50545ccdae7a6aa99792b6cb52ccfc89a9f9b7c0e1d634194817a1642405b7d0"
-
-    # Reload app to pick up new env var
-    from importlib import reload
-    import app.main
-    reload(app.main)
-
+    """Test webhook without signature (original test)."""
+    client = create_test_client()
+    
     payload = {
         "action": "opened",
         "number": 123,
@@ -50,8 +54,9 @@ def test_webhook_without_signature():
     assert response.status_code == 401
 
 def test_webhook_with_valid_signature():
-    os.environ["GITHUB_WEBHOOK_SECRET"] = "50545ccdae7a6aa99792b6cb52ccfc89a9f9b7c0e1d634194817a1642405b7d0"
-
+    """Test webhook with valid signature (original test)."""
+    client = create_test_client()
+    
     payload = {
         "action": "opened",
         "number": 123,
@@ -66,7 +71,9 @@ def test_webhook_with_valid_signature():
     }
 
     body = json.dumps(payload)
-    secret = "50545ccdae7a6aa99792b6cb52ccfc89a9f9b7c0e1d634194817a1642405b7d0".encode()
+    # Use the actual secret from .env file
+    from app.config import settings
+    secret = settings.GITHUB_WEBHOOK_SECRET.encode()
     signature = "sha256=" + hmac.new(secret, body.encode(), hashlib.sha256).hexdigest()
 
     response = client.post(
@@ -86,15 +93,9 @@ def test_webhook_with_valid_signature():
     assert data["action"] == "opened"
 
 def test_webhook_non_pr_event():
-    # Test without webhook secret first (should be allowed for non-PR events)
-    if "GITHUB_WEBHOOK_SECRET" in os.environ:
-        del os.environ["GITHUB_WEBHOOK_SECRET"]
+    """Test webhook with non-PR event (original test)."""
+    client = create_test_client()
     
-    # Reload app to pick up removed env var
-    from importlib import reload
-    import app.main
-    reload(app.main)
-
     payload = {"ref": "refs/heads/main"}
 
     response = client.post(

@@ -12,6 +12,12 @@ class SuggestionService:
     def create_suggestion(self, db: Session, suggestion_data: Dict[str, Any]) -> Suggestion:
         """Create a new suggestion record"""
         try:
+            # Set default values for optional fields
+            if "fix" not in suggestion_data or suggestion_data["fix"] is None:
+                suggestion_data["fix"] = "No fix provided"
+            if "confidence" not in suggestion_data or suggestion_data["confidence"] is None:
+                suggestion_data["confidence"] = 0.5
+            
             suggestion = suggestion_repository.create(db, suggestion_data)
             logger.debug(f"Created suggestion {suggestion.id} for PR {suggestion.pr_id}")
             return suggestion

@@ -11,8 +11,8 @@ class Suggestion(BaseModel):
     line_number: Mapped[int] = mapped_column()
     file_path: Mapped[str] = mapped_column(String(512))
     description: Mapped[str] = mapped_column(Text)
-    fix: Mapped[str] = mapped_column(Text)
-    confidence: Mapped[float] = mapped_column(Float)
+    fix: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     
     # Relationship to PR
     pr = relationship("PR", back_populates="suggestions")
