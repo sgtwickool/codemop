@@ -52,10 +52,43 @@ sudo systemctl start postgresql
 4. **Test the webhook**: Create a test pull request and verify the webhook delivery in GitHub
 
 ### Testing
-Run tests with:
+
+**Run all tests:**
 ```bash
 cd backend
 pytest tests/
+```
+
+**Run specific test:**
+```bash
+cd backend
+pytest tests/test_webhook.py::test_health_check -v
+```
+
+**Test specific components interactively:**
+```bash
+cd backend/src
+python -c "
+import sys
+sys.path.append('src')
+from fastapi.testclient import TestClient
+from app.main import app
+client = TestClient(app)
+response = client.get('/api/v1/health')
+print(response.json())
+"
+```
+
+**Test individual services:**
+```bash
+cd backend
+python -c "
+import sys
+sys.path.append('src')
+from app.services.github import extract_pr_data
+payload = {'action': 'opened', 'number': 123, 'pull_request': {'title': 'Test'}, 'repository': {'full_name': 'test/repo'}}
+print(extract_pr_data(payload))
+"
 ```
 
 ### Troubleshooting
@@ -78,17 +111,30 @@ If you have virtual environment issues:
 3. Activate and install: `source venv/bin/activate && pip install -r backend/requirements.txt`
 
 ### API Endpoints
-- `POST /github/webhook` - GitHub webhook endpoint
-- `GET /health` - Health check endpoint
+- `POST /api/v1/github/webhook` - GitHub webhook endpoint (versioned)
+- `GET /api/v1/health` - Health check endpoint (versioned)
+- `GET /api/v1/pr/{pr_id}/suggestions` - Get suggestions for a PR (versioned)
+
+**Note**: All endpoints are now versioned under `/api/v1/` prefix for better API evolution.
 
 ### Project Structure
 ```
 codemop/
 ├── backend/                  # FastAPI backend
-│   ├── src/                 # Source code
-│   │   ├── main.py          # FastAPI application
-│   │   └── database.py      # Database models
-│   ├── tests/               # Test files
+│   ├── src/                 # Source code (modern structure)
+│   │   ├── app/             # Main application package
+│   │   │   ├── main.py      # FastAPI app setup
+│   │   │   ├── config.py    # Configuration management
+│   │   │   ├── api/         # Versioned API endpoints
+│   │   │   │   └── v1/      # API version 1
+│   │   │   │       ├── endpoints/ # Individual endpoints
+│   │   │   │       └── api.py # API router
+│   │   │   ├── core/        # Core utilities
+│   │   │   ├── services/    # Business logic
+│   │   │   ├── models/      # Database models
+│   │   │   ├── db/          # Database layer
+│   │   │   └── utils/       # Utilities
+│   │   └── tests/           # Test files
 │   ├── requirements.txt     # Python dependencies
 │   └── Dockerfile           # Docker configuration
 ├── docs/                     # Documentation
