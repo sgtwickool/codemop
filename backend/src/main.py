@@ -1,6 +1,8 @@
 import os
 import json
-from fastapi import FastAPI, Request, HTTPException, Header, Depends
+from dotenv import load_dotenv
+from fastapi import FastAPI, Request, HTTPException, Header, Depends, Security
+from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 import hmac
 import hashlib
@@ -12,9 +14,37 @@ import httpx
 import asyncio
 from database import get_db, create_pr, update_pr_status, init_db, create_suggestion
 
+# Load environment variables from .env file
+load_dotenv('/home/sgtwickool/repos/codemop/.env')
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# API Key Security
+api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
+
+async def get_api_key(api_key_header: str = Security(api_key_header)):
+    """Extract and validate API key from Authorization header"""
+    if not api_key_header:
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header missing"
+        )
+    
+    # Handle "Bearer " prefix
+    if api_key_header.startswith("Bearer "):
+        api_key = api_key_header[7:].strip()
+    else:
+        api_key = api_key_header.strip()
+    
+    if api_key != API_KEY:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid API key"
+        )
+    
+    return api_key
 
 app = FastAPI()
 
@@ -39,6 +69,10 @@ GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET")
 AI_API_KEY = os.getenv("AI_API_KEY", "")
 AI_API_URL = os.getenv("AI_API_URL", "https://api.mistral.ai/v1/chat/completions")
 AI_MODEL = os.getenv("AI_MODEL", "codestral-latest")
+
+# API Authentication
+API_KEY = os.getenv("API_KEY", "")
+
 MAX_RETRIES = 3
 RETRY_DELAY = 1.0
 
@@ -318,6 +352,79 @@ def extract_suggestions_from_text(text: str) -> list:
         suggestions.append(current_suggestion)
     
     return suggestions
+
+@app.get("/pr/{pr_id}/suggestions")
+async def get_suggestions(
+    pr_id: int,
+    api_key: str = Depends(get_api_key)
+):
+    """
+    Get all suggestions for a specific PR
+    
+    Args:
+        pr_id: The database ID of the PR
+        api_key: Valid API key for authentication
+    
+    Returns:
+        List of suggestions with line numbers, descriptions, and fixes
+    """
+    db = next(get_db())
+    try:
+        # Import PR model here to avoid circular imports
+        from database import PR, Suggestion
+        
+        # First check if PR exists
+        pr = db.query(PR).filter(PR.id == pr_id).first()
+        if not pr:
+            raise HTTPException(
+                status_code=404,
+                detail=f"PR with ID {pr_id} not found"
+            )
+        
+        # Get all suggestions for this PR
+        suggestions = db.query(Suggestion).filter(Suggestion.pr_id == pr_id).all()
+        
+        if not suggestions:
+            return {
+                "pr_id": pr_id,
+                "github_id": pr.github_id,
+                "repo": pr.repo_full_name,
+                "title": pr.title,
+                "suggestions": [],
+                "message": "No suggestions found for this PR"
+            }
+        
+        # Format suggestions for API response
+        formatted_suggestions = []
+        for suggestion in suggestions:
+            formatted_suggestions.append({
+                "id": suggestion.id,
+                "line_number": suggestion.line_number,
+                "file_path": suggestion.file_path,
+                "description": suggestion.description,
+                "fix": suggestion.fix,
+                "confidence": suggestion.confidence,
+                "created_at": suggestion.created_at.isoformat() if suggestion.created_at else None
+            })
+        
+        return {
+            "pr_id": pr_id,
+            "github_id": pr.github_id,
+            "repo": pr.repo_full_name,
+            "title": pr.title,
+            "status": pr.status,
+            "suggestions_count": len(formatted_suggestions),
+            "suggestions": formatted_suggestions
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching suggestions for PR {pr_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving suggestions: {str(e)}"
+        )
+    finally:
+        db.close()
 
 @app.get("/health")
 async def health_check():
