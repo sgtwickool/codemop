@@ -6,7 +6,7 @@ from app.services.suggestion_service import suggestion_service
 from app.services.ai_analysis import analyze_pr_with_ai
 from app.db.session import get_db
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -80,5 +80,5 @@ async def handle_github_webhook(
         "repository": pr_db_data['repo_full_name'],
         "database_id": pr_record.id,
         "suggestions_count": len(suggestions),
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }

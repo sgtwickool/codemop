@@ -22,12 +22,17 @@ async def validate_github_webhook_signature(
         if not hmac.compare_digest(expected_signature, x_hub_signature_256):
             raise HTTPException(status_code=401, detail="Invalid signature")
 
-def extract_pr_data(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract PR data from GitHub webhook payload"""
+def _get_pr_payload_data(payload: Dict[str, Any]) -> tuple:
+    """Helper function to extract common payload data"""
     action = payload.get("action")
     pr_number = payload.get("number")
     pr_data = payload.get("pull_request", {})
     repo_data = payload.get("repository", {})
+    return action, pr_number, pr_data, repo_data
+
+def extract_pr_data(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract PR data from GitHub webhook payload"""
+    action, pr_number, pr_data, repo_data = _get_pr_payload_data(payload)
     
     # Return only the fields needed for the PR model
     return {
@@ -44,10 +49,7 @@ def extract_pr_data(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def extract_pr_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Extract metadata about the PR for logging and processing"""
-    action = payload.get("action")
-    pr_number = payload.get("number")
-    pr_data = payload.get("pull_request", {})
-    repo_data = payload.get("repository", {})
+    action, pr_number, pr_data, repo_data = _get_pr_payload_data(payload)
     
     return {
         "action": action,

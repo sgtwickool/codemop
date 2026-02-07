@@ -1,17 +1,18 @@
-from sqlalchemy import Column, Integer, String, Text, Float, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import String, Text, Float, ForeignKey
+from typing import Optional
 from app.models.base import BaseModel
 
 class Suggestion(BaseModel):
     """Code suggestion model"""
     __tablename__ = "suggestions"
 
-    pr_id = Column(Integer, ForeignKey("prs.id"))
-    line_number = Column(Integer)
-    file_path = Column(String(512))
-    description = Column(Text)
-    fix = Column(Text)
-    confidence = Column(Float)
+    pr_id: Mapped[int] = mapped_column(ForeignKey("prs.id"))
+    line_number: Mapped[int] = mapped_column()
+    file_path: Mapped[str] = mapped_column(String(512))
+    description: Mapped[str] = mapped_column(Text)
+    fix: Mapped[str] = mapped_column(Text)
+    confidence: Mapped[float] = mapped_column(Float)
     
     # Relationship to PR
     pr = relationship("PR", back_populates="suggestions")

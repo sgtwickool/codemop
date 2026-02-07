@@ -25,8 +25,10 @@ class Settings(BaseSettings):
     MAX_RETRIES: int = 3
     RETRY_DELAY: float = 1.0
     
-    class Config:
-        env_file = "/home/sgtwickool/repos/codemop/.env"
-        env_file_encoding = 'utf-8'
+    model_config = {
+        'env_file': '/home/sgtwickool/repos/codemop/.env',
+        'env_file_encoding': 'utf-8',
+        'extra': 'allow'  # Allow extra environment variables
+    }
 
 settings = Settings()
