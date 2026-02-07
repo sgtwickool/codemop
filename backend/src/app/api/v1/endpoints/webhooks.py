@@ -1,5 +1,9 @@
-from fastapi import APIRouter, Request, HTTPException, Header
+from fastapi import APIRouter, Request, HTTPException, Header, Depends
 from typing import Optional
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from app.core.security_config import RATE_LIMITS
 from app.services.github import validate_github_webhook_signature, extract_pr_data, extract_pr_metadata
 from app.services.pr_service import pr_service
 from app.services.suggestion_service import suggestion_service
@@ -11,7 +15,11 @@ from datetime import datetime, timezone
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# Create limiter instance for this router
+limiter = Limiter(key_func=get_remote_address)
+
 @router.post("/github/webhook")
+@limiter.limit(RATE_LIMITS["webhook"])
 async def handle_github_webhook(
     request: Request,
     x_github_event: Optional[str] = Header(None),

@@ -1,5 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import List, Dict, Any
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from app.core.security_config import RATE_LIMITS
 from app.services.pr_service import pr_service
 from app.services.suggestion_service import suggestion_service
 from app.db.session import get_db
@@ -9,8 +12,13 @@ import logging
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# Initialize limiter for this router
+limiter = Limiter(key_func=get_remote_address)
+
 @router.get("/pr/{pr_id}/suggestions")
+@limiter.limit(RATE_LIMITS["suggestions"])
 async def get_suggestions(
+    request: Request,
     pr_id: int,
     api_key: str = Depends(get_api_key)
 ):
