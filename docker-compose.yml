@@ -6,24 +6,50 @@ services:
     ports:
       - "8000:8000"
     environment:
+      - APP_ENV=development
+      - DEBUG=True
       - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/codemop
+      - DATABASE_URL=postgresql://codemop:codemop@db:5432/codemop
+      - AI_API_KEY=${AI_API_KEY}
+      - API_KEY=${API_KEY}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     volumes:
       - ./backend:/app
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - codemop_network
 
   db:
-    image: postgres:13
+    image: postgres:13-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: codemop
+      POSTGRES_PASSWORD: codemop
       POSTGRES_DB: codemop
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U codemop -d codemop"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - codemop_network
 
 volumes:
   postgres_data:
+
+networks:
+  codemop_network:
+    driver: bridge
