@@ -1,0 +1,61 @@
+# Production Dockerfile for CodeMop
+# Uses multi-stage builds for optimization
+
+# Stage 1: Build stage
+FROM python:3.13-slim as builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create and switch to a non-root user for security
+RUN useradd -m appuser
+USER appuser
+WORKDIR /app
+
+# Copy requirements first for better caching
+COPY --chown=appuser:appuser requirements.txt .
+RUN pip install --user -r requirements.txt
+
+# Copy application code
+COPY --chown=appuser:appuser . .
+
+# Stage 2: Runtime stage
+FROM python:3.13-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create and switch to non-root user
+RUN useradd -m appuser
+USER appuser
+WORKDIR /app
+
+# Copy only necessary files from builder
+COPY --from=builder --chown=appuser:appuser /app/src /app/src
+COPY --from=builder --chown=appuser:appuser /app/requirements.txt .
+
+# Install only production dependencies
+RUN pip install --user --no-cache-dir -r requirements.txt
+
+# Add user's local bin to PATH
+ENV PATH=/home/appuser/.local/bin:$PATH
+
+# Health check (note: Podman uses OCI format, Docker uses Docker format)
+HEALTHCHECK --interval=30s --timeout=3s \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Environment variables
+ENV PYTHONPATH=/app/src
+ENV PYTHONUNBUFFERED=1
+ENV APP_ENV=production
+ENV DEBUG=False
+
+# Expose port
+EXPOSE 8000
+
+# Run the application
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
