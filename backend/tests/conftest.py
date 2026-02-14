@@ -15,12 +15,48 @@ from app.models.base import Base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Test database configuration
-TEST_DATABASE_URL = "sqlite:///:memory:"
+# Test database configuration - use file-based SQLite to avoid thread issues
+TEST_DATABASE_URL = "sqlite:///./test.db"
 
-# Create test engine and session
-test_engine = create_engine(TEST_DATABASE_URL)
+# Create test engine and session BEFORE importing anything
+import sys
+from sqlalchemy import create_engine, inspect
+from sqlalchemy.orm import sessionmaker
+
+# Create test engine and session with thread-safe configuration
+# Use check_same_thread=False to allow connections across threads
+# Use connect_args to configure SQLite for better concurrency
+connect_args = {"check_same_thread": False}
+if "sqlite" in TEST_DATABASE_URL:
+    test_engine = create_engine(TEST_DATABASE_URL, connect_args=connect_args)
+else:
+    test_engine = create_engine(TEST_DATABASE_URL)
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+
+# Override the database engine for testing BEFORE importing the app
+import app.db.session as db_session_module
+original_engine = db_session_module.engine
+db_session_module.engine = test_engine
+
+# Also override the SessionLocal to use the test engine
+db_session_module.SessionLocal = TestSessionLocal
+
+# Verify the override worked
+print(f"Test database configured: {test_engine}")
+
+# Store original engine for restoration at session end
+original_engine_for_restore = db_session_module.engine
+original_session_local_for_restore = db_session_module.SessionLocal
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_database_engine():
+    """Set up test database engine for entire test session."""
+    # This fixture runs once per test session
+    yield
+    # Restore original engine at the end of the session
+    db_session_module.engine = original_engine_for_restore
+    db_session_module.SessionLocal = original_session_local_for_restore
+    print(f"Restored original engine at session end")
 
 @pytest.fixture(scope="function")
 def db_session():
@@ -43,42 +79,23 @@ def db_session():
 
 @pytest.fixture(scope="function")
 def client():
-    """Create a test client for the FastAPI app."""
-    # Use test database
-    import app.db.session
+    """Create a test client for the FastAPI app with test database."""
+    # Initialize test database
+    Base.metadata.create_all(bind=test_engine)
+    
+    # Import and create test client
     from app.main import app as fastapi_app
-    
-    original_get_db = app.db.session.get_db
-    original_init_db = app.db.session.init_db
-    
-    def test_init_db():
-        """Test database initialization."""
-        Base.metadata.create_all(bind=test_engine)
-    
-    def test_get_db():
-        """Test database session dependency."""
-        session = TestSessionLocal()
-        try:
-            yield session
-            session.commit()
-        except Exception:
-            session.rollback()
-            raise
-        finally:
-            session.close()
-    
-    # Override database functions
-    app.db.session.get_db = test_get_db
-    app.db.session.init_db = test_init_db
     
     # Create test client
     test_client = TestClient(fastapi_app)
     
     yield test_client
     
-    # Restore original functions
-    app.db.session.get_db = original_get_db
-    app.db.session.init_db = original_init_db
+    # Clean up
+    Base.metadata.drop_all(bind=test_engine)
+    
+    # Note: Don't restore original engine here to allow multiple calls within same test
+    # Engine restoration is handled at the end of the entire test session
 
 @pytest.fixture(scope="function")
 def test_app():
@@ -106,14 +123,17 @@ def github_webhook_payload():
 
 @pytest.fixture(scope="function")
 def github_signature():
-    """Generate a valid GitHub webhook signature."""
+    """Generate a valid GitHub webhook signature using the actual secret."""
     import hmac
     import hashlib
     import json
+    from app.config import settings
     
-    def generate_signature(payload, secret="test_secret"):
+    def generate_signature(payload):
         body = json.dumps(payload)
-        return "sha256=" + hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()
+        # Use the actual webhook secret from settings
+        secret = settings.GITHUB_WEBHOOK_SECRET.encode()
+        return "sha256=" + hmac.new(secret, body.encode(), hashlib.sha256).hexdigest()
     
     return generate_signature
 

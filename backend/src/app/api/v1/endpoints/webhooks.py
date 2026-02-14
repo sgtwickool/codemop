@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request, HTTPException, Header, Depends
 from typing import Optional
+from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -23,7 +24,8 @@ limiter = Limiter(key_func=get_remote_address)
 async def handle_github_webhook(
     request: Request,
     x_github_event: Optional[str] = Header(None),
-    x_hub_signature_256: Optional[str] = Header(None)
+    x_hub_signature_256: Optional[str] = Header(None),
+    db: Session = Depends(get_db)  # Proper dependency injection
 ):
     # Only validate webhook signature for pull_request events
     if x_github_event == "pull_request":
@@ -50,14 +52,11 @@ async def handle_github_webhook(
     logger.info(f"Branch: {pr_db_data['branch']}")
     
     # Store PR data in database
-    db = next(get_db())
     try:
         pr_record = pr_service.create_pr(db, pr_db_data)
     except Exception as e:
         logger.error(f"Failed to store PR data: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    finally:
-        db.close()
     
     # Trigger AI analysis
     suggestions = []
@@ -71,15 +70,12 @@ async def handle_github_webhook(
     
     # Store suggestions in database
     if suggestions:
-        db = next(get_db())
         try:
             suggestion_service.create_suggestions_batch(db, pr_record.id, suggestions)
             logger.info(f"💾 Stored {len(suggestions)} suggestions for PR #{pr_data['pr_number']}")
         except Exception as e:
             logger.error(f"💾 Failed to store suggestions for PR #{pr_data['pr_number']}: {str(e)}")
             # Don't fail the entire webhook if suggestion storage fails
-        finally:
-            db.close()
     
     return {
         "status": "success",

@@ -62,13 +62,15 @@ async def request_monitoring_middleware(
     if ACTIVE_REQUESTS:
         ACTIVE_REQUESTS.inc()
     
+    response = None
+    status_code = 500
     try:
         response = await call_next(request)
+        status_code = getattr(response, "status_code", 500)
         return response
     finally:
         # Calculate request duration
         duration = time.time() - start_time
-        status_code = getattr(response, "status_code", 500)
         
         # Update metrics
         if REQUEST_COUNT:

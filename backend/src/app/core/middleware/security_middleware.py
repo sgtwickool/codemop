@@ -22,6 +22,8 @@ async def limit_request_size(request: Request, call_next):
                 )
         except ValueError:
             logger.warning("Invalid content-length header")
+            import warnings
+            warnings.warn("Invalid content-length header", UserWarning)
     return await call_next(request)
 
 

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import List, Dict, Any
+from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from app.core.security_config import RATE_LIMITS
@@ -20,7 +21,8 @@ limiter = Limiter(key_func=get_remote_address)
 async def get_suggestions(
     request: Request,
     pr_id: int,
-    api_key: str = Depends(get_api_key)
+    api_key: str = Depends(get_api_key),
+    db: Session = Depends(get_db)  # Proper dependency injection
 ):
     """
     Get all suggestions for a specific PR
@@ -28,11 +30,11 @@ async def get_suggestions(
     Args:
         pr_id: The database ID of the PR
         api_key: Valid API key for authentication
+        db: Database session (injected by FastAPI)
     
     Returns:
         List of suggestions with line numbers, descriptions, and fixes
     """
-    db = next(get_db())
     try:
         # First check if PR exists
         pr = pr_service.get_pr_by_id(db, pr_id)
@@ -79,5 +81,4 @@ async def get_suggestions(
             status_code=500,
             detail=f"Error retrieving suggestions: {str(e)}"
         )
-    finally:
-        db.close()
+    # No need for manual db.close() - FastAPI handles session lifecycle
