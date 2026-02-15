@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.9', '3.10', '3.11']
+        python-version: ['3.12', '3.13', '3.14']
 
     steps:
     - uses: actions/checkout@v4
@@ -27,10 +27,24 @@ jobs:
         pip install -r backend/requirements.txt
         pip install pytest pytest-cov
 
+    - name: Set up test database
+      run: |
+        cd backend
+        # Use unique database name for each run to avoid conflicts
+        rm -f test_*.db
+        touch test_${{ github.run_id }}.db
+        chmod 666 test_${{ github.run_id }}.db
+        # Update test configuration to use unique database
+        echo "TEST_DATABASE_URL=sqlite:///./test_${{ github.run_id }}.db" >> $GITHUB_ENV
+
     - name: Run tests with coverage
       run: |
         cd backend
-        pytest tests/ --cov=app --cov-report=xml --cov-report=term
+        pytest tests/ --cov=app --cov-report=xml --cov-report=term -v || (
+          echo "❌ Tests failed, showing more details..."
+          pytest tests/ --cov=app -v --tb=long 2>&1 | head -100
+          exit 1
+        )
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3

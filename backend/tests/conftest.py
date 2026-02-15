@@ -16,7 +16,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 # Test database configuration - use file-based SQLite to avoid thread issues
-TEST_DATABASE_URL = "sqlite:///./test.db"
+# Allow override via environment variable for CI
+import os
+import tempfile
+import shutil
+
+# Test database configuration
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "sqlite:///./test.db")
+
+# Temporary directory for test databases
+TEST_DB_DIR = os.environ.get("TEST_DB_DIR", "/tmp/test_dbs")
+os.makedirs(TEST_DB_DIR, exist_ok=True)
 
 # Create test engine and session BEFORE importing anything
 import sys
@@ -52,7 +62,13 @@ original_session_local_for_restore = db_session_module.SessionLocal
 def setup_test_database_engine():
     """Set up test database engine for entire test session."""
     # This fixture runs once per test session
+    # Drop all tables at the start to ensure clean slate
+    Base.metadata.drop_all(bind=test_engine)
+    # Create all tables
+    Base.metadata.create_all(bind=test_engine)
+    
     yield
+    
     # Restore original engine at the end of the session
     db_session_module.engine = original_engine_for_restore
     db_session_module.SessionLocal = original_session_local_for_restore
@@ -61,10 +77,7 @@ def setup_test_database_engine():
 @pytest.fixture(scope="function")
 def db_session():
     """Create a fresh database session for each test."""
-    # Create all tables
-    Base.metadata.create_all(bind=test_engine)
-    
-    # Create session
+    # Create session (tables already exist from session setup)
     session = TestSessionLocal()
     try:
         yield session
@@ -74,16 +87,12 @@ def db_session():
         raise
     finally:
         session.close()
-        # Drop all tables after test
-        Base.metadata.drop_all(bind=test_engine)
+        # No need to drop tables - handled by session fixture
 
 @pytest.fixture(scope="function")
 def client():
     """Create a test client for the FastAPI app with test database."""
-    # Initialize test database
-    Base.metadata.create_all(bind=test_engine)
-    
-    # Import and create test client
+    # Import and create test client (tables already exist)
     from app.main import app as fastapi_app
     
     # Create test client
@@ -91,8 +100,7 @@ def client():
     
     yield test_client
     
-    # Clean up
-    Base.metadata.drop_all(bind=test_engine)
+    # No cleanup needed - handled by session fixture
     
     # Note: Don't restore original engine here to allow multiple calls within same test
     # Engine restoration is handled at the end of the entire test session

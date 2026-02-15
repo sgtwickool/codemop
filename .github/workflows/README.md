@@ -26,7 +26,7 @@ This directory contains all GitHub Actions workflows for the CodeMop project.
 - **Features**:
   - Safety: Dependency vulnerability scanning (ignores ecdsa side-channel vulnerabilities)
   - Bandit: Python security linting using configuration file
-  - Trivy: Container vulnerability scanning
+  - Trivy: Container vulnerability scanning (builds and scans Docker image)
 
 ## 🚀 Usage
 

@@ -10,7 +10,7 @@
 ## 🏗️ Development Setup
 
 ### Prerequisites
-- Python 3.9+ (Python 3.13 recommended)
+- Python 3.12+ (Python 3.14 recommended)
 - PostgreSQL 13+ (or any recent version)
 - Docker (optional, for containerized development)
 - ngrok (for webhook testing) - [Download ngrok](https://ngrok.com/download)
