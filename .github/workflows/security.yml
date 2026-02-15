@@ -33,7 +33,7 @@ jobs:
         safety scan --json --ignore 64459 --ignore 64396 || echo "Safety scan completed with warnings"
 
     - name: Bandit (security linting)
-      run: bandit -r backend/src/
+      run: bandit -c backend/.bandit -r backend/src/
 
     - name: Trivy (container scanning)
       uses: aquasecurity/trivy-action@master

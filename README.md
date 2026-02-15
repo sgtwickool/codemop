@@ -207,7 +207,7 @@ CodeMop uses GitHub Actions for Continuous Integration and Deployment with the f
 - **Trigger**: Push to `master`/`develop`, Pull Requests, Weekly schedule
 - **Features**:
   - **Safety**: Dependency vulnerability scanning
-  - **Bandit**: Python security linting
+  - **Bandit**: Python security linting using configuration file
   - **Trivy**: Container vulnerability scanning
   - Scheduled weekly scans
 
