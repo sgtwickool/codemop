@@ -1,6 +1,13 @@
 # codemop - AI-Augmented Code Review & Debugging Hub
 
-## Development Setup
+## 🚀 CI/CD Status
+
+[![CI Status](https://github.com/your-repo/codemop/actions/workflows/ci.yml/badge.svg)](https://github.com/your-repo/codemop/actions/workflows/ci.yml)
+[![Docker Build](https://github.com/your-repo/codemop/actions/workflows/docker.yml/badge.svg)](https://github.com/your-repo/codemop/actions/workflows/docker.yml)
+[![Security Scan](https://github.com/your-repo/codemop/actions/workflows/security.yml/badge.svg)](https://github.com/your-repo/codemop/actions/workflows/security.yml)
+[![Codecov](https://codecov.io/gh/your-repo/codemop/branch/main/graph/badge.svg)](https://codecov.io/gh/your-repo/codemop)
+
+## 🏗️ Development Setup
 
 ### Prerequisites
 - Python 3.9+ (Python 3.13 recommended)
@@ -136,7 +143,15 @@ codemop/
 │   │   │   └── utils/       # Utilities
 │   │   └── tests/           # Test files
 │   ├── requirements.txt     # Python dependencies
-│   └── Dockerfile           # Docker configuration
+│   ├── Dockerfile           # Docker configuration
+│   ├── pytest.ini           # Pytest configuration
+│   └── .bandit              # Bandit security config
+├── .github/                 # GitHub Actions workflows
+│   └── workflows/           # CI/CD pipelines
+│       ├── ci.yml           # Continuous Integration
+│       ├── docker.yml       # Docker builds
+│       ├── security.yml     # Security scanning
+│       └── README.md        # Workflow documentation
 ├── docs/                     # Documentation
 ├── scripts/                  # Development scripts
 ├── .gitignore
@@ -168,3 +183,81 @@ This implementation provides:
 2. Configure GitHub webhook
 3. Implement AI analysis integration
 4. Add suggestion storage functionality
+## 🚀 CI/CD Pipeline
+
+CodeMop uses GitHub Actions for Continuous Integration and Deployment with the following workflows:
+
+### Continuous Integration (CI)
+- **Trigger**: Push to `master`/`develop`, Pull Requests
+- **Features**:
+  - Python 3.9, 3.10, 3.11 test matrix
+  - Automated test execution with pytest
+  - Code coverage reporting via Codecov
+  - Test parallelization for faster execution
+
+### Docker Build & Push
+- **Trigger**: Push to `master`, version tags
+- **Features**:
+  - Multi-stage Docker builds
+  - Automatic image tagging
+  - GitHub Container Registry integration
+  - Docker layer caching for faster builds
+
+### Security Scanning
+- **Trigger**: Push to `master`/`develop`, Pull Requests, Weekly schedule
+- **Features**:
+  - **Safety**: Dependency vulnerability scanning
+  - **Bandit**: Python security linting
+  - **Trivy**: Container vulnerability scanning
+  - Scheduled weekly scans
+
+### Local Development with CI/CD
+
+#### Running Tests Locally
+```bash
+# Install test dependencies
+pip install pytest pytest-cov safety bandit
+
+# Run tests with coverage
+cd backend
+pytest tests/ --cov=app --cov-report=term
+
+# Run security scanning
+safety check --full-report
+bandit -r src/
+```
+
+#### Building Docker Images Locally
+```bash
+# Build production image
+docker build -f backend/Dockerfile.prod -t codemop:latest backend/
+
+# Run the container
+docker run -p 8000:8000 --env-file .env codemop:latest
+```
+
+### CI/CD Best Practices
+
+1. **Small, Focused Commits**: Keep changes small for easier testing
+2. **Test Locally First**: Run tests before pushing to CI
+3. **Monitor Workflows**: Check GitHub Actions tab regularly
+4. **Fix Failures Promptly**: Address CI failures immediately
+5. **Use Feature Branches**: Create branches for new features
+6. **Pull Request Workflow**: All changes go through PR review
+
+### Troubleshooting CI/CD
+
+#### Test Failures
+- Check the specific test that failed
+- Run tests locally to reproduce
+- Fix the issue and push the correction
+
+#### Docker Build Failures
+- Verify `Dockerfile.prod` syntax
+- Check for missing files in build context
+- Ensure proper permissions
+
+#### Security Scan Failures
+- Review vulnerability reports
+- Update vulnerable dependencies
+- Add exceptions for false positives if necessary

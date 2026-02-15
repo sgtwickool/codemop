@@ -1,0 +1,24 @@
+[bandit]
+# Exclude directories
+exclude_dirs: tests,venv,__pycache__
+
+# Skip tests
+skips: B101,B608
+
+# Confidence level
+confidence:
+
+# Severity level
+severity:
+
+# Output format
+format: txt
+
+# Recursive scanning
+recursive: true
+
+# Targets
+targets: backend/src/
+
+# Verbosity
+verbose: 1

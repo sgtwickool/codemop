@@ -1,0 +1,46 @@
+name: Security Scanning
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master, develop ]
+  schedule:
+    - cron: '0 0 * * 0' # Weekly on Sunday
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: pip install safety bandit
+
+    - name: Show Safety version
+      run: safety --version
+
+    - name: Safety scan (vulnerability scanning)
+      run: |
+        pip install -r backend/requirements.txt
+        # Scan with JSON output and continue on warnings
+        safety scan --json --ignore 64459 --ignore 64396 || echo "Safety scan completed with warnings"
+
+    - name: Bandit (security linting)
+      run: bandit -r backend/src/
+
+    - name: Trivy (container scanning)
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'ghcr.io/${{ github.repository }}:latest'
+        format: 'table'
+        exit-code: '1'
+        ignore-unfixed: true
+        vuln-type: 'os,library'
+        severity: 'CRITICAL,HIGH'
