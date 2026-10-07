@@ -87,7 +87,7 @@ the server switches to that core when it lands.
 - [x] Fetch diffs through the GitHub REST API with an optional `GITHUB_TOKEN`, so private repos work (checked against this repo, which is private); errors say what to fix
 - [x] Look up suggestions by repo + PR number (`GET /api/v1/repos/{owner}/{repo}/pulls/{number}/suggestions`)
 - [x] Rethink the webhook rate limit: removed, since it could only drop GitHub's own deliveries (they share a few IPs, or a proxy's, and GitHub doesn't retry a 429); signatures and once-per-commit analysis are the protection
-- [ ] Fix Prometheus metrics (the middleware binds `None` at import); turn the metrics server off by default
+- [x] Fix Prometheus metrics (the middleware bound `None` at import, so nothing was recorded) and label them by route template, not raw path; the metrics server is off unless `ENABLE_METRICS=true`
 - [ ] Replace `print` with logging (and stop the JSON logs escaping non-ASCII); tighten CORS (no wildcard with credentials)
 - [ ] End-of-phase tidy: `/simplify` over the Phase 1 diff (`git diff phase-0..HEAD`), then remove dead code it can't see (`BaseRepository.get_by_field`, `SuggestionService.create_suggestions_batch`, `enforce_https`, `PerformanceMonitor`, `monitor_endpoint`) and the `src/main.py` shim; tag `phase-1`
 

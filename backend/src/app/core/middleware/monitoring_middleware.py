@@ -12,6 +12,25 @@ from app.core.monitoring import REQUEST_COUNT, REQUEST_LATENCY, ACTIVE_REQUESTS,
 
 logger = logging.getLogger(__name__)
 
+def endpoint_label(request: Request) -> str:
+    """
+    The route template (e.g. /api/v1/pr/{pr_id}/suggestions) rather than the raw path, so
+    each PR doesn't become a separate metric series. Unmatched paths share one label.
+    """
+    path_format = getattr(request.scope.get("route"), "path_format", None)
+    if not path_format:
+        return "unmatched"
+    
+    # Routes from an included router don't carry its prefix (/api/v1), so take the prefix
+    # from the request path: whatever comes before the route's own part
+    path = request.scope.get("path", "")
+    try:
+        own_part = path_format.format(**request.scope.get("path_params", {}))
+    except (KeyError, IndexError, ValueError):
+        return path_format
+    prefix = path[:-len(own_part)] if own_part and path.endswith(own_part) else ""
+    return prefix + path_format
+
 async def error_tracking_middleware(
     request: Request,
     call_next: Callable[[Request], Awaitable]
@@ -37,11 +56,10 @@ async def error_tracking_middleware(
         })
         
         # Update error metrics
-        if ERROR_COUNT:
-            ERROR_COUNT.labels(
-                error_type=type(exc).__name__,
-                endpoint=request.url.path
-            ).inc()
+        ERROR_COUNT.labels(
+            error_type=type(exc).__name__,
+            endpoint=endpoint_label(request)
+        ).inc()
         
         # Re-raise the exception
         raise
@@ -59,8 +77,7 @@ async def request_monitoring_middleware(
     start_time = time.time()
     
     # Increment active requests counter
-    if ACTIVE_REQUESTS:
-        ACTIVE_REQUESTS.inc()
+    ACTIVE_REQUESTS.inc()
     
     response = None
     status_code = 500
@@ -73,21 +90,17 @@ async def request_monitoring_middleware(
         duration = time.time() - start_time
         
         # Update metrics
-        if REQUEST_COUNT:
-            REQUEST_COUNT.labels(
-                method=request.method,
-                endpoint=request.url.path,
-                status_code=status_code
-            ).inc()
-        
-        if REQUEST_LATENCY:
-            REQUEST_LATENCY.labels(
-                method=request.method,
-                endpoint=request.url.path
-            ).observe(duration)
-        
-        if ACTIVE_REQUESTS:
-            ACTIVE_REQUESTS.dec()
+        endpoint = endpoint_label(request)
+        REQUEST_COUNT.labels(
+            method=request.method,
+            endpoint=endpoint,
+            status_code=status_code
+        ).inc()
+        REQUEST_LATENCY.labels(
+            method=request.method,
+            endpoint=endpoint
+        ).observe(duration)
+        ACTIVE_REQUESTS.dec()
         
         # Log request completion
         logger.info("Request completed", extra={

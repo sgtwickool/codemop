@@ -21,6 +21,7 @@ class TestSecurityMiddleware:
         mock_request.headers = {"content-length": str(MAX_REQUEST_SIZE - 1000)}
         mock_request.method = "POST"
         mock_request.url.path = "/test"
+        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
         
         # Create mock call_next
         mock_response = MagicMock()
@@ -43,6 +44,7 @@ class TestSecurityMiddleware:
         mock_request.headers = {"content-length": str(MAX_REQUEST_SIZE + 1000)}
         mock_request.method = "POST"
         mock_request.url.path = "/test"
+        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
         
         # Create mock call_next
         async def mock_call_next(request):
@@ -63,6 +65,7 @@ class TestSecurityMiddleware:
         mock_request.headers = {"content-length": "invalid"}
         mock_request.method = "POST"
         mock_request.url.path = "/test"
+        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
         
         # Create mock call_next
         mock_response = MagicMock()
@@ -86,6 +89,7 @@ class TestSecurityMiddleware:
         mock_request.headers = {}
         mock_request.method = "GET"
         mock_request.url.path = "/test"
+        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
         
         # Create mock call_next
         mock_response = MagicMock()
@@ -107,6 +111,7 @@ class TestSecurityMiddleware:
         mock_request = MagicMock(spec=Request)
         mock_request.method = "GET"
         mock_request.url.path = "/test"
+        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
         
         # Create mock response
         mock_response = MagicMock()
@@ -137,6 +142,7 @@ class TestMonitoringMiddleware:
         mock_request = MagicMock(spec=Request)
         mock_request.method = "GET"
         mock_request.url.path = "/test"
+        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
         mock_request.headers = {"user-agent": "test-agent"}
         mock_request.client.host = "127.0.0.1"
         
@@ -160,6 +166,7 @@ class TestMonitoringMiddleware:
         mock_request = MagicMock(spec=Request)
         mock_request.method = "GET"
         mock_request.url.path = "/test"
+        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
         mock_request.headers = {"user-agent": "test-agent"}
         mock_request.client.host = "127.0.0.1"
         
@@ -180,6 +187,7 @@ class TestMonitoringMiddleware:
         mock_request = MagicMock(spec=Request)
         mock_request.method = "GET"
         mock_request.url.path = "/test"
+        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
         mock_request.headers = {"user-agent": "test-agent"}
         mock_request.client.host = "127.0.0.1"
         
@@ -203,6 +211,7 @@ class TestMonitoringMiddleware:
         mock_request = MagicMock(spec=Request)
         mock_request.method = "GET"
         mock_request.url.path = "/test"
+        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
         mock_request.headers = {"user-agent": "test-agent"}
         mock_request.client.host = "127.0.0.1"
         
@@ -223,6 +232,7 @@ class TestMonitoringMiddleware:
         mock_request = MagicMock(spec=Request)
         mock_request.method = "GET"
         mock_request.url.path = "/test"
+        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
         mock_request.headers = {"user-agent": "test-agent"}
         mock_request.client = None
         
@@ -250,6 +260,7 @@ class TestMiddlewareIntegration:
         mock_request = MagicMock(spec=Request)
         mock_request.method = "GET"
         mock_request.url.path = "/test"
+        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
         mock_request.headers = {"content-length": "1000", "user-agent": "test-agent"}
         mock_request.client.host = "127.0.0.1"
         
@@ -292,6 +303,7 @@ class TestMiddlewareIntegration:
         mock_request = MagicMock(spec=Request)
         mock_request.method = "GET"
         mock_request.url.path = "/test"
+        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
         mock_request.headers = {"content-length": "1000", "user-agent": "test-agent"}
         mock_request.client.host = "127.0.0.1"
         
