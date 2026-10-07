@@ -127,7 +127,7 @@ so the core must not care which model it's talking to, and the choice of default
 - [x] Token budgets: chunks are planned with a deliberately high estimate (3 characters per token), so they're never too big for `chunk_tokens`; real usage comes back on every response. (Counting exactly with each provider's endpoint would cost an API call per file and hunk while planning)
 - [ ] Config: `provider`, `model`, `api_key_env`, optional `base_url`; no model IDs hardcoded outside the defaults
 - [ ] Record tokens and estimated cost per run. (Prompt caching doesn't help yet: the shared instructions are a few hundred tokens, below Claude's minimum cacheable prefix of 1,024+)
-- [ ] **Model comparison eval:** a fixed set of real PR diffs with known issues, scored the same way for every provider and model (real issues found, false positives, valid line positions, cost per useful comment). It picks the default and catches regressions when prompts or models change
+- [ ] **Model comparison eval:** a fixed set of real PR diffs with known issues, scored the same way for every provider and model (real issues found, false positives, valid line positions, cost per useful comment). It picks the default, catches regressions when prompts or models change, and later measures complexity-based routing (Phase 6)
 - [ ] End-to-end check carried over from Phase 1: a real PR through the server with Claude ends with stored suggestions
 - [ ] Choose the default model from the eval. Start by comparing Claude Opus 5.5 (`claude-opus-5-5`) against cheaper options, Codestral (the current default) and a local model
 
@@ -186,6 +186,19 @@ Action).
 
 ## Phase 6: Later, maybe
 
+- **Complexity-based routing** (needs the Phase 2 eval to tune and trust it). Route each chunk,
+  not the whole PR, to the cheapest review that's good enough:
+  1. Free checks first, with no model: skip only what's certainly trivial (docs-only, lock
+     files, pure renames, whitespace); send obviously risky code (auth, crypto, SQL and
+     migrations, concurrency, payments, large logic changes) straight to the strong tier
+  2. A cheap model triages the rest and picks the cheap or the strong reviewer. It never skips
+     a review: a "trivial" call on a subtle bug is the failure to avoid
+  3. Compare against routing by effort level on one model (e.g. Claude Opus at low effort for
+     simple chunks), which is often as good and cheaper, with one model to keep consistent
+  4. The report says which model reviewed each part, and why anything was skipped. Success is
+     measured by the eval: issues missed against reviewing everything with the strong model,
+     and the cost saved
+  5. Tiers configurable in `.codemop.yml`
 - **Grouped fixes:** related issues bundled into one suggestion/commit (the main differentiator)
 - **Self-hosted GitHub App mode**, built on the Phase 1 server
 - GitLab support
