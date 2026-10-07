@@ -29,13 +29,13 @@ services:
       - codemop_network
 
   db:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: codemop
       POSTGRES_PASSWORD: codemop
       POSTGRES_DB: codemop
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U codemop -d codemop"]
       interval: 5s

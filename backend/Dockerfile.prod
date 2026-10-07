@@ -2,7 +2,7 @@
 # Uses multi-stage builds for optimization
 
 # Stage 1: Build stage
-FROM python:3.13-slim as builder
+FROM python:3.14-slim as builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -22,7 +22,7 @@ RUN pip install --user -r requirements.txt
 COPY --chown=appuser:appuser . .
 
 # Stage 2: Runtime stage
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
