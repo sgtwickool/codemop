@@ -41,6 +41,8 @@ class AnthropicModel:
     ):
         self.model = model
         self.chunk_tokens = chunk_tokens
+        # Models that actually answered: with refusal fallbacks, another model can answer
+        self.served_models: set[str] = set()
         self.effort = None if model.startswith(_NO_EFFORT_PREFIXES) else effort
         self.max_output_tokens = max_output_tokens
         # With no api_key the SDK finds credentials itself (ANTHROPIC_API_KEY, `ant auth login`...)
@@ -94,6 +96,8 @@ class AnthropicModel:
         except anthropic.APIConnectionError:
             raise NoReview("Couldn't connect to the Anthropic API; check the network")
 
+        if getattr(response, "model", None):
+            self.served_models.add(response.model)
         usage = Usage(
             input_tokens=response.usage.input_tokens or 0,
             output_tokens=response.usage.output_tokens or 0,

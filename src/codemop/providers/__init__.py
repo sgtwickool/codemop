@@ -33,11 +33,13 @@ def create_model(
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
     api_key_env: Optional[str] = None,
+    effort: Optional[str] = None,
 ) -> ReviewModel:
     """
     The ReviewModel for a provider name (anthropic, mistral, openai, openrouter, ollama,
     openai-compatible). The API key is `api_key` if given, else read from `api_key_env`, else
-    the provider's own variable (see key_env).
+    the provider's own variable (see key_env). `effort` (low, medium, high, xhigh, max) applies
+    to Claude models that support it; None keeps the adapter's default (high).
     """
     if provider not in PROVIDERS:
         raise ValueError(f"Unknown provider {provider!r}; choose one of: {', '.join(PROVIDERS)}")
@@ -49,7 +51,7 @@ def create_model(
         from codemop.providers.anthropic import AnthropicModel
         if not api_key and api_key_env:
             api_key = os.environ.get(api_key_env)
-        return AnthropicModel(model, api_key=api_key)
+        return AnthropicModel(model, api_key=api_key, **({"effort": effort} if effort else {}))
 
     from codemop.providers.openai_compatible import OpenAICompatibleModel
     if provider == "openai-compatible" and not base_url:
