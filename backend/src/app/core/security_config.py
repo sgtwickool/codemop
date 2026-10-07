@@ -3,10 +3,10 @@ Security configuration and constants for the application.
 """
 
 # Rate limit configurations
+# The GitHub webhook and the health check aren't rate limited (see
+# app/api/v1/endpoints/webhooks.py); the health check is polled by orchestrators
 RATE_LIMITS = {
-    "webhook": "10/minute",
     "suggestions": "60/minute",
-    "health": "120/minute"
 }
 
 # Request size limits
