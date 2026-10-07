@@ -24,7 +24,8 @@ from codemop import __version__
 from codemop.github.client import DEFAULT_API_URL, GitHubError, fetch_pr_diff, parse_pr_reference
 from codemop.providers import DEFAULT_MODELS, PROVIDERS, create_model
 from codemop.review.chunks import DEFAULT_IGNORED_PATHS
-from codemop.review.pipeline import DEFAULT_CHUNK_TOKENS, ReviewReport, review_diff
+from codemop.providers.base import DEFAULT_CHUNK_TOKENS
+from codemop.review.pipeline import ReviewReport, review_diff
 
 
 def github_token() -> Optional[str]:
@@ -55,8 +56,8 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--api-key-env", help="environment variable holding the provider's API key")
     review.add_argument("--min-confidence", type=float, default=0.5,
                         help="drop suggestions the model is less sure of (0-1, default: 0.5)")
-    review.add_argument("--chunk-tokens", type=int, default=DEFAULT_CHUNK_TOKENS,
-                        help=f"largest piece of diff sent in one request (default: {DEFAULT_CHUNK_TOKENS})")
+    review.add_argument("--chunk-tokens", type=int,
+                        help=f"largest piece of diff sent in one request (default: {DEFAULT_CHUNK_TOKENS:,}; 8,000 for ollama)")
     review.add_argument("--ignore", action="append", metavar="PATTERN",
                         help="path pattern to skip (repeatable; replaces the defaults: "
                              + " ".join(DEFAULT_IGNORED_PATHS) + ")")

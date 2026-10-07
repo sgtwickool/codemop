@@ -19,6 +19,7 @@ def suggestion(file_path, line, confidence=0.9, title="Issue"):
 class FakeModel:
     """Answers each chunk by looking up the first file it mentions"""
     name = "fake/model"
+    chunk_tokens = 40_000
 
     def __init__(self, answers):
         self.answers = answers  # path -> list of suggestions, or a NoReview to raise
@@ -110,3 +111,15 @@ async def test_empty_diff():
 
     assert report.chunks == 0
     assert report.suggestions == [] and report.complete
+
+
+@pytest.mark.asyncio
+async def test_chunk_size_defaults_to_the_models_own(sample_diff):
+    files = parse_diff(sample_diff)
+    service = next(f for f in files if f.path == "app/service.py")
+    model = FakeModel({})
+    model.chunk_tokens = estimate_tokens(render_file(service))
+
+    report = await review_diff(sample_diff, model)
+
+    assert report.chunks == 2

@@ -42,8 +42,15 @@ class NoReview(Exception):
         self.usage = usage
 
 
+# Largest piece of diff to send in one request, unless a model says otherwise
+DEFAULT_CHUNK_TOKENS = 40_000
+
+
 class ReviewModel(Protocol):
     """A model that can review one chunk of a diff"""
+
+    #: The largest piece of diff this model should be sent at once, in tokens
+    chunk_tokens: int
 
     @property
     def name(self) -> str:

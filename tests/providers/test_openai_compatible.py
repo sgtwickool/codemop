@@ -162,3 +162,38 @@ async def test_rate_limit_after_retries():
 def test_unknown_provider_needs_a_base_url():
     with pytest.raises(ValueError, match="give a base_url"):
         OpenAICompatibleModel("m", provider="somewhere-else")
+
+
+@pytest.mark.asyncio
+async def test_input_the_server_silently_dropped_is_never_passed_off_as_a_review():
+    """Ollama reviews whatever fits its context window and says nothing (checked: ~13k tokens in, 2,050 read)"""
+    big_diff = "+    value = compute(items[i])\n" * 2000  # ~62k characters
+    reply = completion(json.dumps(VALID))
+    reply["usage"] = {"prompt_tokens": 2050, "completion_tokens": 50}
+
+    with pytest.raises(NoReview) as error:
+        await model(FakeAPI((200, reply)), provider="ollama", api_key=None).review("instructions", big_diff)
+
+    assert "only read 2,050 tokens" in error.value.reason
+    assert "set OLLAMA_CONTEXT_LENGTH" in error.value.reason
+    assert error.value.fatal
+
+
+@pytest.mark.asyncio
+async def test_normal_token_counts_pass_the_check():
+    diff = "+    value = compute(items[i])\n" * 2000
+    reply = completion(json.dumps(VALID))
+    reply["usage"] = {"prompt_tokens": 16000, "completion_tokens": 50}  # ~4 characters a token
+
+    review, _ = await model(FakeAPI((200, reply))).review("instructions", diff)
+
+    assert review.suggestions
+
+
+def test_ollama_gets_local_model_defaults():
+    ollama = OpenAICompatibleModel("qwen2.5-coder:7b", provider="ollama")
+    mistral = OpenAICompatibleModel("codestral-latest", provider="mistral")
+
+    assert (ollama.chunk_tokens, ollama.max_output_tokens) == (8000, 4096)
+    assert (mistral.chunk_tokens, mistral.max_output_tokens) == (40000, 16000)
+    assert OpenAICompatibleModel("m", provider="ollama", chunk_tokens=3000).chunk_tokens == 3000

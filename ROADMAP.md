@@ -123,6 +123,7 @@ so the core must not care which model it's talking to, and the choice of default
 - [x] Adapters: Anthropic (official `anthropic` SDK, not an OpenAI-compatible shim, so structured output and refusal handling work properly), and one OpenAI-compatible adapter that covers Mistral (its API is OpenAI-compatible, structured output included), OpenAI, OpenRouter and local models through Ollama or vLLM
 - [x] Each adapter uses its provider's native structured output (for Anthropic, `output_config.format` / `messages.parse()`). Every result is then validated against the same Pydantic schema, with one repair retry for providers that don't enforce a schema. Drop the plain-text scraping fallback
 - [x] Avoid provider-specific tricks that are going away: current Claude models reject both forced `tool_choice` and assistant-message prefill (structured output instead)
+- [x] Detect input a server silently dropped (Ollama does when a request doesn't fit its context window): CodeMop compares the reported token count with what it sent and stops with a fix, rather than reviewing a fragment
 - [x] Treat non-answers as such: refusals, truncated output (`max_tokens`), rate limits and a rejected API key produce "no review, because …" (saying what to fix, like the GitHub errors do), and are never parsed as suggestions
 - [x] Token budgets: chunks are planned with a deliberately high estimate (3 characters per token), so they're never too big for `chunk_tokens`; real usage comes back on every response. (Counting exactly with each provider's endpoint would cost an API call per file and hunk while planning)
 - [ ] Config: `provider`, `model`, `api_key_env`, optional `base_url`; no model IDs hardcoded outside the defaults
@@ -144,6 +145,7 @@ same review-posting code.
 
 - [ ] `action.yml` wrapping the CLI (`uses: sgtwickool/codemop@v1`), with `provider`, `model` and `api-key` inputs
 - [ ] Post a single PR review with inline ```` ```suggestion ```` blocks (one-click apply) plus a summary
+- [ ] Check each `suggested_code` really replaces lines `line..end_line` before posting it as a suggestion block: small models often include the line above or below, which GitHub would then duplicate (seen with qwen2.5-coder:7b)
 - [ ] Update the existing review on re-runs instead of piling up new ones
 - [ ] Cost guardrails: maximum diff size and maximum number of comments
 - [ ] Document permissions (`pull-requests: write`) and the limits on fork PRs (secrets aren't available there)
