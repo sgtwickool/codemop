@@ -9,7 +9,7 @@ from typing import Optional
 import anthropic
 import pydantic
 
-from codemop.providers.base import NoReview, Usage
+from codemop.providers.base import DEFAULT_CHUNK_TOKENS, NoReview, Usage
 from codemop.review.schema import ModelReview
 
 DEFAULT_MODEL = "claude-opus-5-5"
@@ -35,9 +35,11 @@ class AnthropicModel:
         api_key: Optional[str] = None,
         effort: Optional[str] = "high",
         max_output_tokens: int = 16000,
+        chunk_tokens: int = DEFAULT_CHUNK_TOKENS,
         client: Optional[anthropic.AsyncAnthropic] = None,
     ):
         self.model = model
+        self.chunk_tokens = chunk_tokens
         self.effort = None if model.startswith(_NO_EFFORT_PREFIXES) else effort
         self.max_output_tokens = max_output_tokens
         # With no api_key the SDK finds credentials itself (ANTHROPIC_API_KEY, `ant auth login`...)

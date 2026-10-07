@@ -31,6 +31,7 @@ SUGGESTION = ModelSuggestion(
 
 class FakeModel:
     name = "fake/model"
+    chunk_tokens = 40_000
 
     def __init__(self, result):
         self.result = result

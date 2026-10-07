@@ -89,6 +89,23 @@ print(extract_pr_data(payload))
 "
 ```
 
+### Reviewing with a local model (Ollama)
+The `codemop` command can review with a model running on your own machine: no API key, no cost per
+review, and the code never leaves your computer. It's slower, and small models review less well.
+```bash
+ollama pull qwen2.5-coder:7b
+codemop review owner/repo#123 --provider ollama --model qwen2.5-coder:7b
+```
+Ollama runs models with a 4,096-token context window by default, which has to hold the instructions,
+a chunk of the diff and the review, so raise it. On Linux, where Ollama runs as a systemd service:
+```bash
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+printf '[Service]\nEnvironment="OLLAMA_CONTEXT_LENGTH=16384"\n' | sudo tee /etc/systemd/system/ollama.service.d/context.conf
+sudo systemctl daemon-reload && sudo systemctl restart ollama
+```
+CodeMop sends Ollama 8,000-token chunks and checks the token count Ollama reports back: if part of the
+input was dropped, it stops with an error instead of reviewing a fragment.
+
 ### Database migrations
 The server applies any pending migrations when it starts (and `setup_dev.sh` runs them too),
 so there's nothing to run by hand. After changing a model in `backend/src/app/models/`,

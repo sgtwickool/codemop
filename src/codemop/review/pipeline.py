@@ -13,7 +13,6 @@ from codemop.review.placement import Unplaced, place_suggestions
 from codemop.review.prompt import SYSTEM_PROMPT
 from codemop.review.schema import ModelSuggestion
 
-DEFAULT_CHUNK_TOKENS = 40_000
 DEFAULT_CONCURRENCY = 4
 
 
@@ -45,13 +44,13 @@ async def review_diff(
     diff: str,
     model: ReviewModel,
     *,
-    chunk_tokens: int = DEFAULT_CHUNK_TOKENS,
+    chunk_tokens: Optional[int] = None,
     concurrency: int = DEFAULT_CONCURRENCY,
     ignored_paths: Sequence[str] = DEFAULT_IGNORED_PATHS,
     min_confidence: float = 0.0,
 ) -> ReviewReport:
-    """Review a unified diff with `model`"""
-    plan = plan_chunks(parse_diff(diff), chunk_tokens, ignored_paths=ignored_paths)
+    """Review a unified diff with `model` (chunk_tokens defaults to the model's own chunk size)"""
+    plan = plan_chunks(parse_diff(diff), chunk_tokens or model.chunk_tokens, ignored_paths=ignored_paths)
     report = ReviewReport(model=model.name, skipped=list(plan.skipped), chunks=len(plan.chunks))
     limit = asyncio.Semaphore(concurrency)
 

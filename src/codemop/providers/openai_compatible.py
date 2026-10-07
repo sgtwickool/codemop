@@ -15,7 +15,7 @@ from typing import Optional
 import httpx
 import pydantic
 
-from codemop.providers.base import NoReview, Usage
+from codemop.providers.base import DEFAULT_CHUNK_TOKENS, NoReview, Usage
 from codemop.review.schema import ModelReview
 
 
@@ -23,14 +23,28 @@ from codemop.review.schema import ModelReview
 class Preset:
     base_url: str
     key_env: Optional[str]  # None: no key needed
+    chunk_tokens: int = DEFAULT_CHUNK_TOKENS
+    max_output_tokens: int = 16000
+    context_hint: str = "raise the model's context window"
 
 
 PRESETS = {
     "openai": Preset("https://api.openai.com/v1", "OPENAI_API_KEY"),
     "mistral": Preset("https://api.mistral.ai/v1", "MISTRAL_API_KEY"),
     "openrouter": Preset("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
-    "ollama": Preset("http://localhost:11434/v1", None),
+    # Local models run with small context windows (Ollama defaults to 4096 tokens) and
+    # are slow on a CPU, so they get smaller chunks and a shorter review
+    "ollama": Preset(
+        "http://localhost:11434/v1", None, chunk_tokens=8_000, max_output_tokens=4096,
+        context_hint="set OLLAMA_CONTEXT_LENGTH for the Ollama server (16384 or more) and restart it",
+    ),
 }
+
+# Fewer than this many characters per reported prompt token means the server dropped
+# part of the input: real text and code run at about 3-4 characters per token
+TRUNCATED_CHARS_PER_TOKEN = 6
+# Below this size the ratio is too noisy to judge
+TRUNCATION_CHECK_MIN_CHARS = 2_000
 
 RETRY_STATUSES = {408, 409, 429, 500, 502, 503, 504}
 REPAIR_INSTRUCTION = (
@@ -50,7 +64,8 @@ class OpenAICompatibleModel:
         base_url: Optional[str] = None,
         api_key: Optional[str] = None,
         key_env: Optional[str] = None,
-        max_output_tokens: int = 16000,
+        max_output_tokens: Optional[int] = None,
+        chunk_tokens: Optional[int] = None,
         max_retries: int = 2,
         timeout: float = 300.0,
         transport: Optional[httpx.AsyncBaseTransport] = None,
@@ -63,7 +78,9 @@ class OpenAICompatibleModel:
             raise ValueError(f"Unknown provider {provider!r}: give a base_url")
         self.key_env = key_env or preset.key_env
         self.api_key = api_key or (os.environ.get(self.key_env) if self.key_env else None)
-        self.max_output_tokens = max_output_tokens
+        self.max_output_tokens = max_output_tokens or preset.max_output_tokens
+        self.chunk_tokens = chunk_tokens or preset.chunk_tokens
+        self.context_hint = preset.context_hint
         self.max_retries = max_retries
         self.timeout = timeout
         self._transport = transport
@@ -115,10 +132,22 @@ class OpenAICompatibleModel:
 
         data = response.json()
         usage = data.get("usage") or {}
-        return data, Usage(
+        result = Usage(
             input_tokens=usage.get("prompt_tokens", 0),
             output_tokens=usage.get("completion_tokens", 0),
         )
+        # Some servers (Ollama among them) silently drop input that doesn't fit the
+        # context window and review what's left; never pass that off as a review
+        sent = sum(len(message["content"]) for message in messages)
+        if sent >= TRUNCATION_CHECK_MIN_CHARS and 0 < result.input_tokens < sent / TRUNCATED_CHARS_PER_TOKEN:
+            raise NoReview(
+                f"{self.name} only read {result.input_tokens:,} tokens of a request of about "
+                f"{sent // 4:,}: its context window has to fit the request plus a review of up to "
+                f"{self.max_output_tokens:,} tokens. To fix it, {self.context_hint}, or lower --chunk-tokens",
+                fatal=True,
+                usage=result,
+            )
+        return data, result
 
     async def review(self, instructions: str, diff_text: str) -> tuple[ModelReview, Usage]:
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
