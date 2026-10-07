@@ -99,6 +99,26 @@ async def test_non_answers_say_why(stop_reason, category, expected):
 
 
 @pytest.mark.asyncio
+async def test_no_credentials_at_all_is_a_clear_message():
+    """The SDK raises TypeError (before sending anything) when it finds no credentials"""
+    client, _ = fake_client(TypeError('"Could not resolve authentication method. Expected one of api_key..."'))
+
+    with pytest.raises(NoReview) as raised:
+        await AnthropicModel(client=client).review("i", "d")
+
+    assert raised.value.reason == "No Anthropic API key found: set ANTHROPIC_API_KEY"
+    assert raised.value.fatal
+
+
+@pytest.mark.asyncio
+async def test_other_type_errors_arent_hidden():
+    client, _ = fake_client(TypeError("a bug"))
+
+    with pytest.raises(TypeError, match="a bug"):
+        await AnthropicModel(client=client).review("i", "d")
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("error, expected, fatal", [
     (status_error(anthropic.AuthenticationError, 401), "check ANTHROPIC_API_KEY", True),
     (status_error(anthropic.PermissionDeniedError, 403), "isn't allowed to use claude-opus-5-5", True),

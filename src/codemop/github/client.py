@@ -1,0 +1,77 @@
+"""
+Fetching pull request diffs from the GitHub REST API.
+
+Uses a token when one is given, which private repositories need (and which raises the
+rate limit from 60 to 5,000 requests an hour for public ones).
+"""
+import re
+from dataclasses import dataclass
+from typing import Optional
+
+import httpx
+
+DEFAULT_API_URL = "https://api.github.com"
+
+_PR_REFERENCE = re.compile(r"^(?P<repo>[\w.-]+/[\w.-]+)#(?P<number>\d+)$")
+_PR_URL = re.compile(r"^https?://[^/]+/(?P<repo>[\w.-]+/[\w.-]+)/pull/(?P<number>\d+)(?:[/?#].*)?$")
+
+
+class GitHubError(Exception):
+    """A GitHub request failed; the message says what to do about it"""
+
+
+@dataclass(frozen=True)
+class PullRequestRef:
+    repo: str  # owner/name
+    number: int
+
+    def __str__(self) -> str:
+        return f"{self.repo}#{self.number}"
+
+
+def parse_pr_reference(text: str) -> PullRequestRef:
+    """owner/repo#123, or a PR URL like https://github.com/owner/repo/pull/123"""
+    match = _PR_REFERENCE.match(text.strip()) or _PR_URL.match(text.strip())
+    if not match:
+        raise ValueError(f"Not a pull request: {text!r} (use owner/repo#123 or a PR URL)")
+    return PullRequestRef(match.group("repo"), int(match.group("number")))
+
+
+def _error_message(status: int, body: str, pr: PullRequestRef, has_token: bool) -> str:
+    if status == 401:
+        return f"GitHub rejected the token while fetching {pr}; check it's valid and hasn't expired"
+    if status == 403 and "rate limit" in body.lower():
+        hint = "" if has_token else "; set GITHUB_TOKEN (or log in with `gh auth login`) for a higher limit"
+        return f"GitHub API rate limit reached while fetching {pr}{hint}"
+    if status in (403, 404):
+        if has_token:
+            return (f"GitHub returned {status} for {pr}: the token needs read access to this "
+                    "repository's pull requests and contents")
+        return (f"GitHub returned {status} for {pr}: if the repository is private, set "
+                "GITHUB_TOKEN (or log in with `gh auth login`)")
+    if status == 406:
+        return f"The diff for {pr} is too large for the GitHub API to return"
+    return f"GitHub returned {status} while fetching the diff for {pr}"
+
+
+async def fetch_pr_diff(
+    pr: PullRequestRef,
+    *,
+    token: Optional[str] = None,
+    api_url: str = DEFAULT_API_URL,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> str:
+    """The PR's diff, from GET /repos/{owner}/{repo}/pulls/{number} as application/vnd.github.diff"""
+    headers = {"Accept": "application/vnd.github.diff", "X-GitHub-Api-Version": "2022-11-28"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    url = f"{api_url.rstrip('/')}/repos/{pr.repo}/pulls/{pr.number}"
+
+    async with httpx.AsyncClient(headers=headers, timeout=60.0, transport=transport) as client:
+        try:
+            response = await client.get(url)
+        except httpx.TransportError:
+            raise GitHubError(f"Couldn't connect to {api_url}; check the network")
+    if response.status_code != 200:
+        raise GitHubError(_error_message(response.status_code, response.text, pr, bool(token)))
+    return response.text

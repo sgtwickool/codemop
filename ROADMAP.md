@@ -107,7 +107,7 @@ Extract the review logic into a package that has nothing to do with FastAPI or t
 - [x] Handle large diffs by chunking per file (and per hunk for big files) instead of cutting off at 10k characters; report anything skipped
 - [x] Map suggestions to diff positions (GitHub only accepts comments on lines in the diff); set aside ones that aren't
 - [ ] Config file `.codemop.yml`: model, ignored paths, minimum confidence, max comments
-- [ ] CLI: `codemop review owner/repo#123 [--post] [--dry-run]`
+- [x] CLI: `codemop review owner/repo#123` (or a PR URL, or `-` for a diff on stdin) prints the review; `--json` for machines. Posting comes with `--post` in Phase 3. Uses `GITHUB_TOKEN`, or the `gh` login, for private repos
 - [ ] Golden tests from recorded diffs and model responses
 - [ ] Move to the target [repository structure](#repository-structure): the package at the root, `backend/` becomes `server/` and uses it
 - [ ] In the server, stop running synchronous database work inside `async` handlers and the background job (make DB-only handlers plain `def`, or move to async SQLAlchemy); it blocks the event loop under load
@@ -131,7 +131,7 @@ so the core must not care which model it's talking to, and the choice of default
 - [ ] End-to-end check carried over from Phase 1: a real PR through the server with Claude ends with stored suggestions
 - [ ] Choose the default model from the eval. Start by comparing Claude Opus 5.5 (`claude-opus-5-5`) against cheaper options, Codestral (the current default) and a local model
 
-**Done when:** `pipx run codemop review sgtwickool/codemop#N --dry-run` prints useful suggestions
+**Done when:** `pipx run codemop review sgtwickool/codemop#N` prints useful suggestions
 with at least two providers, and the eval results are in the repo.
 
 ## Phase 3: GitHub Action, and dogfooding
