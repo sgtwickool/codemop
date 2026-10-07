@@ -59,7 +59,7 @@ async def get_suggestions(
     
     return {
         "pr_id": pr_id,
-        "github_id": pr.github_id,
+        "number": pr.number,
         "repo": pr.repo_full_name,
         "title": pr.title,
         "status": pr.status,

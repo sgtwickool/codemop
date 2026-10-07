@@ -38,8 +38,11 @@ The webhook server keeps working, and later becomes the optional self-hosted mod
 the server switches to that core when it lands.
 
 - [x] Add Alembic migrations; stop relying on `create_all` (existing databases are stamped and upgraded)
-- [ ] Identify a PR by `(repo_full_name, number)`, not the PR number alone (PRs in different repos currently overwrite each other)
-- [ ] Upsert PRs, and de-duplicate deliveries by `X-GitHub-Delivery` (handles retries and concurrent duplicates)
+- [x] Identify a PR by `(repo_full_name, number)`, not the PR number alone (PRs in different repos overwrote each other)
+- [x] Run the test suite against PostgreSQL in CI (SQLite hid two bugs: long titles and large PR numbers caused 500s)
+- [x] Move the compose files to Postgres 17 (13 is end of life)
+- [x] Upsert PRs in a single statement, so concurrent deliveries for the same PR can't collide
+- [ ] De-duplicate deliveries by `X-GitHub-Delivery` (GitHub redelivers on timeouts and manual retries)
 - [ ] Return from the webhook within 1s; run analysis in the background
 - [ ] Analyse only on `opened`, `synchronize`, `reopened` and `ready_for_review`; replace old suggestions per head SHA
 - [ ] Store PR state (open/closed/merged), not the last webhook action

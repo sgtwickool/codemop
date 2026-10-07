@@ -29,7 +29,7 @@ class TestGitHubService:
         """Test PR data extraction for database."""
         pr_data = extract_pr_data(github_webhook_payload)
         
-        assert pr_data["github_id"] == 123
+        assert pr_data["number"] == 123
         assert pr_data["repo_name"] == "testrepo"
         assert pr_data["repo_full_name"] == "testuser/testrepo"
         assert pr_data["branch"] == "test-branch"
@@ -97,7 +97,7 @@ class TestGitHubService:
         
         pr_data = extract_pr_data(minimal_payload)
         
-        assert pr_data["github_id"] == 456
+        assert pr_data["number"] == 456
         assert pr_data["repo_name"] is None
         assert pr_data["branch"] is None
         assert pr_data["author"] is None
