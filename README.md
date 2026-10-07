@@ -85,6 +85,16 @@ print(extract_pr_data(payload))
 "
 ```
 
+### Database migrations
+The server applies any pending migrations when it starts (and `setup_dev.sh` runs them too),
+so there's nothing to run by hand. After changing a model in `backend/src/app/models/`,
+generate a migration, review it, and commit it:
+```bash
+cd backend
+alembic revision --autogenerate -m "describe the change"   # creates src/app/migrations/versions/<rev>_....py
+alembic upgrade head                                       # apply it to the database in DATABASE_URL
+```
+
 ### Troubleshooting
 
 #### Database Connection Issues
@@ -127,7 +137,8 @@ codemop/
 │   │   │   ├── services/    # Business logic
 │   │   │   ├── models/      # Database models
 │   │   │   ├── db/          # Database layer
-│   │   │   └── utils/       # Utilities
+│   │   │   ├── utils/       # Utilities
+│   │   │   └── migrations/  # Alembic database migrations
 │   ├── tests/               # Test files
 │   ├── requirements.txt     # Runtime dependencies (pinned)
 │   ├── requirements-dev.txt # Test and security tooling

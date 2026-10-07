@@ -1,4 +1,7 @@
-from sqlalchemy import create_engine
+from pathlib import Path
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, inspect
 from starlette.exceptions import HTTPException
 from sqlalchemy.orm import sessionmaker
 from app.config import settings
@@ -38,13 +41,29 @@ def get_db():
     finally:
         db.close()
 
-def init_db():
-    """Initialize database tables"""
-    from app.models.base import Base
-    from app.models import pr, suggestion  # noqa: F401 - registers the tables on Base
+MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
+
+# The schema that Base.metadata.create_all() produced before migrations existed
+BASELINE_REVISION = "0001"
+
+def alembic_config() -> Config:
+    """Alembic config for running migrations from code (no alembic.ini needed)"""
+    config = Config()
+    config.set_main_option("script_location", str(MIGRATIONS_DIR))
+    return config
+
+def init_db(db_engine=None):
+    """Bring the database schema up to date by running any pending migrations"""
+    config = alembic_config()
     try:
-        Base.metadata.create_all(bind=engine)
-        logger.info("🚀 Database tables initialized successfully")
+        with (db_engine or engine).begin() as connection:
+            config.attributes["connection"] = connection
+            tables = inspect(connection).get_table_names()
+            if "prs" in tables and "alembic_version" not in tables:
+                logger.info("Database predates migrations; marking it as the baseline schema")
+                command.stamp(config, BASELINE_REVISION)
+            command.upgrade(config, "head")
+        logger.info("🚀 Database schema is up to date")
     except Exception as e:
         logger.error(f"❌ Failed to initialize database: {str(e)}")
         raise
