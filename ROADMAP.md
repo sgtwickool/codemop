@@ -10,7 +10,8 @@ to move on.
 ## How we work
 
 - **Commit straight to `master`** while it's a solo project; CI must be green after every push.
-  PRs come back once it's stable or someone else contributes.
+  Our own PRs start after Phase 4 or 5, once the product is in better shape. Dependabot's
+  monthly update PRs are the exception: review and merge them as they come.
 - **`/simplify` at the end of every phase**, over that phase's diff (`git diff phase-N-1..HEAD`).
   Also run it on any single change of more than about 300 lines. Then tag the end of the phase
   (`phase-N`) so the next pass has a clean starting point.
@@ -77,7 +78,7 @@ the server switches to that core when it lands.
 - [x] Run the test suite against PostgreSQL in CI (SQLite hid two bugs: long titles and large PR numbers caused 500s)
 - [x] Move the compose files to Postgres 17 (13 is end of life), then 18
 - [x] Bring the GitHub Actions (1-3 majors behind; Trivy was unpinned), the Docker base image (Python 3.14) and Postgres (18) up to date; the Python packages were already current
-- [ ] Keep dependencies current automatically (Dependabot, or a scheduled check)
+- [x] Keep dependencies current automatically: Dependabot, monthly, one grouped PR per ecosystem (pip, Actions, Docker, compose)
 - [x] Upsert PRs in a single statement, so concurrent deliveries for the same PR can't collide
 - [x] De-duplicate deliveries by `X-GitHub-Delivery` (GitHub redelivers on timeouts and manual retries)
 - [x] Prune old delivery records (kept for 7 days; pruned on each webhook, using an index)
@@ -92,10 +93,11 @@ the server switches to that core when it lands.
 - [x] Fix Prometheus metrics (the middleware bound `None` at import, so nothing was recorded) and label them by route template, not raw path; the metrics server is off unless `ENABLE_METRICS=true`
 - [x] Replace `print` with logging (and stop the JSON logs escaping non-ASCII); tighten CORS: off unless `CORS_ORIGINS` lists origins, never with credentials
 - [x] End-of-phase tidy: `/simplify` over the Phase 1 diff, then remove dead code it can't see (unused helpers, the committing `BaseRepository` methods, the `src/main.py` shim, the side-effecting `app/__init__.py` import)
-- [ ] Check the "done when" end to end with a real PR and a real AI key, then tag `phase-1`
+- [x] Check the "done when" end to end: a real webhook for this repo's PR #2 (private) was stored and its diff fetched; the AI call failed only because the old Mistral key has expired. The real-model check moves to Phase 2, with Claude. Tagged `phase-1`
 
 **Done when:** a real PR on a real (including private) repo gets stored suggestions,
-with no GitHub delivery failures.
+with no GitHub delivery failures. *(Closed on 2026-10-07 with everything up to the AI call
+verified; the stored-suggestions check is done in Phase 2 with Claude.)*
 
 ## Phase 2: Core package and CLI
 
@@ -121,11 +123,12 @@ so the core must not care which model it's talking to, and the choice of default
 - [ ] Adapters: Anthropic (official `anthropic` SDK, not an OpenAI-compatible shim, so structured output and refusal handling work properly), Mistral, and a generic OpenAI-compatible adapter (OpenAI, OpenRouter, local models through Ollama or vLLM)
 - [ ] Each adapter uses its provider's native structured output (for Anthropic, `output_config.format` / `messages.parse()`). Every result is then validated against the same Pydantic schema, with one repair retry for providers that don't enforce a schema. Drop the plain-text scraping fallback
 - [ ] Avoid provider-specific tricks that are going away: current Claude models reject both forced `tool_choice` and assistant-message prefill
-- [ ] Treat non-answers as such: refusals, truncated output (`max_tokens`) and rate limits produce "no review, because …", and are never parsed as suggestions
+- [ ] Treat non-answers as such: refusals, truncated output (`max_tokens`), rate limits and a rejected API key produce "no review, because …" (saying what to fix, like the GitHub errors do), and are never parsed as suggestions
 - [ ] Model-aware token budgets: count tokens with each provider's own counter (for Anthropic, the `count_tokens` endpoint, not a tiktoken estimate) and size chunks to the model's context window
 - [ ] Config: `provider`, `model`, `api_key_env`, optional `base_url`; no model IDs hardcoded outside the defaults
 - [ ] Record tokens and estimated cost per run; use prompt caching where the provider supports it (the instructions are shared across every chunk of a PR)
 - [ ] **Model comparison eval:** a fixed set of real PR diffs with known issues, scored the same way for every provider and model (real issues found, false positives, valid line positions, cost per useful comment). It picks the default and catches regressions when prompts or models change
+- [ ] End-to-end check carried over from Phase 1: a real PR through the server with Claude ends with stored suggestions
 - [ ] Choose the default model from the eval. Start by comparing Claude Opus 5.5 (`claude-opus-5-5`) against cheaper options, Codestral (the current default) and a local model
 
 **Done when:** `pipx run codemop review sgtwickool/codemop#N --dry-run` prints useful suggestions
