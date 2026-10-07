@@ -3,11 +3,25 @@ Unit tests for middleware components.
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from fastapi import Request
+from fastapi import FastAPI
+from starlette.requests import Request
 from app.core.middleware.security_middleware import limit_request_size, add_security_headers
 from app.core.middleware.monitoring_middleware import error_tracking_middleware, request_monitoring_middleware
 from app.core.security_config import MAX_REQUEST_SIZE, SECURITY_HEADERS
 import logging
+
+
+def make_request(method="GET", headers=None, client=("127.0.0.1", 50000)) -> Request:
+    """A real request for /test, so the middleware sees what it would in the app."""
+    return Request({
+        "type": "http",
+        "method": method,
+        "path": "/test",
+        "query_string": b"",
+        "headers": [(name.lower().encode(), value.encode()) for name, value in (headers or {}).items()],
+        "client": client,
+        "app": FastAPI(),
+    })
 
 
 class TestSecurityMiddleware:
@@ -17,11 +31,7 @@ class TestSecurityMiddleware:
     async def test_limit_request_size_within_limit(self):
         """Test request size limiting with valid size."""
         # Create mock request with valid size
-        mock_request = MagicMock(spec=Request)
-        mock_request.headers = {"content-length": str(MAX_REQUEST_SIZE - 1000)}
-        mock_request.method = "POST"
-        mock_request.url.path = "/test"
-        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
+        mock_request = make_request(headers={"content-length": str(MAX_REQUEST_SIZE - 1000)}, method="POST")
         
         # Create mock call_next
         mock_response = MagicMock()
@@ -40,11 +50,7 @@ class TestSecurityMiddleware:
     async def test_limit_request_size_exceeds_limit(self):
         """Test request size limiting with too large request."""
         # Create mock request with too large size
-        mock_request = MagicMock(spec=Request)
-        mock_request.headers = {"content-length": str(MAX_REQUEST_SIZE + 1000)}
-        mock_request.method = "POST"
-        mock_request.url.path = "/test"
-        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
+        mock_request = make_request(headers={"content-length": str(MAX_REQUEST_SIZE + 1000)}, method="POST")
         
         # Create mock call_next
         async def mock_call_next(request):
@@ -61,11 +67,7 @@ class TestSecurityMiddleware:
     async def test_limit_request_size_invalid_header(self):
         """Test request size limiting with invalid content-length header."""
         # Create mock request with invalid header
-        mock_request = MagicMock(spec=Request)
-        mock_request.headers = {"content-length": "invalid"}
-        mock_request.method = "POST"
-        mock_request.url.path = "/test"
-        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
+        mock_request = make_request(headers={"content-length": "invalid"}, method="POST")
         
         # Create mock call_next
         mock_response = MagicMock()
@@ -85,11 +87,7 @@ class TestSecurityMiddleware:
     async def test_limit_request_size_no_header(self):
         """Test request size limiting with no content-length header."""
         # Create mock request without content-length header
-        mock_request = MagicMock(spec=Request)
-        mock_request.headers = {}
-        mock_request.method = "GET"
-        mock_request.url.path = "/test"
-        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
+        mock_request = make_request()
         
         # Create mock call_next
         mock_response = MagicMock()
@@ -108,10 +106,7 @@ class TestSecurityMiddleware:
     async def test_add_security_headers(self):
         """Test security headers middleware."""
         # Create mock request
-        mock_request = MagicMock(spec=Request)
-        mock_request.method = "GET"
-        mock_request.url.path = "/test"
-        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
+        mock_request = make_request()
         
         # Create mock response
         mock_response = MagicMock()
@@ -139,12 +134,7 @@ class TestMonitoringMiddleware:
     async def test_error_tracking_middleware_success(self):
         """Test error tracking middleware with successful request."""
         # Create mock request
-        mock_request = MagicMock(spec=Request)
-        mock_request.method = "GET"
-        mock_request.url.path = "/test"
-        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
-        mock_request.headers = {"user-agent": "test-agent"}
-        mock_request.client.host = "127.0.0.1"
+        mock_request = make_request(headers={"user-agent": "test-agent"})
         
         # Create mock response
         mock_response = MagicMock()
@@ -163,12 +153,7 @@ class TestMonitoringMiddleware:
     async def test_error_tracking_middleware_exception(self):
         """Test error tracking middleware with exception."""
         # Create mock request
-        mock_request = MagicMock(spec=Request)
-        mock_request.method = "GET"
-        mock_request.url.path = "/test"
-        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
-        mock_request.headers = {"user-agent": "test-agent"}
-        mock_request.client.host = "127.0.0.1"
+        mock_request = make_request(headers={"user-agent": "test-agent"})
         
         # Create mock call_next that raises exception
         async def mock_call_next(request):
@@ -184,12 +169,7 @@ class TestMonitoringMiddleware:
     async def test_request_monitoring_middleware_success(self):
         """Test request monitoring middleware with successful request."""
         # Create mock request
-        mock_request = MagicMock(spec=Request)
-        mock_request.method = "GET"
-        mock_request.url.path = "/test"
-        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
-        mock_request.headers = {"user-agent": "test-agent"}
-        mock_request.client.host = "127.0.0.1"
+        mock_request = make_request(headers={"user-agent": "test-agent"})
         
         # Create mock response
         mock_response = MagicMock()
@@ -208,12 +188,7 @@ class TestMonitoringMiddleware:
     async def test_request_monitoring_middleware_exception(self):
         """Test request monitoring middleware with exception."""
         # Create mock request
-        mock_request = MagicMock(spec=Request)
-        mock_request.method = "GET"
-        mock_request.url.path = "/test"
-        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
-        mock_request.headers = {"user-agent": "test-agent"}
-        mock_request.client.host = "127.0.0.1"
+        mock_request = make_request(headers={"user-agent": "test-agent"})
         
         # Create mock call_next that raises exception
         async def mock_call_next(request):
@@ -229,12 +204,7 @@ class TestMonitoringMiddleware:
     async def test_request_monitoring_middleware_no_client(self):
         """Test request monitoring middleware with no client info."""
         # Create mock request without client
-        mock_request = MagicMock(spec=Request)
-        mock_request.method = "GET"
-        mock_request.url.path = "/test"
-        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
-        mock_request.headers = {"user-agent": "test-agent"}
-        mock_request.client = None
+        mock_request = make_request(headers={"user-agent": "test-agent"}, client=None)
         
         # Create mock response
         mock_response = MagicMock()
@@ -257,12 +227,7 @@ class TestMiddlewareIntegration:
     async def test_middleware_chain_success(self):
         """Test that middleware chain works correctly for successful requests."""
         # Create mock request
-        mock_request = MagicMock(spec=Request)
-        mock_request.method = "GET"
-        mock_request.url.path = "/test"
-        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
-        mock_request.headers = {"content-length": "1000", "user-agent": "test-agent"}
-        mock_request.client.host = "127.0.0.1"
+        mock_request = make_request(headers={"content-length": "1000", "user-agent": "test-agent"})
         
         # Create mock response
         mock_response = MagicMock()
@@ -300,12 +265,7 @@ class TestMiddlewareIntegration:
     async def test_middleware_chain_exception(self):
         """Test that middleware chain handles exceptions correctly."""
         # Create mock request
-        mock_request = MagicMock(spec=Request)
-        mock_request.method = "GET"
-        mock_request.url.path = "/test"
-        mock_request.scope = {}  # set per instance in Request.__init__, so not on the spec
-        mock_request.headers = {"content-length": "1000", "user-agent": "test-agent"}
-        mock_request.client.host = "127.0.0.1"
+        mock_request = make_request(headers={"content-length": "1000", "user-agent": "test-agent"})
         
         # Create mock call_next that raises exception
         async def mock_call_next(request):

@@ -3,6 +3,10 @@ from sqlalchemy import BigInteger, String, Text, UniqueConstraint
 from typing import List, Optional
 from app.models.base import BaseModel
 
+def pr_label(repo_full_name: str, number: int) -> str:
+    """How a PR is referred to in logs and messages: owner/repo#123"""
+    return f"{repo_full_name}#{number}"
+
 class PR(BaseModel):
     """Pull Request model"""
     __tablename__ = "prs"
@@ -19,9 +23,12 @@ class PR(BaseModel):
     title: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(50))  # open, closed or merged
     github_url: Mapped[str] = mapped_column(String(512))
-    diff_url: Mapped[str] = mapped_column(String(512))
     head_sha: Mapped[Optional[str]] = mapped_column(String(40))  # latest commit on the PR
-    analyzed_sha: Mapped[Optional[str]] = mapped_column(String(40))  # commit the current suggestions are for
+    analyzed_sha: Mapped[Optional[str]] = mapped_column(String(40))  # commit all its suggestions are for
+    
+    @property
+    def label(self) -> str:
+        return pr_label(self.repo_full_name, self.number)
     
     # Relationship to suggestions
     suggestions: Mapped[List["Suggestion"]] = relationship(

@@ -19,15 +19,9 @@ async def get_api_key(api_key_header: str = Security(api_key_header)):
     else:
         api_key = api_key_header.strip()
     
-    # An unset API_KEY must never match (e.g. an empty bearer token)
-    if not settings.API_KEY:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid API key"
-        )
-    
-    # Constant-time comparison, so response timing doesn't reveal how much of the key matched
-    if not hmac.compare_digest(api_key.encode(), settings.API_KEY.encode()):
+    # An unset API_KEY never matches (not even an empty bearer token). The comparison is
+    # constant-time, so response timing doesn't reveal how much of a guess was right
+    if not settings.API_KEY or not hmac.compare_digest(api_key.encode(), settings.API_KEY.encode()):
         raise HTTPException(
             status_code=401,
             detail="Invalid API key"

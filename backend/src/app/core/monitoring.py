@@ -4,25 +4,18 @@ Monitoring and Observability Setup for CodeMop
 This module provides:
 - Structured JSON logging
 - Error tracking integration (Sentry)
-- Performance monitoring
+- Request metrics (Prometheus)
 - Health metrics
 """
 
 import logging
-import logging.config
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from datetime import datetime, timezone
-import time
-from functools import wraps
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 from pythonjsonlogger.json import JsonFormatter
 import os
+from app.config import settings
 
-# Environment variables for monitoring configuration
-SENTRY_DSN = os.getenv("SENTRY_DSN", "")
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-SERVICE_NAME = os.getenv("SERVICE_NAME", "codemop")
-ENVIRONMENT = os.getenv("APP_ENV", "production")  # same default as app.config
 
 class CustomJsonFormatter(JsonFormatter):
     """
@@ -32,8 +25,8 @@ class CustomJsonFormatter(JsonFormatter):
         super().add_fields(log_record, record, message_dict)
         
         # Add custom fields
-        log_record["service"] = SERVICE_NAME
-        log_record["environment"] = ENVIRONMENT
+        log_record["service"] = settings.SERVICE_NAME
+        log_record["environment"] = settings.APP_ENV
         log_record["timestamp"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         
         # Add request context if available
@@ -58,7 +51,7 @@ def setup_logging() -> None:
     
     # Get root logger and configure it
     root_logger = logging.getLogger()
-    root_logger.setLevel(getattr(logging, LOG_LEVEL.upper(), logging.INFO))
+    root_logger.setLevel(getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
     root_logger.handlers.clear()  # Remove any existing handlers
     root_logger.addHandler(log_handler)
     
@@ -78,17 +71,17 @@ def setup_logging() -> None:
     # Log the configuration
     logger = logging.getLogger(__name__)
     logger.info("Logging configured", extra={
-        "log_level": LOG_LEVEL,
-        "service": SERVICE_NAME,
-        "environment": ENVIRONMENT,
-        "sentry_enabled": bool(SENTRY_DSN)
+        "log_level": settings.LOG_LEVEL,
+        "service": settings.SERVICE_NAME,
+        "environment": settings.APP_ENV,
+        "sentry_enabled": bool(settings.SENTRY_DSN)
     })
 
 def setup_error_tracking() -> None:
     """
     Set up error tracking with Sentry (if configured)
     """
-    if not SENTRY_DSN:
+    if not settings.SENTRY_DSN:
         logging.getLogger(__name__).info("Sentry DSN not configured, error tracking disabled")
         return
     
@@ -104,21 +97,21 @@ def setup_error_tracking() -> None:
         )
         
         sentry_sdk.init(
-            dsn=SENTRY_DSN,
+            dsn=settings.SENTRY_DSN,
             integrations=[
                 FastApiIntegration(),
                 LoggingIntegration(),
                 SqlalchemyIntegration(),
             ],
-            traces_sample_rate=1.0 if ENVIRONMENT == "development" else 0.1,
-            environment=ENVIRONMENT,
+            traces_sample_rate=1.0 if settings.is_development else 0.1,
+            environment=settings.APP_ENV,
             release=os.getenv("GIT_COMMIT", "dev"),
             server_name=os.getenv("HOSTNAME", "unknown")
         )
         
         # Set up Sentry context processors
-        sentry_sdk.set_tag("service", SERVICE_NAME)
-        sentry_sdk.set_tag("environment", ENVIRONMENT)
+        sentry_sdk.set_tag("service", settings.SERVICE_NAME)
+        sentry_sdk.set_tag("environment", settings.APP_ENV)
         
         logging.getLogger(__name__).info("Sentry error tracking initialized")
         
@@ -126,57 +119,6 @@ def setup_error_tracking() -> None:
         logging.getLogger(__name__).warning("Sentry SDK not installed, error tracking disabled")
     except Exception as e:
         logging.getLogger(__name__).error(f"Failed to initialize Sentry: {e}")
-
-class PerformanceMonitor:
-    """
-    Context manager for monitoring function performance
-    """
-    def __init__(self, name: str, logger: Optional[logging.Logger] = None):
-        self.name = name
-        self.logger = logger or logging.getLogger(__name__)
-        self.start_time = None
-        self.end_time = None
-    
-    def __enter__(self):
-        self.start_time = time.time()
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.end_time = time.time()
-        duration = self.end_time - self.start_time
-        
-        log_data = {
-            "operation": self.name,
-            "duration_ms": duration * 1000,
-            "success": exc_type is None
-        }
-        
-        if exc_type:
-            log_data["error"] = str(exc_val)
-            self.logger.error(f"Performance: {self.name} failed", extra=log_data)
-        else:
-            self.logger.info(f"Performance: {self.name} completed", extra=log_data)
-
-def monitor_endpoint(operation_name: str = None):
-    """
-    Decorator to monitor endpoint performance
-    """
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            start_time = time.time()
-            try:
-                result = await func(*args, **kwargs)
-                return result
-            finally:
-                duration = time.time() - start_time
-                logger = logging.getLogger(func.__module__)
-                logger.info(f"Endpoint performance: {operation_name or func.__name__}", extra={
-                    "duration_ms": duration * 1000,
-                    "endpoint": operation_name or func.__name__
-                })
-        return wrapper
-    return decorator
 
 # Prometheus metrics. They're created on import, so they always exist (recording is cheap);
 # the HTTP server that exposes them only starts if ENABLE_METRICS is true
@@ -204,11 +146,11 @@ def setup_metrics() -> None:
     """
     Start the Prometheus metrics server if ENABLE_METRICS is true (off by default)
     """
-    if os.getenv("ENABLE_METRICS", "false").lower() != "true":
+    if not settings.ENABLE_METRICS:
         logging.getLogger(__name__).info("Metrics server disabled (set ENABLE_METRICS=true to enable)")
         return
     
-    metrics_port = int(os.getenv("METRICS_PORT", "8001"))
+    metrics_port = settings.METRICS_PORT
     try:
         start_http_server(metrics_port)
         logging.getLogger(__name__).info(f"Metrics server started on port {metrics_port}")

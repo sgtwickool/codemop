@@ -36,7 +36,6 @@ def _suggestions_response(db: Session, pr: PR) -> dict:
             "description": suggestion.description,
             "fix": suggestion.fix,
             "confidence": suggestion.confidence,
-            "head_sha": suggestion.head_sha,
             "created_at": suggestion.created_at.isoformat() if suggestion.created_at else None
         }
         for suggestion in suggestions
@@ -68,11 +67,10 @@ async def get_suggestions_by_number(
     """
     Get the suggestions for a PR, identified the way GitHub does (owner/repo and PR number)
     """
-    repo_full_name = f"{owner}/{repo}"
     try:
-        pr = pr_service.get_pr_by_number(db, repo_full_name, number)
-    except ValueError:
-        raise HTTPException(status_code=404, detail=f"PR {repo_full_name}#{number} not found")
+        pr = pr_service.get_pr_by_number(db, f"{owner}/{repo}", number)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     return _suggestions_response(db, pr)
 
 

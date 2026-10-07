@@ -7,7 +7,6 @@ exclude_dirs:
 skips:
   - B101
   - B608
-  - B104
 
 confidence:
 severity:

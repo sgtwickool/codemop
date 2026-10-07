@@ -1,7 +1,7 @@
 import logging
 from typing import List, Dict, Any
 from app.config import settings
-from app.utils.http import fetch_with_retry
+from app.utils import http
 from app.utils.parsing import parse_ai_response
 
 logger = logging.getLogger(__name__)
@@ -10,17 +10,11 @@ async def analyze_diff(diff_content: str) -> List[Dict[str, Any]]:
     """
     Ask the AI model to review a diff, returning its code suggestions
     Uses chat completions API with structured prompting for code analysis
+    (Failures propagate; the background job logs them with the PR they were for)
     """
-    try:
-        prompt = create_ai_prompt(diff_content)
-        suggestions = await call_ai_api(prompt)
-        
-        logger.info(f"✅ AI analysis completed: {len(suggestions)} suggestions")
-        return suggestions
-        
-    except Exception as e:
-        logger.error(f"💥 AI analysis failed: {str(e)}")
-        raise
+    suggestions = await call_ai_api(create_ai_prompt(diff_content))
+    logger.info(f"✅ AI analysis completed: {len(suggestions)} suggestions")
+    return suggestions
 
 def create_ai_prompt(diff_content: str) -> str:
     """Create AI prompt for code analysis"""
@@ -78,7 +72,7 @@ async def call_ai_api(prompt: str) -> List[Dict[str, Any]]:
         "max_tokens": 2000
     }
     
-    response = await fetch_with_retry(
+    response = await http.fetch_with_retry(
         settings.AI_API_URL,
         "POST",
         headers=headers,

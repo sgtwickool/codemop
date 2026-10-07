@@ -21,7 +21,7 @@ def github(monkeypatch):
     monkeypatch.setattr(settings, "GITHUB_TOKEN", "")
     monkeypatch.setattr(settings, "GITHUB_API_URL", "https://api.github.com")
     mock = AsyncMock(return_value=MagicMock(text="diff --git a/app.py b/app.py\n"))
-    with patch("app.services.github.fetch_with_retry", new=mock):
+    with patch("app.utils.http.fetch_with_retry", new=mock):
         yield mock
 
 

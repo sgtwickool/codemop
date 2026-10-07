@@ -4,8 +4,6 @@ Pytest configuration and fixtures for CodeMop backend tests.
 Settings are fixed here, before the app is imported, so the tests never depend on a
 developer's .env file and never reach a real database, GitHub or AI provider.
 """
-import hashlib
-import hmac
 import json
 import os
 import tempfile
@@ -13,8 +11,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-TEST_WEBHOOK_SECRET = "test_secret"
-TEST_API_KEY = "test_api_key"
+from tests.helpers import TEST_API_KEY, TEST_WEBHOOK_SECRET, pr_event, sign_body
 
 _test_db_dir = tempfile.mkdtemp(prefix="codemop-tests-")
 
@@ -36,7 +33,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
 from app.core.rate_limit import limiter  # noqa: E402
-from app.db.session import engine, SessionLocal, init_db  # noqa: E402
+from app.db.session import engine, init_db, session_scope  # noqa: E402
 from app.models.base import Base  # noqa: E402
 
 
@@ -87,24 +84,16 @@ def rate_limiting():
 def no_network():
     """Fail outbound HTTP calls by default; tests that need a response mock them."""
     blocked = AsyncMock(side_effect=RuntimeError("Network access is disabled in tests"))
-    # Each module that makes HTTP calls imports fetch_with_retry by name
-    with patch("app.services.ai_analysis.fetch_with_retry", new=blocked), \
-         patch("app.services.github.fetch_with_retry", new=blocked):
+    # Every outbound call goes through app.utils.http.fetch_with_retry
+    with patch("app.utils.http.fetch_with_retry", new=blocked):
         yield blocked
 
 
 @pytest.fixture
 def db_session():
     """A database session for tests that use the service layer directly."""
-    session = SessionLocal()
-    try:
+    with session_scope() as session:
         yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
 
 
 @pytest.fixture
@@ -116,28 +105,7 @@ def client():
 @pytest.fixture
 def github_webhook_payload():
     """Standard GitHub webhook payload for testing."""
-    return {
-        "action": "opened",
-        "number": 123,
-        "pull_request": {
-            "title": "Test PR",
-            "user": {"login": "testuser"},
-            "head": {"ref": "test-branch"},
-            "html_url": "https://github.com/testuser/testrepo/pull/123",
-            "diff_url": "https://github.com/testuser/testrepo/pull/123.diff"
-        },
-        "repository": {
-            "name": "testrepo",
-            "full_name": "testuser/testrepo"
-        }
-    }
-
-
-def sign_body(body) -> str:
-    """GitHub's X-Hub-Signature-256 value for a raw request body."""
-    if isinstance(body, str):
-        body = body.encode()
-    return "sha256=" + hmac.new(TEST_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    return pr_event()
 
 
 @pytest.fixture
@@ -149,3 +117,20 @@ def github_signature():
         return sign_body(json.dumps(payload))
 
     return generate_signature
+
+
+@pytest.fixture
+def post_webhook(client):
+    """POST a signed webhook (a dict payload, or a raw str body) to the app."""
+    def _post(payload, event="pull_request", delivery_id=None):
+        body = payload if isinstance(payload, str) else json.dumps(payload)
+        headers = {
+            "X-GitHub-Event": event,
+            "X-Hub-Signature-256": sign_body(body),
+            "Content-Type": "application/json"
+        }
+        if delivery_id:
+            headers["X-GitHub-Delivery"] = delivery_id
+        return client.post("/api/v1/github/webhook", content=body, headers=headers)
+    return _post
+

@@ -154,46 +154,20 @@ class TestWebhookIntegration:
         
         assert response.status_code == 401
     
-    def test_ping_event(self, client, github_signature):
+    def test_ping_event(self, post_webhook):
         """GitHub's ping (sent when the webhook is created) gets a clear reply."""
-        payload = {"zen": "Keep it logically awesome.", "hook_id": 1}
-        
-        response = client.post(
-            "/api/v1/github/webhook",
-            content=json.dumps(payload),
-            headers={
-                "X-GitHub-Event": "ping",
-                "X-Hub-Signature-256": github_signature(payload),
-                "Content-Type": "application/json"
-            }
-        )
+        response = post_webhook({"zen": "Keep it logically awesome.", "hook_id": 1}, event="ping")
         
         assert response.status_code == 200
         assert response.json()["status"] == "pong"
     
-    def test_unset_webhook_secret_rejects_webhooks_outside_development(self, client, monkeypatch, github_webhook_payload):
-        """A missing secret must never mean "skip the check" in a deployment."""
+    @pytest.mark.parametrize("app_env, expected_status", [
+        ("production", 503),  # a missing secret must never mean "skip the check" in a deployment
+        ("development", 200),
+    ])
+    def test_unset_webhook_secret(self, post_webhook, monkeypatch, github_webhook_payload, app_env, expected_status):
         from app.config import settings
         monkeypatch.setattr(settings, "GITHUB_WEBHOOK_SECRET", "")
-        monkeypatch.setattr(settings, "APP_ENV", "production")
+        monkeypatch.setattr(settings, "APP_ENV", app_env)
         
-        response = client.post(
-            "/api/v1/github/webhook",
-            content=json.dumps(github_webhook_payload),
-            headers={"X-GitHub-Event": "pull_request", "Content-Type": "application/json"}
-        )
-        
-        assert response.status_code == 503
-    
-    def test_unset_webhook_secret_skips_signatures_in_development(self, client, monkeypatch, github_webhook_payload):
-        from app.config import settings
-        monkeypatch.setattr(settings, "GITHUB_WEBHOOK_SECRET", "")
-        monkeypatch.setattr(settings, "APP_ENV", "development")
-        
-        response = client.post(
-            "/api/v1/github/webhook",
-            content=json.dumps(github_webhook_payload),
-            headers={"X-GitHub-Event": "pull_request", "Content-Type": "application/json"}
-        )
-        
-        assert response.status_code == 200
+        assert post_webhook(github_webhook_payload).status_code == expected_status

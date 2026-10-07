@@ -40,16 +40,14 @@ class TestAIAnalysisService:
 
     @pytest.mark.asyncio
     async def test_analyze_diff_failure(self):
-        """Test AI analysis error handling."""
-        with patch('app.services.ai_analysis.call_ai_api', new_callable=AsyncMock) as mock_call_ai, \
-             patch('app.services.ai_analysis.logger') as mock_logger:
+        """Failures propagate to the background job, which logs them with the PR."""
+        with patch('app.services.ai_analysis.call_ai_api', new_callable=AsyncMock) as mock_call_ai:
             mock_call_ai.side_effect = Exception("Network error")
             
             with pytest.raises(Exception) as exc_info:
                 await analyze_diff("some diff")
             
             assert "Network error" in str(exc_info.value)
-            mock_logger.error.assert_called_once_with("💥 AI analysis failed: Network error")
 
     def test_create_ai_prompt(self):
         """Test AI prompt generation."""
@@ -94,7 +92,7 @@ class TestAIAnalysisService:
             ]
         }
         
-        with patch('app.services.ai_analysis.fetch_with_retry', new_callable=AsyncMock) as mock_fetch, \
+        with patch('app.utils.http.fetch_with_retry', new_callable=AsyncMock) as mock_fetch, \
              patch('app.services.ai_analysis.parse_ai_response') as mock_parse:
             
             mock_fetch.return_value = mock_response
@@ -112,7 +110,7 @@ class TestAIAnalysisService:
         mock_response = MagicMock()
         mock_response.json.return_value = {"error": "invalid format"}
         
-        with patch('app.services.ai_analysis.fetch_with_retry', new_callable=AsyncMock) as mock_fetch, \
+        with patch('app.utils.http.fetch_with_retry', new_callable=AsyncMock) as mock_fetch, \
              patch('app.services.ai_analysis.logger') as mock_logger:
             
             mock_fetch.return_value = mock_response
@@ -130,7 +128,7 @@ class TestAIAnalysisService:
         mock_response = MagicMock()
         mock_response.json.return_value = {"other_field": "value"}
         
-        with patch('app.services.ai_analysis.fetch_with_retry', new_callable=AsyncMock) as mock_fetch, \
+        with patch('app.utils.http.fetch_with_retry', new_callable=AsyncMock) as mock_fetch, \
              patch('app.services.ai_analysis.logger') as mock_logger:
             
             mock_fetch.return_value = mock_response
@@ -144,7 +142,7 @@ class TestAIAnalysisService:
     @pytest.mark.asyncio
     async def test_call_ai_api_network_error(self):
         """Test AI API call with network error."""
-        with patch('app.services.ai_analysis.fetch_with_retry', new_callable=AsyncMock) as mock_fetch, \
+        with patch('app.utils.http.fetch_with_retry', new_callable=AsyncMock) as mock_fetch, \
              patch('app.services.ai_analysis.logger') as mock_logger:
             
             mock_fetch.side_effect = Exception("Connection failed")

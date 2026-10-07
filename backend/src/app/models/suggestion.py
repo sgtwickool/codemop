@@ -13,7 +13,6 @@ class Suggestion(BaseModel):
     description: Mapped[str] = mapped_column(Text)
     fix: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    head_sha: Mapped[Optional[str]] = mapped_column(String(40))  # commit the suggestion was made for
     
     # Relationship to PR
     pr = relationship("PR", back_populates="suggestions")
