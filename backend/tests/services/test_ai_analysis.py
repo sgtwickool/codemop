@@ -4,8 +4,7 @@ Unit tests for AI Analysis service functions.
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from app.services.ai_analysis import (
-    analyze_pr_with_ai,
-    fetch_diff_content,
+    analyze_diff,
     create_ai_prompt,
     call_ai_api
 )
@@ -16,12 +15,8 @@ class TestAIAnalysisService:
     """Test AI Analysis service functions."""
 
     @pytest.mark.asyncio
-    async def test_analyze_pr_with_ai_success(self):
-        """Test successful AI analysis with mocked dependencies."""
-        # Mock the diff content
-        mock_diff_content = "def test_function():\n    return 'test'"
-        
-        # Mock the AI suggestions response
+    async def test_analyze_diff_success(self):
+        """The diff goes into the prompt, and the model's suggestions come back."""
         mock_suggestions = [
             {
                 "line_number": 1,
@@ -32,83 +27,29 @@ class TestAIAnalysisService:
             }
         ]
         
-        with patch('app.services.ai_analysis.fetch_diff_content', new_callable=AsyncMock) as mock_fetch, \
-             patch('app.services.ai_analysis.create_ai_prompt') as mock_prompt, \
+        with patch('app.services.ai_analysis.create_ai_prompt') as mock_prompt, \
              patch('app.services.ai_analysis.call_ai_api', new_callable=AsyncMock) as mock_call_ai:
-            
-            # Setup mocks
-            mock_fetch.return_value = mock_diff_content
             mock_prompt.return_value = "test prompt"
             mock_call_ai.return_value = mock_suggestions
             
-            # Call the function
-            result = await analyze_pr_with_ai("https://github.com/test/diff.diff")
+            result = await analyze_diff("def test_function():\n    return 'test'")
             
-            # Verify results
             assert result == mock_suggestions
-            mock_fetch.assert_called_once_with("https://github.com/test/diff.diff")
-            mock_prompt.assert_called_once_with(mock_diff_content)
+            mock_prompt.assert_called_once_with("def test_function():\n    return 'test'")
             mock_call_ai.assert_called_once_with("test prompt")
 
     @pytest.mark.asyncio
-    async def test_analyze_pr_with_ai_no_api_key(self):
-        """Test AI analysis when API key is not configured."""
-        # Mock settings to have no API key
-        with patch('app.services.ai_analysis.settings') as mock_settings, \
-             patch('app.services.ai_analysis.logger') as mock_logger:
-            
-            mock_settings.AI_API_KEY = None
-            
-            # Call the function
-            result = await analyze_pr_with_ai("https://github.com/test/diff.diff")
-            
-            # Should return empty list and log warning
-            assert result == []
-            mock_logger.warning.assert_called_once_with("AI_API_KEY not configured, skipping AI analysis")
-
-    @pytest.mark.asyncio
-    async def test_analyze_pr_with_ai_failure(self):
+    async def test_analyze_diff_failure(self):
         """Test AI analysis error handling."""
-        with patch('app.services.ai_analysis.fetch_diff_content', new_callable=AsyncMock) as mock_fetch, \
+        with patch('app.services.ai_analysis.call_ai_api', new_callable=AsyncMock) as mock_call_ai, \
              patch('app.services.ai_analysis.logger') as mock_logger:
+            mock_call_ai.side_effect = Exception("Network error")
             
-            # Mock fetch to raise an exception
-            mock_fetch.side_effect = Exception("Network error")
-            
-            # Should raise exception
             with pytest.raises(Exception) as exc_info:
-                await analyze_pr_with_ai("https://github.com/test/diff.diff")
+                await analyze_diff("some diff")
             
             assert "Network error" in str(exc_info.value)
             mock_logger.error.assert_called_once_with("💥 AI analysis failed: Network error")
-
-    @pytest.mark.asyncio
-    async def test_fetch_diff_content_success(self):
-        """Test successful diff content fetching."""
-        mock_response = MagicMock()
-        mock_response.text = "def test():\n    pass"
-        
-        with patch('app.services.ai_analysis.fetch_with_retry', new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = mock_response
-            
-            result = await fetch_diff_content("https://github.com/test/diff.diff")
-            
-            assert result == "def test():\n    pass"
-            mock_fetch.assert_called_once_with("https://github.com/test/diff.diff", "GET")
-
-    @pytest.mark.asyncio
-    async def test_fetch_diff_content_failure(self):
-        """Test diff content fetching failure."""
-        with patch('app.services.ai_analysis.fetch_with_retry', new_callable=AsyncMock) as mock_fetch, \
-             patch('app.services.ai_analysis.logger') as mock_logger:
-            
-            mock_fetch.side_effect = Exception("Network timeout")
-            
-            with pytest.raises(Exception) as exc_info:
-                await fetch_diff_content("https://github.com/test/diff.diff")
-            
-            assert "Network timeout" in str(exc_info.value)
-            # Note: fetch_diff_content doesn't log directly - logging happens in analyze_pr_with_ai
 
     def test_create_ai_prompt(self):
         """Test AI prompt generation."""
@@ -212,4 +153,4 @@ class TestAIAnalysisService:
                 await call_ai_api("test prompt")
             
             assert "Connection failed" in str(exc_info.value)
-            # Note: call_ai_api doesn't log directly - logging happens in analyze_pr_with_ai
+            # Note: call_ai_api doesn't log directly - logging happens in analyze_diff

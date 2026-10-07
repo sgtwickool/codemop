@@ -49,7 +49,7 @@ the server switches to that core when it lands.
 - [x] Store PR state (open/closed/merged), not the last webhook action
 - [x] Refuse to start without `GITHUB_WEBHOOK_SECRET` and `API_KEY` (outside dev; `APP_ENV` now defaults to `production`); compare keys in constant time
 - [x] Validate signatures on every event, not just `pull_request` (and answer GitHub's `ping`)
-- [ ] Fetch diffs with a GitHub token so private repos work
+- [x] Fetch diffs through the GitHub REST API with an optional `GITHUB_TOKEN`, so private repos work (checked against this repo, which is private); errors say what to fix
 - [ ] Look up suggestions by repo + PR number
 - [ ] Rethink the webhook rate limit (10/min drops legitimate bursts, and GitHub doesn't retry a 429)
 - [ ] Fix Prometheus metrics (the middleware binds `None` at import); turn the metrics server off by default

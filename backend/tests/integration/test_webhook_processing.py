@@ -61,9 +61,11 @@ def send(client, github_signature):
 
 @pytest.fixture
 def ai():
-    """The AI analysis, mocked; set `return_value` or `side_effect` per test."""
+    """The AI analysis (and the diff fetch before it), mocked; set `return_value` or
+    `side_effect` per test."""
     mock = AsyncMock(return_value=[])
-    with patch("app.services.pr_analysis.analyze_pr_with_ai", new=mock):
+    with patch("app.services.pr_analysis.fetch_pr_diff", new=AsyncMock(return_value="diff")), \
+         patch("app.services.pr_analysis.analyze_diff", new=mock):
         yield mock
 
 
@@ -98,6 +100,17 @@ class TestWebhookProcessing:
         assert response["analysis"] == "skipped"
         ai.assert_not_awaited()
 
+    def test_no_ai_key_means_no_analysis(self, send, ai, monkeypatch):
+        """Without an AI key there's nothing to analyse with, and the commit isn't marked as analysed."""
+        from app.config import settings
+        monkeypatch.setattr(settings, "AI_API_KEY", "")
+
+        response = send(pr_event("opened")).json()
+
+        assert response["analysis"] == "skipped"
+        assert response["reason"] == "AI_API_KEY is not configured"
+        ai.assert_not_awaited()
+
     def test_drafts_are_analysed_once_ready_for_review(self, send, ai):
         draft = send(pr_event("opened", draft=True)).json()
         assert draft["analysis"] == "skipped"
@@ -120,7 +133,7 @@ class TestWebhookProcessing:
 
     def test_results_for_a_superseded_commit_are_discarded(self, client, send, ai):
         """If new commits arrive while an analysis runs, its results are thrown away."""
-        async def analysis_overtaken_by_a_push(diff_url):
+        async def analysis_overtaken_by_a_push(diff):
             db = SessionLocal()
             db.query(PR).update({PR.head_sha: "c" * 40})
             db.commit()

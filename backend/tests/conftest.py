@@ -87,7 +87,9 @@ def rate_limiting():
 def no_network():
     """Fail outbound HTTP calls by default; tests that need a response mock them."""
     blocked = AsyncMock(side_effect=RuntimeError("Network access is disabled in tests"))
-    with patch("app.services.ai_analysis.fetch_with_retry", new=blocked):
+    # Each module that makes HTTP calls imports fetch_with_retry by name
+    with patch("app.services.ai_analysis.fetch_with_retry", new=blocked), \
+         patch("app.services.github.fetch_with_retry", new=blocked):
         yield blocked
 
 

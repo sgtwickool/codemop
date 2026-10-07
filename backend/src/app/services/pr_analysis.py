@@ -7,10 +7,12 @@ the webhook only stores the PR and queues the analysis.
 import logging
 from typing import Optional
 
+from app.config import settings
 from app.db.pr_repository import pr_repository
 from app.db.session import SessionLocal
 from app.models.pr import PR
-from app.services.ai_analysis import analyze_pr_with_ai
+from app.services.ai_analysis import analyze_diff
+from app.services.github import fetch_pr_diff
 from app.services.suggestion_service import suggestion_service
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,8 @@ ANALYZE_ACTIONS = {"opened", "synchronize", "reopened", "ready_for_review"}
 
 def skip_reason(action: Optional[str], is_draft: bool, pr: PR) -> Optional[str]:
     """Why this event shouldn't trigger an analysis, or None if it should"""
+    if not settings.AI_API_KEY:
+        return "AI_API_KEY is not configured"
     if action not in ANALYZE_ACTIONS:
         return f"'{action}' events don't change the code"
     if is_draft:
@@ -30,13 +34,16 @@ def skip_reason(action: Optional[str], is_draft: bool, pr: PR) -> Optional[str]:
     return None
 
 
-async def analyze_pr_in_background(pr_id: int, head_sha: Optional[str], diff_url: str) -> None:
-    """Analyse a PR's diff and replace its suggestions with the results"""
+async def analyze_pr_in_background(
+    pr_id: int, repo_full_name: str, number: int, head_sha: Optional[str]
+) -> None:
+    """Fetch a PR's diff, analyse it, and replace the PR's suggestions with the results"""
     try:
-        suggestions = await analyze_pr_with_ai(diff_url)
+        diff = await fetch_pr_diff(repo_full_name, number)
+        suggestions = await analyze_diff(diff)
     except Exception as e:
         # analyzed_sha stays unset, so the next push or a redelivery retries
-        logger.error(f"AI analysis failed for PR {pr_id}: {str(e)}")
+        logger.error(f"Analysis failed for {repo_full_name}#{number}: {str(e)}")
         return
     
     db = SessionLocal()

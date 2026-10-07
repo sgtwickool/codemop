@@ -9,6 +9,7 @@ services:
       - APP_ENV=development
       - DEBUG=True
       - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - DATABASE_URL=postgresql://codemop:codemop@db:5432/codemop
       - AI_API_KEY=${AI_API_KEY}
       - API_KEY=${API_KEY}

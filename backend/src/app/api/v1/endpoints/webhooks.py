@@ -91,7 +91,8 @@ async def handle_github_webhook(
     if reason is None:
         logger.info(f"Queueing AI analysis for {pr_label}")
         background_tasks.add_task(
-            analyze_pr_in_background, pr_record.id, pr_record.head_sha, pr_record.diff_url
+            analyze_pr_in_background,
+            pr_record.id, pr_record.repo_full_name, pr_record.number, pr_record.head_sha,
         )
         analysis = {"analysis": "queued"}
     else:

@@ -14,6 +14,11 @@ class Settings(BaseSettings):
 
     # GitHub Webhook Configuration
     GITHUB_WEBHOOK_SECRET: str = ""
+    
+    # GitHub API, for fetching PR diffs. A token is needed for private repos, and raises
+    # the rate limit for public ones (60 requests/hour without one)
+    GITHUB_TOKEN: str = ""
+    GITHUB_API_URL: str = "https://api.github.com"  # change for GitHub Enterprise Server
 
     # AI API Configuration
     AI_API_KEY: str = ""
