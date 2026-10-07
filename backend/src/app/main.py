@@ -5,7 +5,7 @@ from slowapi.errors import RateLimitExceeded
 from app.api.v1.api import api_router
 from app.db.session import init_db
 from app.config import settings
-from app.core.security_config import CORS_SETTINGS
+from app.core.security_config import cors_settings
 from app.core.rate_limit import limiter, rate_limit_exceeded_handler
 from app.core.middleware import error_tracking_middleware, request_monitoring_middleware, limit_request_size, add_security_headers
 from app.core.monitoring import setup_monitoring
@@ -39,11 +39,9 @@ app = FastAPI(
     openapi_url="/api/v1/openapi.json"
 )
 
-# CORS configuration (using centralized config)
-app.add_middleware(
-    CORSMiddleware,
-    **CORS_SETTINGS
-)
+# CORS: only for browser origins explicitly listed in CORS_ORIGINS (none by default)
+if settings.cors_origins:
+    app.add_middleware(CORSMiddleware, **cors_settings(settings.cors_origins))
 
 # Rate limiting configuration
 app.state.limiter = limiter

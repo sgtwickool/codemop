@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # Database Configuration
     DATABASE_URL: str = "postgresql://codemop:codemop@localhost:5432/codemop"
 
+    # Browser origins allowed to call the API, comma-separated (e.g. a dashboard at
+    # https://codemop.example.com). Empty means no cross-origin browser access, which is all
+    # GitHub and API clients like the CLI need: CORS only applies to browsers
+    CORS_ORIGINS: str = ""
+    
     # Retry Configuration
     MAX_RETRIES: int = 3
     RETRY_DELAY: float = 1.0
@@ -41,6 +46,10 @@ class Settings(BaseSettings):
         'env_file_encoding': 'utf-8',
         'extra': 'allow'  # Allow extra environment variables
     }
+
+    @property
+    def cors_origins(self) -> List[str]:
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
     @property
     def is_development(self) -> bool:

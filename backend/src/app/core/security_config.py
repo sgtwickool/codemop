@@ -33,13 +33,15 @@ DOCS_CONTENT_SECURITY_POLICY = "; ".join([
     "worker-src 'self' blob:",
 ])
 
-# CORS configuration
-CORS_SETTINGS = {
-    "allow_origins": ["*"],
-    "allow_credentials": True,
-    "allow_methods": ["*"],
-    "allow_headers": ["*"],
-}
+# CORS, for browser origins listed in CORS_ORIGINS. The API authenticates with the
+# Authorization header, not cookies, so credentials (cookies) are never needed
+def cors_settings(origins):
+    return {
+        "allow_origins": origins,
+        "allow_credentials": False,
+        "allow_methods": ["GET"],
+        "allow_headers": ["Authorization", "Content-Type"],
+    }
 
 # API security settings
 API_SECURITY = {
