@@ -36,17 +36,24 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
 from app.core.rate_limit import limiter  # noqa: E402
-from app.db.session import engine, SessionLocal  # noqa: E402
+from app.db.session import engine, SessionLocal, init_db  # noqa: E402
 from app.models.base import Base  # noqa: E402
+
+
+def drop_everything():
+    """Drop the app's tables and the migration history."""
+    Base.metadata.drop_all(bind=engine)
+    with engine.begin() as connection:
+        connection.exec_driver_sql("DROP TABLE IF EXISTS alembic_version")
 
 
 @pytest.fixture(scope="session", autouse=True)
 def database():
-    """Create the schema once per test session."""
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    """Build the schema once per test session, through the migrations the app uses."""
+    drop_everything()
+    init_db()
     yield
-    Base.metadata.drop_all(bind=engine)
+    drop_everything()
     engine.dispose()
 
 

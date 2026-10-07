@@ -37,7 +37,7 @@ The webhook server keeps working, and later becomes the optional self-hosted mod
 (Phase 6). Analysis-quality and model-provider work moves to the shared core in Phase 2;
 the server switches to that core when it lands.
 
-- [ ] Add Alembic migrations; stop relying on `create_all`
+- [x] Add Alembic migrations; stop relying on `create_all` (existing databases are stamped and upgraded)
 - [ ] Identify a PR by `(repo_full_name, number)`, not the PR number alone (PRs in different repos currently overwrite each other)
 - [ ] Upsert PRs, and de-duplicate deliveries by `X-GitHub-Delivery` (handles retries and concurrent duplicates)
 - [ ] Return from the webhook within 1s; run analysis in the background
