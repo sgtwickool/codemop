@@ -67,6 +67,11 @@ class AnthropicModel:
                 response = await self._client.messages.parse(**request)
         except pydantic.ValidationError:
             raise NoReview(f"{self.name} returned a review that doesn't match the schema")
+        except TypeError as e:
+            # The SDK raises TypeError, before sending anything, when it finds no credentials
+            if "Could not resolve authentication method" not in str(e):
+                raise
+            raise NoReview("No Anthropic API key found: set ANTHROPIC_API_KEY", fatal=True)
         except anthropic.AuthenticationError:
             raise NoReview(f"Anthropic rejected the API key: {KEY_HINT}", fatal=True)
         except anthropic.PermissionDeniedError:
