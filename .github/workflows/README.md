@@ -8,7 +8,7 @@ This directory contains all GitHub Actions workflows for the CodeMop project.
 - **Trigger**: Push to `master`/`develop`, Pull Requests
 - **Purpose**: Run tests across Python versions with coverage
 - **Features**:
-  - Python 3.9, 3.10, 3.11 test matrix
+  - Python 3.12, 3.13, 3.14 test matrix
   - Code coverage reporting
   - Codecov integration
 
@@ -24,7 +24,7 @@ This directory contains all GitHub Actions workflows for the CodeMop project.
 - **Trigger**: Push to `master`/`develop`, Pull Requests, Weekly schedule
 - **Purpose**: Security vulnerability scanning
 - **Features**:
-  - Safety: Dependency vulnerability scanning (ignores ecdsa side-channel vulnerabilities)
+  - pip-audit: Dependency vulnerability scanning of the pinned runtime requirements
   - Bandit: Python security linting using configuration file
   - Trivy: Container vulnerability scanning (builds and scans Docker image)
 
@@ -64,10 +64,10 @@ This directory contains all GitHub Actions workflows for the CodeMop project.
 Add these to your README.md:
 
 ```markdown
-[![CI Status](https://github.com/your-repo/codemop/actions/workflows/ci.yml/badge.svg)](https://github.com/your-repo/codemop/actions/workflows/ci.yml)
-[![Docker Build](https://github.com/your-repo/codemop/actions/workflows/docker.yml/badge.svg)](https://github.com/your-repo/codemop/actions/workflows/docker.yml)
-[![Security Scan](https://github.com/your-repo/codemop/actions/workflows/security.yml/badge.svg)](https://github.com/your-repo/codemop/actions/workflows/security.yml)
-[![Codecov](https://codecov.io/gh/your-repo/codemop/branch/main/graph/badge.svg)](https://codecov.io/gh/your-repo/codemop)
+[![CI Status](https://github.com/sgtwickool/codemop/actions/workflows/ci.yml/badge.svg)](https://github.com/sgtwickool/codemop/actions/workflows/ci.yml)
+[![Docker Build](https://github.com/sgtwickool/codemop/actions/workflows/docker.yml/badge.svg)](https://github.com/sgtwickool/codemop/actions/workflows/docker.yml)
+[![Security Scan](https://github.com/sgtwickool/codemop/actions/workflows/security.yml/badge.svg)](https://github.com/sgtwickool/codemop/actions/workflows/security.yml)
+[![Codecov](https://codecov.io/gh/sgtwickool/codemop/branch/master/graph/badge.svg)](https://codecov.io/gh/sgtwickool/codemop)
 ```
 
 ## 🎯 Best Practices

@@ -37,7 +37,7 @@ class TestSuggestionsIntegration:
         # Create the PR
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,
@@ -94,7 +94,7 @@ class TestSuggestionsIntegration:
         
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,
@@ -188,7 +188,7 @@ class TestSuggestionsIntegration:
         
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,
@@ -235,7 +235,7 @@ class TestSuggestionsIntegration:
         
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,

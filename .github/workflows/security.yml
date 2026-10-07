@@ -16,21 +16,16 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.14'
 
     - name: Install dependencies
-      run: pip install safety bandit
+      run: pip install -r backend/requirements-dev.txt
 
-    - name: Show Safety version
-      run: safety --version
-
-    - name: Safety scan (vulnerability scanning)
-      run: |
-        pip install -r backend/requirements.txt
-        # Scan with JSON output and continue on warnings
-        safety scan --json --ignore 64459 --ignore 64396 || echo "Safety scan completed with warnings"
+    # Fails the job if any pinned runtime dependency has a known vulnerability
+    - name: pip-audit (dependency vulnerability scanning)
+      run: pip-audit -r backend/requirements.txt
 
     - name: Bandit (security linting)
       run: bandit -c backend/.bandit -r backend/src/

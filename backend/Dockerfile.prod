@@ -45,8 +45,9 @@ RUN pip install --user --no-cache-dir -r requirements.txt
 ENV PATH=/home/appuser/.local/bin:$PATH
 
 # Health check (note: Podman uses OCI format, Docker uses Docker format)
+# python:slim has no curl, so use the standard library
 HEALTHCHECK --interval=30s --timeout=3s \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=2)" || exit 1
 
 # Environment variables
 ENV PYTHONPATH=/app/src

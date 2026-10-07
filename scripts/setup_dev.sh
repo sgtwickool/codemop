@@ -1,32 +1,34 @@
 #!/bin/bash
+# Set up a local development environment for codemop
+set -euo pipefail
 
-# Set up development environment
+cd "$(dirname "$0")/.."
+
 echo "Setting up codemop development environment..."
 
 # Create virtual environment
-python -m venv venv
+if [ ! -d venv ]; then
+    python3 -m venv venv
+fi
 source venv/bin/activate
 
-# Install backend dependencies
-cd backend
-pip install -r requirements.txt
+# Install backend and dev/test dependencies
+pip install --upgrade pip
+pip install -r backend/requirements-dev.txt
+
+if [ ! -f .env ]; then
+    cp .env.example .env
+    echo "Created .env from .env.example - fill in your secrets before running the server"
+fi
 
 # Set up database
 echo "Setting up database..."
-
-# Note: You may need to run createdb as the postgres user
-# Option 1: Run as postgres user (recommended for most systems)
-# sudo -u postgres createdb codemop || echo "Database already exists"
-
-# Option 2: If your current user has postgres permissions
+# If your user can't create databases, run: sudo -u postgres createdb codemop
 createdb codemop 2>/dev/null || echo "Database already exists (or run: sudo -u postgres createdb codemop)"
 
 # Initialize database tables
-python -c "from src.database import init_db; init_db()"
-
-# Install pre-commit hooks
-cd ..
-pip install pre-commit
-pre-commit install
+(cd backend && PYTHONPATH=src python -c "from app.db.session import init_db; init_db()")
 
 echo "Development environment setup complete!"
+echo "Run the tests with: cd backend && pytest"
+echo "Start the server with: ./scripts/run_dev.sh"

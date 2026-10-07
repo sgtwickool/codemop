@@ -32,7 +32,7 @@ class TestWebhookIntegration:
         
         response = client.post(
             "/api/v1/github/webhook",
-            data=json.dumps(payload),
+            content=json.dumps(payload),
             headers={
                 "X-GitHub-Event": "pull_request",
                 "Content-Type": "application/json"
@@ -49,7 +49,7 @@ class TestWebhookIntegration:
         
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,
@@ -72,7 +72,7 @@ class TestWebhookIntegration:
         
         response = client.post(
             "/api/v1/github/webhook",
-            data=json.dumps(payload),
+            content=json.dumps(payload),
             headers={
                 "X-GitHub-Event": "push",
                 "Content-Type": "application/json"
@@ -90,7 +90,7 @@ class TestWebhookIntegration:
         
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": "invalid_signature",
@@ -109,7 +109,7 @@ class TestWebhookIntegration:
         
         response1 = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,
@@ -130,7 +130,7 @@ class TestWebhookIntegration:
         
         response2 = client.post(
             "/api/v1/github/webhook",
-            data=updated_body,
+            content=updated_body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": updated_signature,

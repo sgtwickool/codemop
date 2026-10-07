@@ -2,10 +2,10 @@
 
 ## 🚀 CI/CD Status
 
-[![CI Status](https://github.com/your-repo/codemop/actions/workflows/ci.yml/badge.svg)](https://github.com/your-repo/codemop/actions/workflows/ci.yml)
-[![Docker Build](https://github.com/your-repo/codemop/actions/workflows/docker.yml/badge.svg)](https://github.com/your-repo/codemop/actions/workflows/docker.yml)
-[![Security Scan](https://github.com/your-repo/codemop/actions/workflows/security.yml/badge.svg)](https://github.com/your-repo/codemop/actions/workflows/security.yml)
-[![Codecov](https://codecov.io/gh/your-repo/codemop/branch/main/graph/badge.svg)](https://codecov.io/gh/your-repo/codemop)
+[![CI Status](https://github.com/sgtwickool/codemop/actions/workflows/ci.yml/badge.svg)](https://github.com/sgtwickool/codemop/actions/workflows/ci.yml)
+[![Docker Build](https://github.com/sgtwickool/codemop/actions/workflows/docker.yml/badge.svg)](https://github.com/sgtwickool/codemop/actions/workflows/docker.yml)
+[![Security Scan](https://github.com/sgtwickool/codemop/actions/workflows/security.yml/badge.svg)](https://github.com/sgtwickool/codemop/actions/workflows/security.yml)
+[![Codecov](https://codecov.io/gh/sgtwickool/codemop/branch/master/graph/badge.svg)](https://codecov.io/gh/sgtwickool/codemop)
 
 ## 🏗️ Development Setup
 
@@ -35,7 +35,7 @@ sudo systemctl start postgresql
    ```bash
    cp .env.example .env
    ```
-3. Install dependencies and set up the database:
+3. Install dependencies and set up the database (creates `venv/` and, if missing, `.env`):
    ```bash
    ./scripts/setup_dev.sh
    ```
@@ -52,7 +52,7 @@ sudo systemctl start postgresql
    ```
 3. **Configure GitHub Webhook**:
    - Go to your GitHub repository → Settings → Webhooks
-   - Add webhook with the ngrok URL (e.g., `https://abc123.ngrok.io/github/webhook`)
+   - Add webhook with the ngrok URL (e.g., `https://abc123.ngrok.io/api/v1/github/webhook`)
    - Set content type to `application/json`
    - Add your webhook secret (same as in `.env` file)
    - Select "Let me select individual events" and check "Pull requests"
@@ -60,38 +60,25 @@ sudo systemctl start postgresql
 
 ### Testing
 
+The tests need no database, network or `.env`: they use a temporary SQLite database and
+fixed test settings (see `backend/tests/conftest.py`).
+
 **Run all tests:**
 ```bash
 cd backend
-pytest tests/
+pytest
 ```
 
-**Run specific test:**
+**Run specific tests:**
 ```bash
 cd backend
-pytest tests/test_webhook.py::test_health_check -v
+pytest tests/integration/test_webhook_integration.py -k health
 ```
 
-**Test specific components interactively:**
-```bash
-cd backend/src
-python -c "
-import sys
-sys.path.append('src')
-from fastapi.testclient import TestClient
-from app.main import app
-client = TestClient(app)
-response = client.get('/api/v1/health')
-print(response.json())
-"
-```
-
-**Test individual services:**
+**Try a service function interactively:**
 ```bash
 cd backend
-python -c "
-import sys
-sys.path.append('src')
+PYTHONPATH=src python -c "
 from app.services.github import extract_pr_data
 payload = {'action': 'opened', 'number': 123, 'pull_request': {'title': 'Test'}, 'repository': {'full_name': 'test/repo'}}
 print(extract_pr_data(payload))
@@ -115,14 +102,14 @@ If port 8000 is in use:
 If you have virtual environment issues:
 1. Remove existing venv: `rm -rf venv`
 2. Recreate it: `python -m venv venv`
-3. Activate and install: `source venv/bin/activate && pip install -r backend/requirements.txt`
+3. Activate and install: `source venv/bin/activate && pip install -r backend/requirements-dev.txt`
 
 ### API Endpoints
 - `POST /api/v1/github/webhook` - GitHub webhook endpoint (versioned)
 - `GET /api/v1/health` - Health check endpoint (versioned)
 - `GET /api/v1/pr/{pr_id}/suggestions` - Get suggestions for a PR (versioned)
 
-**Note**: All endpoints are now versioned under `/api/v1/` prefix for better API evolution.
+**Note**: All endpoints are versioned under the `/api/v1/` prefix. Interactive API docs are at `/api/v1/docs`.
 
 ### Project Structure
 ```
@@ -141,8 +128,9 @@ codemop/
 │   │   │   ├── models/      # Database models
 │   │   │   ├── db/          # Database layer
 │   │   │   └── utils/       # Utilities
-│   │   └── tests/           # Test files
-│   ├── requirements.txt     # Python dependencies
+│   ├── tests/               # Test files
+│   ├── requirements.txt     # Runtime dependencies (pinned)
+│   ├── requirements-dev.txt # Test and security tooling
 │   ├── Dockerfile           # Docker configuration
 │   ├── pytest.ini           # Pytest configuration
 │   └── .bandit              # Bandit security config
@@ -152,6 +140,7 @@ codemop/
 │       ├── docker.yml       # Docker builds
 │       ├── security.yml     # Security scanning
 │       └── README.md        # Workflow documentation
+├── ROADMAP.md                # Plan and decisions
 ├── docs/                     # Documentation
 ├── scripts/                  # Development scripts
 ├── .gitignore
@@ -179,10 +168,8 @@ This implementation provides:
 ✅ Test suite with pytest
 
 ### Next Steps
-1. Set up PostgreSQL database
-2. Configure GitHub webhook
-3. Implement AI analysis integration
-4. Add suggestion storage functionality
+See [ROADMAP.md](ROADMAP.md).
+
 ## 🚀 CI/CD Pipeline
 
 CodeMop uses GitHub Actions for Continuous Integration and Deployment with the following workflows:
@@ -190,10 +177,9 @@ CodeMop uses GitHub Actions for Continuous Integration and Deployment with the f
 ### Continuous Integration (CI)
 - **Trigger**: Push to `master`/`develop`, Pull Requests
 - **Features**:
-  - Python 3.9, 3.10, 3.11 test matrix
+  - Python 3.12, 3.13, 3.14 test matrix
   - Automated test execution with pytest
   - Code coverage reporting via Codecov
-  - Test parallelization for faster execution
 
 ### Docker Build & Push
 - **Trigger**: Push to `master`, version tags
@@ -206,7 +192,7 @@ CodeMop uses GitHub Actions for Continuous Integration and Deployment with the f
 ### Security Scanning
 - **Trigger**: Push to `master`/`develop`, Pull Requests, Weekly schedule
 - **Features**:
-  - **Safety**: Dependency vulnerability scanning
+  - **pip-audit**: Dependency vulnerability scanning
   - **Bandit**: Python security linting using configuration file
   - **Trivy**: Container vulnerability scanning
   - Scheduled weekly scans
@@ -215,16 +201,16 @@ CodeMop uses GitHub Actions for Continuous Integration and Deployment with the f
 
 #### Running Tests Locally
 ```bash
-# Install test dependencies
-pip install pytest pytest-cov safety bandit
+# Install test and security tooling
+pip install -r backend/requirements-dev.txt
 
-# Run tests with coverage
+# Run tests (coverage is reported by default)
 cd backend
-pytest tests/ --cov=app --cov-report=term
+pytest
 
 # Run security scanning
-safety check --full-report
-bandit -r src/
+pip-audit -r requirements.txt
+bandit -c .bandit -r src/
 ```
 
 #### Building Docker Images Locally

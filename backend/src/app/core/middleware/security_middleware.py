@@ -3,7 +3,12 @@ Security middleware for the application.
 """
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from app.core.security_config import MAX_REQUEST_SIZE, SECURITY_HEADERS
+from app.core.security_config import (
+    MAX_REQUEST_SIZE,
+    SECURITY_HEADERS,
+    DOCS_PATHS,
+    DOCS_CONTENT_SECURITY_POLICY,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -34,6 +39,9 @@ async def add_security_headers(request: Request, call_next):
     # Add all security headers
     for header, value in SECURITY_HEADERS.items():
         response.headers[header] = value
+    
+    if request.url.path.startswith(DOCS_PATHS):
+        response.headers["Content-Security-Policy"] = DOCS_CONTENT_SECURITY_POLICY
     
     return response
 

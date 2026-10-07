@@ -3,52 +3,45 @@ Integration tests for edge cases and unusual scenarios.
 """
 import pytest
 import json
-import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 
 class TestEdgeCasesIntegration:
     """Integration tests for edge cases."""
 
-    def test_concurrent_webhook_requests(self, client):
-        """Test handling of concurrent webhook requests."""
-        payload = {
-            "action": "opened",
-            "number": 123,
-            "pull_request": {
-                "title": "Test PR",
-                "user": {"login": "testuser"},
-                "head": {"ref": "test-branch"},
-                "html_url": "https://github.com/testuser/testrepo/pull/123",
-                "diff_url": "https://github.com/testuser/testrepo/pull/123.diff"
-            },
-            "repository": {
-                "name": "testrepo",
-                "full_name": "testuser/testrepo"
+    def test_concurrent_webhook_requests(self, client, github_signature):
+        """Concurrent webhooks for different PRs all succeed."""
+        # Concurrent deliveries for the *same* PR race on insert; the fix (upsert)
+        # is tracked in ROADMAP.md Phase 1
+        def send_request(number):
+            payload = {
+                "action": "opened",
+                "number": number,
+                "pull_request": {
+                    "title": "Test PR",
+                    "user": {"login": "testuser"},
+                    "head": {"ref": "test-branch"},
+                    "html_url": f"https://github.com/testuser/testrepo/pull/{number}",
+                    "diff_url": f"https://github.com/testuser/testrepo/pull/{number}.diff"
+                },
+                "repository": {
+                    "name": "testrepo",
+                    "full_name": "testuser/testrepo"
+                }
             }
-        }
-        
-        body = json.dumps(payload)
-        from app.config import settings
-        secret = settings.GITHUB_WEBHOOK_SECRET.encode()
-        import hmac
-        import hashlib
-        signature = "sha256=" + hmac.new(secret, body.encode(), hashlib.sha256).hexdigest()
-        
-        # Send multiple concurrent requests
-        async def send_request():
             return client.post(
                 "/api/v1/github/webhook",
-                data=body,
+                content=json.dumps(payload),
                 headers={
                     "X-GitHub-Event": "pull_request",
-                    "X-Hub-Signature-256": signature,
+                    "X-Hub-Signature-256": github_signature(payload),
                     "Content-Type": "application/json"
                 }
             )
         
-        # Run 5 concurrent requests
-        responses = asyncio.run(asyncio.gather(*[send_request() for _ in range(5)]))
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            responses = list(pool.map(send_request, range(1, 6)))
         
         # All should succeed
         for response in responses:
@@ -85,7 +78,7 @@ class TestEdgeCasesIntegration:
         
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,
@@ -98,7 +91,7 @@ class TestEdgeCasesIntegration:
         data = response.json()
         assert data["status"] == "success"
 
-    def test_malformed_json_various_types(self, client):
+    def test_malformed_json_various_types(self, client, github_signature):
         """Test handling of various types of malformed JSON."""
         malformed_payloads = [
             "{invalid json",
@@ -116,32 +109,31 @@ class TestEdgeCasesIntegration:
         for payload in malformed_payloads:
             response = client.post(
                 "/api/v1/github/webhook",
-                data=payload,
+                content=payload,
                 headers={
                     "X-GitHub-Event": "pull_request",
+                    "X-Hub-Signature-256": github_signature(payload),
                     "Content-Type": "application/json"
                 }
             )
             
-            # Should return 422 (Unprocessable Entity) for malformed JSON
-            assert response.status_code == 422
+            # Malformed JSON, and valid JSON that isn't an object, are both 422
+            assert response.status_code == 422, payload
 
-    def test_missing_required_fields(self, client):
-        """Test handling of missing required fields."""
-        # Test with completely empty payload
+    def test_missing_required_fields(self, client, github_signature):
+        """A pull_request event with an empty payload is rejected, not a 500."""
         response = client.post(
             "/api/v1/github/webhook",
-            data="{}",
+            content="{}",
             headers={
                 "X-GitHub-Event": "pull_request",
+                "X-Hub-Signature-256": github_signature("{}"),
                 "Content-Type": "application/json"
             }
         )
         
-        # Should handle gracefully
-        assert response.status_code == 200  # Should be ignored as non-PR event
-        data = response.json()
-        assert data["status"] == "ignored"
+        assert response.status_code == 422
+        assert "missing required fields" in response.json()["detail"]
 
     def test_unicode_handling(self, client):
         """Test handling of unicode characters."""
@@ -171,7 +163,7 @@ class TestEdgeCasesIntegration:
         
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,
@@ -211,7 +203,7 @@ class TestEdgeCasesIntegration:
         
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,
@@ -235,16 +227,17 @@ class TestEdgeCasesIntegration:
             }
         )
         
-        # Should handle gracefully (likely 404)
-        assert response.status_code in [404, 414]  # Not found or URI too long
+        # Rejected as an out-of-range ID rather than overflowing the database query
+        assert response.status_code == 422
 
-    def test_empty_request_body(self, client):
+    def test_empty_request_body(self, client, github_signature):
         """Test handling of empty request body."""
         response = client.post(
             "/api/v1/github/webhook",
-            data="",
+            content="",
             headers={
                 "X-GitHub-Event": "pull_request",
+                "X-Hub-Signature-256": github_signature(""),
                 "Content-Type": "application/json"
             }
         )
@@ -280,7 +273,7 @@ class TestEdgeCasesIntegration:
         # Test with wrong content type
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,
@@ -288,8 +281,9 @@ class TestEdgeCasesIntegration:
             }
         )
         
-        # Should handle wrong content type
-        assert response.status_code == 422  # Unprocessable Entity
+        # 415 with a hint, since GitHub's default webhook content type is form-encoded
+        assert response.status_code == 415
+        assert "application/json" in response.json()["detail"]
 
     def test_nested_json_structures(self, client):
         """Test handling of deeply nested JSON structures."""
@@ -333,7 +327,7 @@ class TestEdgeCasesIntegration:
         
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,
@@ -374,7 +368,7 @@ class TestEdgeCasesIntegration:
         
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,
@@ -415,7 +409,7 @@ class TestEdgeCasesIntegration:
         # Send the same webhook twice
         response1 = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,
@@ -425,7 +419,7 @@ class TestEdgeCasesIntegration:
         
         response2 = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,
@@ -486,7 +480,7 @@ class TestEdgeCasesIntegration:
         # Test with different header case variations
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "x-github-event": "pull_request",  # lowercase
                 "x-hub-signature-256": signature,

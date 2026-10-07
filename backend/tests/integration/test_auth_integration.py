@@ -37,7 +37,7 @@ class TestAuthenticationIntegration:
         # Create the PR
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,
@@ -53,7 +53,7 @@ class TestAuthenticationIntegration:
         response = client.get(
             f"/api/v1/pr/{pr_id}/suggestions",
             headers={
-                "Authorization": "Bearer secure_api_key_12345"
+                "Authorization": "Bearer test_api_key"
             }
         )
         

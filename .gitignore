@@ -16,6 +16,10 @@ node_modules/
 .dockerignore
 coverage/
 htmlcov/
+.coverage
+coverage.xml
+.pytest_cache/
+.mypy_cache/
 dist/
 build/
 *.egg-info/
