@@ -134,9 +134,13 @@ so the core must not care which model it's talking to, and the choice of default
 **Done when:** `pipx run codemop review sgtwickool/codemop#N` prints useful suggestions
 with at least two providers, and the eval results are in the repo.
 
-## Phase 3: GitHub Action, and dogfooding
+## Phase 3: GitHub Action, Claude Code plugin, and dogfooding
 
-The main way people will use CodeMop.
+The two ways people will use CodeMop: a GitHub Action with an API key for any provider, and a
+Claude Code plugin for people who already pay for Claude. Both build on the same core and the
+same review-posting code.
+
+### GitHub Action
 
 - [ ] `action.yml` wrapping the CLI (`uses: sgtwickool/codemop@v1`), with `provider`, `model` and `api-key` inputs
 - [ ] Post a single PR review with inline ```` ```suggestion ```` blocks (one-click apply) plus a summary
@@ -145,6 +149,21 @@ The main way people will use CodeMop.
 - [ ] Document permissions (`pull-requests: write`) and the limits on fork PRs (secrets aren't available there)
 - [ ] Run it on CodeMop's own PRs for at least two weeks
 - [ ] Tag `v1`; list on the GitHub Marketplace
+
+### Claude Code plugin
+
+Runs inside the user's own Claude Code session, on their own subscription: Claude Code does the
+reviewing, CodeMop supplies the method and the tools. CodeMop never handles the user's login.
+
+- [ ] MCP server exposing the core as tools: fetch a PR's diff in chunks, check suggestions against the lines GitHub can comment on, post the review
+- [ ] A skill with CodeMop's review instructions, so `/codemop review owner/repo#N` works in Claude Code
+- [ ] A workflow recipe for Anthropic's `claude-code-action` (with a `claude setup-token` token), so CI reviews can run on a Pro/Max subscription
+- [ ] Publish it to a plugin marketplace
+- [ ] Before promoting "works with your Claude subscription": check Anthropic's current terms (third-party products may not offer claude.ai login or rate limits unless approved), and ask Anthropic if in doubt
+
+**What it has to do better than Claude Code's own PR reviews:** suggestions placed on exactly the
+right lines, one-click "suggested change" blocks, grouped fixes, and a choice of models (via the
+Action).
 
 **Done when:** someone else installs it from the README alone and it reviews their PR.
 
@@ -160,7 +179,7 @@ The main way people will use CodeMop.
 
 - [ ] Astro + Starlight site in `site/`, so the docs are versioned with the code
 - [ ] Match the look of kempgt.com (fonts, palette) and reuse the animated `mop()` print
-- [ ] Pages: landing (pitch, demo GIF of a real review, two-minute setup), Quickstart, Configuration, Supported models, Privacy (exactly what code is sent where), Self-hosting, Changelog
+- [ ] Pages: landing (pitch, demo GIF of a real review, two-minute setup), Quickstart (the Action and the Claude Code plugin), Configuration, Supported models, Privacy (exactly what code is sent where), Self-hosting, Changelog
 - [ ] Deploy at `codemop.kempgt.com` (Vercel or GitHub Pages); link it from the CodeMop card on kempgt.com
 
 **Done when:** the kempgt.com card links to a live site with a working quickstart.
@@ -180,5 +199,6 @@ The main way people will use CodeMop.
 |------|----------|-----|
 | 2026-10-07 | Ship a GitHub Action first; the server becomes an optional self-hosted mode | Asking users to run Postgres, a server, ngrok and a webhook is too much friction |
 | 2026-10-07 | Bring your own model key; no hosted multi-tenant SaaS for now | Solo project; avoids holding other people's code and paying their inference |
+| 2026-10-07 | Also ship as a Claude Code plugin (skill + MCP server), instead of having CodeMop call a user's Claude subscription | Anthropic doesn't allow third-party products to offer claude.ai login or rate limits without approval; running inside Claude Code is the supported way for subscribers to use it |
 | 2026-10-07 | Model agnostic: provider adapters behind one interface, selected by config; the default model is chosen by the comparison eval | Users have their own provider preferences, and quality differed noticeably between Le Chat and Claude in practice, so measure it rather than guess |
 | 2026-10-07 | The original scope (`docs/codemop_project_scope.md`, `docs/epics.md`) is superseded | It was sized for a five-person team. Epic 1 → Phases 0–1; Epic 6 → Phases 2–3; Epic 3 → Phase 3 (suggestion blocks) and Phase 6 (grouped fixes); Epics 2, 4, 5, 7, 8 deferred |
