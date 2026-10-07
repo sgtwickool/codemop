@@ -121,7 +121,8 @@ If you have virtual environment issues:
 ### API Endpoints
 - `POST /api/v1/github/webhook` - GitHub webhook endpoint (versioned)
 - `GET /api/v1/health` - Health check endpoint (versioned)
-- `GET /api/v1/pr/{pr_id}/suggestions` - Get suggestions for a PR (versioned)
+- `GET /api/v1/repos/{owner}/{repo}/pulls/{number}/suggestions` - Get suggestions for a PR by repo and PR number (needs `Authorization: Bearer <API_KEY>`)
+- `GET /api/v1/pr/{pr_id}/suggestions` - The same, by CodeMop's database ID (the webhook response's `database_id`)
 
 **Note**: All endpoints are versioned under the `/api/v1/` prefix. Interactive API docs are at `/api/v1/docs`.
 
