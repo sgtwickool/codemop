@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "codemop"
+version = "0.1.0.dev0"
+description = "AI code review for pull requests, with the model of your choice"
+readme = "README.md"
+# license: not chosen yet (LICENSE is empty); decide before publishing
+requires-python = ">=3.12"
+authors = [{ name = "Gregory Kemp" }]
+keywords = ["code review", "pull requests", "github", "ai", "llm"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Quality Assurance",
+]
+# A library: version ranges, not exact pins (the server in backend/ pins exactly)
+dependencies = [
+    "httpx>=0.28,<1",
+    "pydantic>=2.13,<3",
+]
+
+[project.urls]
+Homepage = "https://github.com/sgtwickool/codemop"
+
+[project.scripts]
+codemop = "codemop.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1",
+    "pytest-asyncio>=1.4",
+    "pytest-cov>=7.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/codemop"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+# importlib: test dirs aren't packages, so they can't clash with backend/tests
+addopts = ["--strict-markers", "--import-mode=importlib"]

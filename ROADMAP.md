@@ -104,8 +104,8 @@ verified; the stored-suggestions check is done in Phase 2 with Claude.)*
 Extract the review logic into a package that has nothing to do with FastAPI or the database.
 
 - [ ] `codemop` core: diff → per-file chunks → prompt → model → validated suggestions
-- [ ] Handle large diffs by chunking per file instead of cutting off at 10k characters; report anything skipped
-- [ ] Map suggestions to diff positions (GitHub only accepts comments on lines in the diff)
+- [x] Handle large diffs by chunking per file (and per hunk for big files) instead of cutting off at 10k characters; report anything skipped
+- [x] Map suggestions to diff positions (GitHub only accepts comments on lines in the diff); set aside ones that aren't
 - [ ] Config file `.codemop.yml`: model, ignored paths, minimum confidence, max comments
 - [ ] CLI: `codemop review owner/repo#123 [--post] [--dry-run]`
 - [ ] Golden tests from recorded diffs and model responses
@@ -120,7 +120,7 @@ Users bring their own provider and key, and review quality varies a lot between 
 so the core must not care which model it's talking to, and the choice of default must be measured.
 
 - [ ] A single `ReviewModel` interface the rest of the code depends on; provider SDKs are imported only inside their adapters
-- [ ] Adapters: Anthropic (official `anthropic` SDK, not an OpenAI-compatible shim, so structured output and refusal handling work properly), Mistral, and a generic OpenAI-compatible adapter (OpenAI, OpenRouter, local models through Ollama or vLLM)
+- [ ] Adapters: Anthropic (official `anthropic` SDK, not an OpenAI-compatible shim, so structured output and refusal handling work properly), and one OpenAI-compatible adapter that covers Mistral (its API is OpenAI-compatible, structured output included), OpenAI, OpenRouter and local models through Ollama or vLLM
 - [ ] Each adapter uses its provider's native structured output (for Anthropic, `output_config.format` / `messages.parse()`). Every result is then validated against the same Pydantic schema, with one repair retry for providers that don't enforce a schema. Drop the plain-text scraping fallback
 - [ ] Avoid provider-specific tricks that are going away: current Claude models reject both forced `tool_choice` and assistant-message prefill
 - [ ] Treat non-answers as such: refusals, truncated output (`max_tokens`), rate limits and a rejected API key produce "no review, because …" (saying what to fix, like the GitHub errors do), and are never parsed as suggestions

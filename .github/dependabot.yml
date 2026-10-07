@@ -2,7 +2,7 @@
 version: 2
 updates:
   - package-ecosystem: pip
-    directory: /backend
+    directories: ["/", "/backend"]
     schedule:
       interval: monthly
     groups:
