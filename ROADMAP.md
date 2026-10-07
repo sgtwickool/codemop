@@ -7,6 +7,41 @@ This roadmap replaces the original scope documents in `docs/` (see [Decisions](#
 Phases are worked through in order. Each phase has a "done when" line, so it's clear when
 to move on.
 
+## How we work
+
+- **Commit straight to `master`** while it's a solo project; CI must be green after every push.
+  PRs come back once it's stable or someone else contributes.
+- **`/simplify` at the end of every phase**, over that phase's diff (`git diff phase-N-1..HEAD`).
+  Also run it on any single change of more than about 300 lines. Then tag the end of the phase
+  (`phase-N`) so the next pass has a clean starting point.
+- **`/simplify` only sees changed code**, so each end-of-phase tidy also sweeps for dead code in
+  files nobody touched (functions that are never called, files that are never imported).
+- **Keep the structure honest:** follow the layout below, and update it here before adding a new
+  top-level folder. A module that grows past about 300 lines, or that changes for two unrelated
+  reasons, gets split into a package. Code that talks to an outside service (GitHub, a model
+  provider) lives together. Unused code is deleted, not kept "for later"; git remembers it.
+
+## Repository structure
+
+Today everything is the webhook server, under `backend/`. Phase 2 moves to this layout, when
+the review logic becomes its own package:
+
+```
+codemop/
+├── action.yml            # the GitHub Action (it must be at the root for `uses: sgtwickool/codemop@v1`)
+├── pyproject.toml        # the `codemop` package (core + CLI), published to PyPI
+├── src/codemop/
+│   ├── review/           # diff -> per-file chunks -> prompt -> validated suggestions
+│   ├── providers/        # one module per model provider, behind one interface
+│   ├── github/           # GitHub API client: fetch diffs, post reviews
+│   └── cli.py
+├── tests/                # tests for the package, mirroring src/codemop/
+├── server/               # the optional self-hosted webhook server (today's backend/), using the package
+├── site/                 # Astro + Starlight marketing and docs site (Phase 5)
+├── docs/                 # design notes; docs/archive/ for superseded plans
+└── scripts/              # developer scripts
+```
+
 ---
 
 ## Phase 0: Get to green
@@ -53,7 +88,8 @@ the server switches to that core when it lands.
 - [ ] Look up suggestions by repo + PR number
 - [ ] Rethink the webhook rate limit (10/min drops legitimate bursts, and GitHub doesn't retry a 429)
 - [ ] Fix Prometheus metrics (the middleware binds `None` at import); turn the metrics server off by default
-- [ ] Replace `print` with logging; tighten CORS (no wildcard with credentials)
+- [ ] Replace `print` with logging (and stop the JSON logs escaping non-ASCII); tighten CORS (no wildcard with credentials)
+- [ ] End-of-phase tidy: `/simplify` over the Phase 1 diff (`git diff phase-0..HEAD`), then remove dead code it can't see (`BaseRepository.get_by_field`, `SuggestionService.create_suggestions_batch`, `enforce_https`, `PerformanceMonitor`, `monitor_endpoint`) and the `src/main.py` shim; tag `phase-1`
 
 **Done when:** a real PR on a real (including private) repo gets stored suggestions,
 with no GitHub delivery failures.
@@ -68,6 +104,7 @@ Extract the review logic into a package that has nothing to do with FastAPI or t
 - [ ] Config file `.codemop.yml`: model, ignored paths, minimum confidence, max comments
 - [ ] CLI: `codemop review owner/repo#123 [--post] [--dry-run]`
 - [ ] Golden tests from recorded diffs and model responses
+- [ ] Move to the target [repository structure](#repository-structure): the package at the root, `backend/` becomes `server/` and uses it
 - [ ] Publish to PyPI
 
 ### Model agnostic
