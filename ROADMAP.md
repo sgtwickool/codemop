@@ -25,7 +25,8 @@ A fresh clone installs, runs, and passes CI.
 - [x] Fix `scripts/setup_dev.sh`, the Docker healthcheck, and the CSP that blanks the Swagger docs
 - [x] Fix factual errors in the README (webhook path, test commands, badges)
 - [x] Replace Safety (needs an account, and its failures were being swallowed) with pip-audit
-- [ ] CI installs dev requirements and passes on Python 3.12–3.14 (passes locally on all three; confirm on GitHub after pushing)
+- [x] CI installs dev requirements and passes on Python 3.12–3.14
+- [x] Docker workflow: set up Buildx (the runner's default driver can't export the build cache)
 
 **Done when:** `pip install -r backend/requirements-dev.txt && pytest` passes on a clean
 machine, and CI is green.
