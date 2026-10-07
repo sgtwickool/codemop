@@ -18,8 +18,9 @@ REVIEW = ModelReview(suggestions=[ModelSuggestion(
 )])
 
 
-def response(stop_reason="end_turn", parsed=REVIEW, category=None):
+def response(stop_reason="end_turn", parsed=REVIEW, category=None, model="claude-opus-5-5"):
     return SimpleNamespace(
+        model=model,
         stop_reason=stop_reason,
         stop_details=SimpleNamespace(category=category) if category else None,
         parsed_output=parsed,
@@ -135,3 +136,14 @@ async def test_api_errors_say_what_to_fix(error, expected, fatal):
 
     assert expected in raised.value.reason
     assert raised.value.fatal is fatal
+
+
+@pytest.mark.asyncio
+async def test_records_which_model_answered():
+    """With refusal fallbacks, another model can answer; callers (the eval) need to know"""
+    client, parse = fake_client(response(model="claude-opus-4-8"))
+    model = AnthropicModel(client=client)
+
+    await model.review("i", "d")
+
+    assert model.served_models == {"claude-opus-4-8"}

@@ -55,3 +55,9 @@ def test_key_env_names_each_providers_variable():
     assert key_env("mistral") == "MISTRAL_API_KEY"
     assert key_env("ollama") is None
     assert key_env("openai-compatible") is None
+
+
+def test_effort_is_passed_to_claude():
+    assert create_model("anthropic", effort="low").effort == "low"
+    assert create_model("anthropic").effort == "high"
+    assert create_model("anthropic", "claude-haiku-4-5", effort="low").effort is None  # Haiku rejects effort

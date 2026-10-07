@@ -73,6 +73,9 @@ def build_parser() -> argparse.ArgumentParser:
     who.add_argument("--base-url", default=os.environ.get("CODEMOP_BASE_URL"),
                      help="API base URL, for openai-compatible or a self-hosted endpoint (default: $CODEMOP_BASE_URL)")
     who.add_argument("--api-key-env", help="environment variable holding the provider's API key")
+    who.add_argument("--effort", choices=["low", "medium", "high", "xhigh", "max"],
+                     default=os.environ.get("CODEMOP_EFFORT"),
+                     help="how hard Claude thinks: lower is cheaper and faster (default: $CODEMOP_EFFORT, or high)")
 
     how = review.add_argument_group(f"review settings (override the repository's {CONFIG_FILE})")
     how.add_argument("--config", type=Path, metavar="PATH",
@@ -204,7 +207,9 @@ async def run_review(args) -> int:
             return 1
 
     try:
-        model = create_model(args.provider, args.model, base_url=args.base_url, api_key_env=args.api_key_env)
+        model = create_model(
+            args.provider, args.model, base_url=args.base_url, api_key_env=args.api_key_env, effort=args.effort
+        )
     except ValueError as e:
         print(f"codemop: {e}", file=sys.stderr)
         return 2
