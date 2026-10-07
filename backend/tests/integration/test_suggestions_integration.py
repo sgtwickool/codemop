@@ -258,3 +258,72 @@ class TestSuggestionsIntegration:
         assert response.status_code == 401
         data = response.json()
         assert "detail" in data
+
+class TestSuggestionsByRepoAndNumber:
+    """GET /repos/{owner}/{repo}/pulls/{number}/suggestions"""
+
+    AUTH = {"Authorization": "Bearer test_api_key"}
+
+    def _create_pr(self, client, github_signature, repo_full_name, number, title):
+        payload = {
+            "action": "edited",
+            "number": number,
+            "pull_request": {
+                "title": title,
+                "user": {"login": "testuser"},
+                "head": {"ref": "feature"},
+                "html_url": f"https://github.com/{repo_full_name}/pull/{number}",
+                "diff_url": f"https://github.com/{repo_full_name}/pull/{number}.diff"
+            },
+            "repository": {"name": repo_full_name.split("/")[1], "full_name": repo_full_name}
+        }
+        response = client.post(
+            "/api/v1/github/webhook",
+            content=json.dumps(payload),
+            headers={
+                "X-GitHub-Event": "pull_request",
+                "X-Hub-Signature-256": github_signature(payload),
+                "Content-Type": "application/json"
+            }
+        )
+        assert response.status_code == 200
+
+    def test_finds_the_pr_in_the_right_repo(self, client, github_signature):
+        self._create_pr(client, github_signature, "owner/repo-a", 1, "PR in repo A")
+        self._create_pr(client, github_signature, "owner/repo-b", 1, "PR in repo B")
+
+        response = client.get("/api/v1/repos/owner/repo-b/pulls/1/suggestions", headers=self.AUTH)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["repo"] == "owner/repo-b"
+        assert data["number"] == 1
+        assert data["title"] == "PR in repo B"
+        assert data["suggestions"] == []
+
+    def test_same_response_as_lookup_by_id(self, client, github_signature):
+        self._create_pr(client, github_signature, "owner/my.repo_name-2", 7, "Dots and dashes")
+
+        by_number = client.get("/api/v1/repos/owner/my.repo_name-2/pulls/7/suggestions", headers=self.AUTH).json()
+        by_id = client.get(f"/api/v1/pr/{by_number['pr_id']}/suggestions", headers=self.AUTH).json()
+
+        assert by_number == by_id
+
+    def test_unknown_pr_is_404(self, client):
+        response = client.get("/api/v1/repos/owner/repo/pulls/999/suggestions", headers=self.AUTH)
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "PR owner/repo#999 not found"
+
+    def test_requires_api_key(self, client):
+        response = client.get("/api/v1/repos/owner/repo/pulls/1/suggestions")
+
+        assert response.status_code == 401
+
+    @pytest.mark.parametrize("path", [
+        "/api/v1/repos/owner/repo/pulls/0/suggestions",
+        "/api/v1/repos/owner/repo/pulls/abc/suggestions",
+        "/api/v1/repos/own%20er/repo/pulls/1/suggestions",
+    ])
+    def test_invalid_paths_are_rejected(self, client, path):
+        assert client.get(path, headers=self.AUTH).status_code == 422
