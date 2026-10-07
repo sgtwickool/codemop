@@ -7,7 +7,8 @@ name = "codemop"
 version = "0.1.0.dev0"
 description = "AI code review for pull requests, with the model of your choice"
 readme = "README.md"
-# license: not chosen yet (LICENSE is empty); decide before publishing
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [{ name = "Gregory Kemp" }]
 keywords = ["code review", "pull requests", "github", "ai", "llm"]
@@ -15,6 +16,7 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Topic :: Software Development :: Quality Assurance",
 ]
