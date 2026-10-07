@@ -1,19 +1,23 @@
 from sqlalchemy import create_engine
+from starlette.exceptions import HTTPException
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from app.config import settings
 import logging
-from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
+
+def _engine_options(database_url: str) -> dict:
+    """Pool options suit a server database; SQLite (local runs, tests) takes none."""
+    if database_url.startswith("sqlite"):
+        # TestClient and uvicorn may use the connection from another thread
+        return {"connect_args": {"check_same_thread": False}}
+    return {"pool_size": 10, "max_overflow": 20, "pool_pre_ping": True}
 
 # Create database engine
 engine = create_engine(
     settings.DATABASE_URL,
-    pool_size=10,
-    max_overflow=20,
-    pool_pre_ping=True,
-    echo=settings.DEBUG  # Log SQL queries in debug mode
+    echo=settings.DEBUG,  # Log SQL queries in debug mode
+    **_engine_options(settings.DATABASE_URL)
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -27,7 +31,9 @@ def get_db():
         db.commit()  # Commit transaction if successful
     except Exception as e:
         db.rollback()  # Rollback on error
-        logger.error(f"Database transaction failed: {str(e)}")
+        # HTTP errors (401, 404, 429...) are expected responses, not database failures
+        if not isinstance(e, HTTPException):
+            logger.error(f"Database transaction failed: {str(e)}")
         raise
     finally:
         db.close()
@@ -35,31 +41,10 @@ def get_db():
 def init_db():
     """Initialize database tables"""
     from app.models.base import Base
+    from app.models import pr, suggestion  # noqa: F401 - registers the tables on Base
     try:
         Base.metadata.create_all(bind=engine)
         logger.info("🚀 Database tables initialized successfully")
     except Exception as e:
         logger.error(f"❌ Failed to initialize database: {str(e)}")
         raise
-
-# Async database support (for future use)
-# Note: Requires asyncpg driver instead of psycopg2
-# async_engine = create_async_engine(
-#     settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
-# )
-# AsyncSessionLocal = sessionmaker(
-#     async_engine,
-#     expire_on_commit=False,
-#     class_=AsyncSession
-# )
-
-# async def get_async_db():
-#     """Async database session dependency"""
-#     async with AsyncSessionLocal() as session:
-#         try:
-#             yield session
-#             await session.commit()
-#         except Exception as e:
-#             await session.rollback()
-#             logger.error(f"Async database transaction failed: {str(e)}")
-#             raise

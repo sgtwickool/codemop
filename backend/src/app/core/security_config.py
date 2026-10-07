@@ -21,6 +21,18 @@ SECURITY_HEADERS = {
     "Content-Security-Policy": "default-src 'self'"
 }
 
+# The interactive API docs (Swagger UI, ReDoc) load their assets from CDNs and use
+# inline scripts, so they get a looser policy than the JSON API
+DOCS_PATHS = ("/api/v1/docs", "/api/v1/redoc")
+DOCS_CONTENT_SECURITY_POLICY = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: https://fastapi.tiangolo.com https://cdn.redoc.ly",
+    "worker-src 'self' blob:",
+])
+
 # CORS configuration
 CORS_SETTINGS = {
     "allow_origins": ["*"],

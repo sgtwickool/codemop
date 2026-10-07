@@ -3,7 +3,7 @@ Integration tests for error handling scenarios.
 """
 import pytest
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 
 class TestErrorHandlingIntegration:
@@ -40,7 +40,7 @@ class TestErrorHandlingIntegration:
             
             response = client.post(
                 "/api/v1/github/webhook",
-                data=body,
+                content=body,
                 headers={
                     "X-GitHub-Event": "pull_request",
                     "X-Hub-Signature-256": signature,
@@ -80,12 +80,12 @@ class TestErrorHandlingIntegration:
         signature = "sha256=" + hmac.new(secret, body.encode(), hashlib.sha256).hexdigest()
         
         # Mock AI analysis to fail
-        with patch('app.services.ai_analysis.analyze_pr_with_ai', new_callable=lambda: None) as mock_ai:
-            mock_ai.side_effect = Exception("AI API network timeout")
+        failing_ai = AsyncMock(side_effect=Exception("AI API network timeout"))
+        with patch('app.api.v1.endpoints.webhooks.analyze_pr_with_ai', new=failing_ai):
             
             response = client.post(
                 "/api/v1/github/webhook",
-                data=body,
+                content=body,
                 headers={
                     "X-GitHub-Event": "pull_request",
                     "X-Hub-Signature-256": signature,
@@ -98,6 +98,7 @@ class TestErrorHandlingIntegration:
             data = response.json()
             assert data["status"] == "success"
             assert data["suggestions_count"] == 0
+            failing_ai.assert_awaited_once()
 
     def test_network_failure_github_diff(self, client):
         """Test handling of GitHub diff fetch failures."""
@@ -125,12 +126,12 @@ class TestErrorHandlingIntegration:
         signature = "sha256=" + hmac.new(secret, body.encode(), hashlib.sha256).hexdigest()
         
         # Mock GitHub diff fetch to fail
-        with patch('app.services.ai_analysis.fetch_diff_content', new_callable=lambda: None) as mock_fetch:
-            mock_fetch.side_effect = Exception("GitHub API unavailable")
+        failing_fetch = AsyncMock(side_effect=Exception("GitHub API unavailable"))
+        with patch('app.services.ai_analysis.fetch_diff_content', new=failing_fetch):
             
             response = client.post(
                 "/api/v1/github/webhook",
-                data=body,
+                content=body,
                 headers={
                     "X-GitHub-Event": "pull_request",
                     "X-Hub-Signature-256": signature,
@@ -143,9 +144,10 @@ class TestErrorHandlingIntegration:
             data = response.json()
             assert data["status"] == "success"
             assert data["suggestions_count"] == 0
+            failing_fetch.assert_awaited_once()
 
     def test_invalid_pr_data_missing_fields(self, client):
-        """Test handling of PR data with missing required fields."""
+        """PR events without the data needed to store the PR are rejected, not a 500."""
         # Minimal payload with missing fields
         payload = {
             "action": "opened",
@@ -163,7 +165,7 @@ class TestErrorHandlingIntegration:
         
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,
@@ -171,10 +173,8 @@ class TestErrorHandlingIntegration:
             }
         )
         
-        # Should handle gracefully and return 200
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
+        assert response.status_code == 422
+        assert "missing required fields" in response.json()["detail"]
 
     def test_invalid_suggestion_data(self, client):
         """Test handling of invalid suggestion data."""
@@ -204,7 +204,7 @@ class TestErrorHandlingIntegration:
         
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,
@@ -229,13 +229,14 @@ class TestErrorHandlingIntegration:
         data = response.json()
         assert data["suggestions_count"] == 0
 
-    def test_malformed_json_webhook(self, client):
+    def test_malformed_json_webhook(self, client, github_signature):
         """Test handling of malformed JSON in webhook."""
         response = client.post(
             "/api/v1/github/webhook",
-            data="{invalid json",
+            content="{invalid json",
             headers={
                 "X-GitHub-Event": "pull_request",
+                "X-Hub-Signature-256": github_signature("{invalid json"),
                 "Content-Type": "application/json"
             }
         )
@@ -334,7 +335,7 @@ class TestErrorHandlingIntegration:
         
         response = client.post(
             "/api/v1/github/webhook",
-            data=body,
+            content=body,
             headers={
                 "X-GitHub-Event": "pull_request",
                 "X-Hub-Signature-256": signature,

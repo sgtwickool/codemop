@@ -1,4 +1,5 @@
 import hmac
+import json
 import hashlib
 from fastapi import HTTPException, Header
 from typing import Optional, Dict, Any
@@ -22,12 +23,35 @@ async def validate_github_webhook_signature(
         if not hmac.compare_digest(expected_signature, x_hub_signature_256):
             raise HTTPException(status_code=401, detail="Invalid signature")
 
+def parse_webhook_payload(content_type: Optional[str], body: bytes) -> Dict[str, Any]:
+    """Parse a webhook body, rejecting anything that isn't a JSON object"""
+    media_type = (content_type or "").split(";")[0].strip().lower()
+    if media_type != "application/json":
+        # GitHub's default webhook content type is form-encoded, so say how to fix it
+        raise HTTPException(
+            status_code=415,
+            detail="Webhook content type must be application/json (set it in the GitHub webhook settings)"
+        )
+
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Webhook body is not valid JSON")
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="Webhook body must be a JSON object")
+    return payload
+
+def _as_dict(value: Any) -> Dict[str, Any]:
+    """Treat a missing, null or non-object payload field as empty"""
+    return value if isinstance(value, dict) else {}
+
 def _get_pr_payload_data(payload: Dict[str, Any]) -> tuple:
     """Helper function to extract common payload data"""
     action = payload.get("action")
     pr_number = payload.get("number")
-    pr_data = payload.get("pull_request", {})
-    repo_data = payload.get("repository", {})
+    pr_data = _as_dict(payload.get("pull_request"))
+    repo_data = _as_dict(payload.get("repository"))
     return action, pr_number, pr_data, repo_data
 
 def extract_pr_data(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -39,8 +63,8 @@ def extract_pr_data(payload: Dict[str, Any]) -> Dict[str, Any]:
         "github_id": pr_number,
         "repo_name": repo_data.get("name"),
         "repo_full_name": repo_data.get("full_name"),
-        "branch": pr_data.get("head", {}).get("ref"),
-        "author": pr_data.get("user", {}).get("login"),
+        "branch": _as_dict(pr_data.get("head")).get("ref"),
+        "author": _as_dict(pr_data.get("user")).get("login"),
         "title": pr_data.get("title"),
         "status": action,
         "github_url": pr_data.get("html_url"),

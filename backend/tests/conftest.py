@@ -1,84 +1,93 @@
 """
 Pytest configuration and fixtures for CodeMop backend tests.
+
+Settings are fixed here, before the app is imported, so the tests never depend on a
+developer's .env file and never reach a real database, GitHub or AI provider.
 """
-import pytest
-import sys
-import os
-from fastapi.testclient import TestClient
-
-# Add src directory to Python path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
-
-from app.main import app
-from app.db.session import get_db, init_db
-from app.models.base import Base
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
-# Test database configuration - use file-based SQLite to avoid thread issues
-# Allow override via environment variable for CI
+import hashlib
+import hmac
+import json
 import os
 import tempfile
-import shutil
+from unittest.mock import AsyncMock, patch
 
-# Test database configuration
-TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "sqlite:///./test.db")
+import pytest
 
-# Temporary directory for test databases
-TEST_DB_DIR = os.environ.get("TEST_DB_DIR", "/tmp/test_dbs")
-os.makedirs(TEST_DB_DIR, exist_ok=True)
+TEST_WEBHOOK_SECRET = "test_secret"
+TEST_API_KEY = "test_api_key"
 
-# Create test engine and session BEFORE importing anything
-import sys
-from sqlalchemy import create_engine, inspect
-from sqlalchemy.orm import sessionmaker
+_test_db_dir = tempfile.mkdtemp(prefix="codemop-tests-")
 
-# Create test engine and session with thread-safe configuration
-# Use check_same_thread=False to allow connections across threads
-# Use connect_args to configure SQLite for better concurrency
-connect_args = {"check_same_thread": False}
-if "sqlite" in TEST_DATABASE_URL:
-    test_engine = create_engine(TEST_DATABASE_URL, connect_args=connect_args)
-else:
-    test_engine = create_engine(TEST_DATABASE_URL)
-TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+# Environment variables take precedence over the .env file
+os.environ.update({
+    "APP_ENV": "test",
+    "DEBUG": "false",
+    # TEST_DATABASE_URL lets CI point the suite at a real Postgres
+    "DATABASE_URL": os.environ.get("TEST_DATABASE_URL", f"sqlite:///{_test_db_dir}/test.db"),
+    "GITHUB_WEBHOOK_SECRET": TEST_WEBHOOK_SECRET,
+    "API_KEY": TEST_API_KEY,
+    "AI_API_KEY": "test_ai_key",
+    "AI_API_URL": "https://ai.invalid/v1/chat/completions",
+    "ENABLE_METRICS": "false",
+    "SENTRY_DSN": "",
+})
 
-# Override the database engine for testing BEFORE importing the app
-import app.db.session as db_session_module
-original_engine = db_session_module.engine
-db_session_module.engine = test_engine
+from fastapi.testclient import TestClient  # noqa: E402
 
-# Also override the SessionLocal to use the test engine
-db_session_module.SessionLocal = TestSessionLocal
+from app.main import app  # noqa: E402
+from app.core.rate_limit import limiter  # noqa: E402
+from app.db.session import engine, SessionLocal  # noqa: E402
+from app.models.base import Base  # noqa: E402
 
-# Verify the override worked
-print(f"Test database configured: {test_engine}")
-
-# Store original engine for restoration at session end
-original_engine_for_restore = db_session_module.engine
-original_session_local_for_restore = db_session_module.SessionLocal
 
 @pytest.fixture(scope="session", autouse=True)
-def setup_test_database_engine():
-    """Set up test database engine for entire test session."""
-    # This fixture runs once per test session
-    # Drop all tables at the start to ensure clean slate
-    Base.metadata.drop_all(bind=test_engine)
-    # Create all tables
-    Base.metadata.create_all(bind=test_engine)
-    
+def database():
+    """Create the schema once per test session."""
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
     yield
-    
-    # Restore original engine at the end of the session
-    db_session_module.engine = original_engine_for_restore
-    db_session_module.SessionLocal = original_session_local_for_restore
-    print(f"Restored original engine at session end")
+    Base.metadata.drop_all(bind=engine)
+    engine.dispose()
 
-@pytest.fixture(scope="function")
+
+@pytest.fixture(autouse=True)
+def clean_tables():
+    """Empty every table after each test so tests can't affect each other."""
+    yield
+    with engine.begin() as connection:
+        for table in reversed(Base.metadata.sorted_tables):
+            connection.execute(table.delete())
+
+
+@pytest.fixture(autouse=True)
+def rate_limiting_disabled():
+    """Rate limits are off by default; tests that exercise them use `rate_limiting`."""
+    limiter.enabled = False
+    limiter.reset()
+    yield
+    limiter.enabled = False
+
+
+@pytest.fixture
+def rate_limiting():
+    """Turn rate limiting on, starting from empty counters."""
+    limiter.reset()
+    limiter.enabled = True
+    yield limiter
+
+
+@pytest.fixture(autouse=True)
+def no_network():
+    """Fail outbound HTTP calls by default; tests that need a response mock them."""
+    blocked = AsyncMock(side_effect=RuntimeError("Network access is disabled in tests"))
+    with patch("app.services.ai_analysis.fetch_with_retry", new=blocked):
+        yield blocked
+
+
+@pytest.fixture
 def db_session():
-    """Create a fresh database session for each test."""
-    # Create session (tables already exist from session setup)
-    session = TestSessionLocal()
+    """A database session for tests that use the service layer directly."""
+    session = SessionLocal()
     try:
         yield session
         session.commit()
@@ -87,30 +96,15 @@ def db_session():
         raise
     finally:
         session.close()
-        # No need to drop tables - handled by session fixture
 
-@pytest.fixture(scope="function")
+
+@pytest.fixture
 def client():
-    """Create a test client for the FastAPI app with test database."""
-    # Import and create test client (tables already exist)
-    from app.main import app as fastapi_app
-    
-    # Create test client
-    test_client = TestClient(fastapi_app)
-    
-    yield test_client
-    
-    # No cleanup needed - handled by session fixture
-    
-    # Note: Don't restore original engine here to allow multiple calls within same test
-    # Engine restoration is handled at the end of the entire test session
+    """A test client for the FastAPI app."""
+    return TestClient(app)
 
-@pytest.fixture(scope="function")
-def test_app():
-    """Create a test instance of the FastAPI app."""
-    return app
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def github_webhook_payload():
     """Standard GitHub webhook payload for testing."""
     return {
@@ -129,42 +123,20 @@ def github_webhook_payload():
         }
     }
 
-@pytest.fixture(scope="function")
-def github_signature():
-    """Generate a valid GitHub webhook signature using the actual secret."""
-    import hmac
-    import hashlib
-    import json
-    from app.config import settings
-    
-    def generate_signature(payload):
-        body = json.dumps(payload)
-        # Use the actual webhook secret from settings
-        secret = settings.GITHUB_WEBHOOK_SECRET.encode()
-        return "sha256=" + hmac.new(secret, body.encode(), hashlib.sha256).hexdigest()
-    
-    return generate_signature
 
-@pytest.fixture(autouse=True)
-def setup_test_environment():
-    """Set up test environment variables."""
-    # Save original environment variables
-    original_env = {
-        "GITHUB_WEBHOOK_SECRET": os.environ.get("GITHUB_WEBHOOK_SECRET"),
-        "AI_API_KEY": os.environ.get("AI_API_KEY"),
-        "API_KEY": os.environ.get("API_KEY")
-    }
-    
-    # Set test environment variables
-    os.environ["GITHUB_WEBHOOK_SECRET"] = "test_secret"
-    os.environ["AI_API_KEY"] = "test_ai_key"
-    os.environ["API_KEY"] = "test_api_key"
-    
-    yield
-    
-    # Restore original environment variables
-    for key, value in original_env.items():
-        if value is not None:
-            os.environ[key] = value
-        elif key in os.environ:
-            del os.environ[key]
+def sign_body(body) -> str:
+    """GitHub's X-Hub-Signature-256 value for a raw request body."""
+    if isinstance(body, str):
+        body = body.encode()
+    return "sha256=" + hmac.new(TEST_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+
+
+@pytest.fixture
+def github_signature():
+    """Sign a dict payload as it will be sent (json.dumps), or a raw str/bytes body."""
+    def generate_signature(payload):
+        if isinstance(payload, (str, bytes)):
+            return sign_body(payload)
+        return sign_body(json.dumps(payload))
+
+    return generate_signature

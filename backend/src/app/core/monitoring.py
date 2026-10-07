@@ -11,10 +11,10 @@ This module provides:
 import logging
 import logging.config
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 from functools import wraps
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 import os
 
 # Environment variables for monitoring configuration
@@ -23,7 +23,7 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 SERVICE_NAME = os.getenv("SERVICE_NAME", "codemop")
 ENVIRONMENT = os.getenv("APP_ENV", "development")
 
-class CustomJsonFormatter(jsonlogger.JsonFormatter):
+class CustomJsonFormatter(JsonFormatter):
     """
     Custom JSON formatter that adds additional context to logs
     """
@@ -33,7 +33,7 @@ class CustomJsonFormatter(jsonlogger.JsonFormatter):
         # Add custom fields
         log_record["service"] = SERVICE_NAME
         log_record["environment"] = ENVIRONMENT
-        log_record["timestamp"] = datetime.utcnow().isoformat() + "Z"
+        log_record["timestamp"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         
         # Add request context if available
         if hasattr(record, "request_id"):
