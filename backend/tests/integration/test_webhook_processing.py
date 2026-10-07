@@ -190,3 +190,25 @@ class TestWebhookRedeliveries:
     def test_events_without_a_delivery_id_are_processed(self, send, ai):
         assert send(pr_event("opened")).json()["status"] == "success"
         assert send(pr_event("synchronize", sha="b" * 40)).json()["status"] == "success"
+
+    def test_old_delivery_records_are_pruned(self, send, ai):
+        """Delivery IDs are only kept for a week; GitHub can't redeliver older ones."""
+        from datetime import datetime, timedelta, timezone
+        from app.models.webhook_delivery import WebhookDelivery
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        db = SessionLocal()
+        db.add_all([
+            WebhookDelivery(delivery_id="eight-days-old", event="pull_request", created_at=now - timedelta(days=8)),
+            WebhookDelivery(delivery_id="six-days-old", event="pull_request", created_at=now - timedelta(days=6)),
+        ])
+        db.commit()
+        db.close()
+
+        send(pr_event("opened"), delivery_id="new-delivery")
+
+        db = SessionLocal()
+        remaining = sorted(d for (d,) in db.query(WebhookDelivery.delivery_id))
+        db.close()
+        assert remaining == ["new-delivery", "six-days-old"]
+
