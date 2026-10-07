@@ -54,21 +54,29 @@ def _get_pr_payload_data(payload: Dict[str, Any]) -> tuple:
     repo_data = _as_dict(payload.get("repository"))
     return action, pr_number, pr_data, repo_data
 
+def pr_state(pr_data: Dict[str, Any]) -> str:
+    """The PR's state: open, closed or merged (GitHub reports merged PRs as closed)"""
+    if pr_data.get("merged"):
+        return "merged"
+    return pr_data.get("state") or "open"
+
 def extract_pr_data(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Extract PR data from GitHub webhook payload"""
     action, pr_number, pr_data, repo_data = _get_pr_payload_data(payload)
+    head = _as_dict(pr_data.get("head"))
     
     # Return only the fields needed for the PR model
     return {
         "number": pr_number,
         "repo_name": repo_data.get("name"),
         "repo_full_name": repo_data.get("full_name"),
-        "branch": _as_dict(pr_data.get("head")).get("ref"),
+        "branch": head.get("ref"),
         "author": _as_dict(pr_data.get("user")).get("login"),
         "title": pr_data.get("title"),
-        "status": action,
+        "status": pr_state(pr_data),
         "github_url": pr_data.get("html_url"),
-        "diff_url": pr_data.get("diff_url")
+        "diff_url": pr_data.get("diff_url"),
+        "head_sha": head.get("sha"),
     }
 
 def extract_pr_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:

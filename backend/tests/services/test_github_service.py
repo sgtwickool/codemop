@@ -35,7 +35,7 @@ class TestGitHubService:
         assert pr_data["branch"] == "test-branch"
         assert pr_data["author"] == "testuser"
         assert pr_data["title"] == "Test PR"
-        assert pr_data["status"] == "opened"
+        assert pr_data["status"] == "open"  # the PR state, not the webhook action
         assert pr_data["github_url"] == "https://github.com/testuser/testrepo/pull/123"
         assert pr_data["diff_url"] == "https://github.com/testuser/testrepo/pull/123.diff"
     
@@ -102,6 +102,6 @@ class TestGitHubService:
         assert pr_data["branch"] is None
         assert pr_data["author"] is None
         assert pr_data["title"] is None
-        assert pr_data["status"] == "opened"
+        assert pr_data["status"] == "open"  # the PR state, not the webhook action
         assert pr_data["github_url"] is None
         assert pr_data["diff_url"] is None

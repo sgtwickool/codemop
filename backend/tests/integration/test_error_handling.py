@@ -81,7 +81,7 @@ class TestErrorHandlingIntegration:
         
         # Mock AI analysis to fail
         failing_ai = AsyncMock(side_effect=Exception("AI API network timeout"))
-        with patch('app.api.v1.endpoints.webhooks.analyze_pr_with_ai', new=failing_ai):
+        with patch('app.services.pr_analysis.analyze_pr_with_ai', new=failing_ai):
             
             response = client.post(
                 "/api/v1/github/webhook",
@@ -93,11 +93,11 @@ class TestErrorHandlingIntegration:
                 }
             )
             
-            # Should still return 200 (AI failure shouldn't break webhook)
+            # Analysis runs after the response, so its failure can't break the webhook
             assert response.status_code == 200
             data = response.json()
             assert data["status"] == "success"
-            assert data["suggestions_count"] == 0
+            assert data["analysis"] == "queued"
             failing_ai.assert_awaited_once()
 
     def test_network_failure_github_diff(self, client):
@@ -139,11 +139,11 @@ class TestErrorHandlingIntegration:
                 }
             )
             
-            # Should still return 200 (GitHub failure shouldn't break webhook)
+            # Analysis runs after the response, so its failure can't break the webhook
             assert response.status_code == 200
             data = response.json()
             assert data["status"] == "success"
-            assert data["suggestions_count"] == 0
+            assert data["analysis"] == "queued"
             failing_fetch.assert_awaited_once()
 
     def test_invalid_pr_data_missing_fields(self, client):

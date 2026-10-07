@@ -1,7 +1,21 @@
 from typing import Type, TypeVar, Generic, Optional
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.orm import Session
 
 ModelType = TypeVar("ModelType")
+
+# Dialects whose INSERT supports ON CONFLICT (DO NOTHING / DO UPDATE)
+_ON_CONFLICT_INSERTS = {
+    "postgresql": postgresql.insert,
+    "sqlite": sqlite.insert,
+}
+
+def on_conflict_insert(db: Session, model):
+    """An INSERT for `model` that supports .on_conflict_do_nothing() / .on_conflict_do_update()"""
+    dialect = db.get_bind().dialect.name
+    if dialect not in _ON_CONFLICT_INSERTS:
+        raise NotImplementedError(f"{dialect} is not supported; use PostgreSQL or SQLite")
+    return _ON_CONFLICT_INSERTS[dialect](model)
 
 class BaseRepository(Generic[ModelType]):
     """Base repository with common CRUD operations"""

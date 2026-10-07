@@ -52,6 +52,7 @@ async def get_suggestions(
             "description": suggestion.description,
             "fix": suggestion.fix,
             "confidence": suggestion.confidence,
+            "head_sha": suggestion.head_sha,
             "created_at": suggestion.created_at.isoformat() if suggestion.created_at else None
         }
         for suggestion in suggestions
@@ -63,6 +64,8 @@ async def get_suggestions(
         "repo": pr.repo_full_name,
         "title": pr.title,
         "status": pr.status,
+        "head_sha": pr.head_sha,
+        "analyzed_sha": pr.analyzed_sha,
         "suggestions_count": len(formatted_suggestions),
         "suggestions": formatted_suggestions
     }

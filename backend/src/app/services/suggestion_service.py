@@ -1,5 +1,6 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
+from app.models.pr import PR
 from app.models.suggestion import Suggestion
 from app.db.suggestion_repository import suggestion_repository
 import logging
@@ -50,5 +51,37 @@ class SuggestionService:
                 continue
         
         return created_suggestions
+
+    def replace_for_pr(
+        self,
+        db: Session,
+        pr: PR,
+        suggestions: List[Dict[str, Any]],
+        head_sha: Optional[str],
+    ) -> List[Suggestion]:
+        """
+        Replace a PR's suggestions with those from a new analysis of `head_sha`.
+        
+        Doesn't commit, so the caller can make the swap atomic.
+        """
+        db.query(Suggestion).filter(Suggestion.pr_id == pr.id).delete()
+        
+        created = []
+        for suggestion in suggestions:
+            if not suggestion.get("description") or not suggestion.get("file_path") or suggestion.get("line_number") is None:
+                logger.warning(f"Skipping incomplete suggestion for PR {pr.id}: {suggestion}")
+                continue
+            created.append(Suggestion(
+                pr_id=pr.id,
+                line_number=suggestion["line_number"],
+                file_path=suggestion["file_path"],
+                description=suggestion["description"],
+                fix=suggestion.get("fix") or "No fix provided",
+                confidence=suggestion.get("confidence", 0.5),
+                head_sha=head_sha,
+            ))
+        db.add_all(created)
+        pr.analyzed_sha = head_sha
+        return created
 
 suggestion_service = SuggestionService()

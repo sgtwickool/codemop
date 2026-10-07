@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import BigInteger, String, Text, UniqueConstraint
-from typing import List
+from typing import List, Optional
 from app.models.base import BaseModel
 
 class PR(BaseModel):
@@ -17,9 +17,11 @@ class PR(BaseModel):
     branch: Mapped[str] = mapped_column(String(255))
     author: Mapped[str] = mapped_column(String(255))
     title: Mapped[str] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(String(50))  # open, closed, merged
+    status: Mapped[str] = mapped_column(String(50))  # open, closed or merged
     github_url: Mapped[str] = mapped_column(String(512))
     diff_url: Mapped[str] = mapped_column(String(512))
+    head_sha: Mapped[Optional[str]] = mapped_column(String(40))  # latest commit on the PR
+    analyzed_sha: Mapped[Optional[str]] = mapped_column(String(40))  # commit the current suggestions are for
     
     # Relationship to suggestions
     suggestions: Mapped[List["Suggestion"]] = relationship(
