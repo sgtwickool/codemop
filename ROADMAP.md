@@ -75,7 +75,9 @@ the server switches to that core when it lands.
 - [x] Add Alembic migrations; stop relying on `create_all` (existing databases are stamped and upgraded)
 - [x] Identify a PR by `(repo_full_name, number)`, not the PR number alone (PRs in different repos overwrote each other)
 - [x] Run the test suite against PostgreSQL in CI (SQLite hid two bugs: long titles and large PR numbers caused 500s)
-- [x] Move the compose files to Postgres 17 (13 is end of life)
+- [x] Move the compose files to Postgres 17 (13 is end of life), then 18
+- [x] Bring the GitHub Actions (1-3 majors behind; Trivy was unpinned), the Docker base image (Python 3.14) and Postgres (18) up to date; the Python packages were already current
+- [ ] Keep dependencies current automatically (Dependabot, or a scheduled check)
 - [x] Upsert PRs in a single statement, so concurrent deliveries for the same PR can't collide
 - [x] De-duplicate deliveries by `X-GitHub-Delivery` (GitHub redelivers on timeouts and manual retries)
 - [x] Prune old delivery records (kept for 7 days; pruned on each webhook, using an index)

@@ -1,7 +1,7 @@
 # Development Dockerfile for CodeMop
 # Uses same Python version as production for consistency
 
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
