@@ -12,26 +12,18 @@ import pytest
 from app.db.session import session_scope
 from app.models.pr import PR
 from app.models.webhook_delivery import WebhookDelivery
-from tests.helpers import AUTH_HEADERS, pr_event
-
-
-def suggestion(description, line_number=10):
-    return {
-        "line_number": line_number,
-        "file_path": "app.py",
-        "description": description,
-        "fix": "fixed()",
-        "confidence": 0.9
-    }
+from tests.helpers import AUTH_HEADERS, SAMPLE_DIFF, FakeReviewModel, pr_event, suggestion
 
 
 @pytest.fixture
 def ai():
-    """The AI analysis (and the diff fetch before it), mocked; set `return_value` or
-    `side_effect` per test."""
+    """
+    The model's answers, mocked: set `return_value` (a list of suggestion dicts) or
+    `side_effect` per test. The diff and the rest of codemop's review pipeline are real.
+    """
     mock = AsyncMock(return_value=[])
-    with patch("app.services.pr_analysis.fetch_pr_diff", new=AsyncMock(return_value="diff")), \
-         patch("app.services.pr_analysis.analyze_diff", new=mock):
+    with patch("app.services.pr_analysis.fetch_pr_diff", new=AsyncMock(return_value=SAMPLE_DIFF)), \
+         patch("app.services.pr_analysis.review_model", return_value=FakeReviewModel(mock)):
         yield mock
 
 
@@ -45,7 +37,7 @@ class TestWebhookProcessing:
         assert post_webhook(pr_event("synchronize", sha="b" * 40)).json()["analysis"] == "queued"
 
         data = client.get(f"/api/v1/pr/{pr_id}/suggestions", headers=AUTH_HEADERS).json()
-        assert [s["description"] for s in data["suggestions"]] == ["Issue in the new commit"]
+        assert [s["title"] for s in data["suggestions"]] == ["Issue in the new commit"]
         assert data["analyzed_sha"] == "b" * 40
 
     def test_already_analysed_commit_is_not_analysed_again(self, post_webhook, ai):
@@ -73,8 +65,34 @@ class TestWebhookProcessing:
         response = post_webhook(pr_event("opened")).json()
 
         assert response["analysis"] == "skipped"
-        assert response["reason"] == "AI_API_KEY is not configured"
+        assert response["reason"] == "no API key for anthropic: set AI_API_KEY (or ANTHROPIC_API_KEY)"
         ai.assert_not_awaited()
+
+    def test_an_incomplete_review_keeps_the_old_suggestions_and_is_retried(self, client, post_webhook, ai):
+        from codemop.providers.base import NoReview
+
+        ai.return_value = [suggestion("Found first time")]
+        pr_id = post_webhook(pr_event("opened", sha="a" * 40)).json()["database_id"]
+
+        ai.side_effect = NoReview("declined to review this part of the diff")
+        post_webhook(pr_event("synchronize", sha="b" * 40))
+
+        data = client.get(f"/api/v1/pr/{pr_id}/suggestions", headers=AUTH_HEADERS).json()
+        assert [s["title"] for s in data["suggestions"]] == ["Found first time"]
+        assert data["analyzed_sha"] == "a" * 40  # b wasn't analysed, so it's retried
+
+        ai.side_effect = None
+        ai.return_value = [suggestion("Found on retry")]
+        assert post_webhook(pr_event("synchronize", sha="b" * 40), delivery_id="redelivered").json()["analysis"] == "queued"
+        data = client.get(f"/api/v1/pr/{pr_id}/suggestions", headers=AUTH_HEADERS).json()
+        assert [s["title"] for s in data["suggestions"]] == ["Found on retry"]
+
+    def test_suggestions_outside_the_diff_are_not_stored(self, client, post_webhook, ai):
+        ai.return_value = [suggestion("In the diff", line=5), suggestion("Past the end", line=99)]
+        pr_id = post_webhook(pr_event("opened")).json()["database_id"]
+
+        data = client.get(f"/api/v1/pr/{pr_id}/suggestions", headers=AUTH_HEADERS).json()
+        assert [(s["title"], s["severity"], s["line_number"]) for s in data["suggestions"]] == [("In the diff", "bug", 5)]
 
     def test_drafts_are_analysed_once_ready_for_review(self, post_webhook, ai):
         draft = post_webhook(pr_event("opened", draft=True)).json()

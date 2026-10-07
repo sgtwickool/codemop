@@ -12,8 +12,6 @@ node_modules/
 *.log
 *.sqlite
 *.db
-.Dockerfile
-.dockerignore
 coverage/
 htmlcov/
 .coverage

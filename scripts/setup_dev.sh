@@ -12,9 +12,9 @@ if [ ! -d venv ]; then
 fi
 source venv/bin/activate
 
-# Install backend and dev/test dependencies
+# Install the codemop package (editable) and the server's dev/test dependencies
 pip install --upgrade pip
-pip install -r backend/requirements-dev.txt
+pip install -e . -r backend/requirements-dev.txt
 
 if [ ! -f .env ]; then
     cp .env.example .env

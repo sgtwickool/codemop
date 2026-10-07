@@ -109,6 +109,7 @@ Extract the review logic into a package that has nothing to do with FastAPI or t
 - [ ] Config file `.codemop.yml`: model, ignored paths, minimum confidence, max comments
 - [x] CLI: `codemop review owner/repo#123` (or a PR URL, or `-` for a diff on stdin) prints the review; `--json` for machines. Posting comes with `--post` in Phase 3. Uses `GITHUB_TOKEN`, or the `gh` login, for private repos
 - [ ] Golden tests from recorded diffs and model responses
+- [x] The server reviews with the package; its own Mistral-only AI code, response parser and diff fetcher are gone. Configured with `AI_PROVIDER`, `AI_MODEL`, `AI_BASE_URL` and `AI_API_KEY`
 - [ ] Move to the target [repository structure](#repository-structure): the package at the root, `backend/` becomes `server/` and uses it
 - [ ] In the server, stop running synchronous database work inside `async` handlers and the background job (make DB-only handlers plain `def`, or move to async SQLAlchemy); it blocks the event loop under load
 - [ ] Move the older integration tests' inline payloads and headers onto `tests/helpers.py` / the `post_webhook` fixture
@@ -129,7 +130,7 @@ so the core must not care which model it's talking to, and the choice of default
 - [ ] Config: `provider`, `model`, `api_key_env`, optional `base_url`; no model IDs hardcoded outside the defaults
 - [ ] Record tokens and estimated cost per run. (Prompt caching doesn't help yet: the shared instructions are a few hundred tokens, below Claude's minimum cacheable prefix of 1,024+)
 - [ ] **Model comparison eval:** a fixed set of real PR diffs with known issues, scored the same way for every provider and model (real issues found, false positives, valid line positions, cost per useful comment). It picks the default, catches regressions when prompts or models change, and later measures complexity-based routing (Phase 6)
-- [ ] End-to-end check carried over from Phase 1: a real PR through the server with Claude ends with stored suggestions
+- [ ] End-to-end check carried over from Phase 1: a real PR through the server with Claude ends with stored suggestions. (Done with a local model on 2026-10-07: a real webhook for PR #2 went through the server, the package and qwen2.5-coder:7b, and 5 suggestions were stored. Still to do with Claude)
 - [ ] Choose the default model from the eval. Start by comparing Claude Opus 5.5 (`claude-opus-5-5`) against cheaper options, Codestral (the current default) and a local model
 
 **Done when:** `pipx run codemop review sgtwickool/codemop#N` prints useful suggestions
@@ -193,8 +194,9 @@ Action).
   1. Free checks first, with no model: skip only what's certainly trivial (docs-only, lock
      files, pure renames, whitespace); send obviously risky code (auth, crypto, SQL and
      migrations, concurrency, payments, large logic changes) straight to the strong tier
-  2. A cheap model triages the rest and picks the cheap or the strong reviewer. It never skips
-     a review: a "trivial" call on a subtle bug is the failure to avoid
+  2. A capable model at low effort (e.g. Claude Sonnet) triages the rest and picks the cheap or
+     the strong reviewer; small local models aren't reliable enough for this. It never skips a
+     review: a "trivial" call on a subtle bug is the failure to avoid
   3. Compare against routing by effort level on one model (e.g. Claude Opus at low effort for
      simple chunks), which is often as good and cheaper, with one model to keep consistent
   4. The report says which model reviewed each part, and why anything was skipped. Success is

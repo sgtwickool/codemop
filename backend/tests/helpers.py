@@ -3,7 +3,10 @@ Builders and constants shared by the tests. (Fixtures live in conftest.py.)
 """
 import hashlib
 import hmac
-from typing import Any, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
+
+from codemop.providers.base import Usage
+from codemop.review.schema import ModelReview, ModelSuggestion
 
 TEST_WEBHOOK_SECRET = "test_secret"
 TEST_API_KEY = "test_api_key"
@@ -57,3 +60,40 @@ def pr_data(**overrides) -> Dict[str, Any]:
         "github_url": "https://github.com/testuser/testrepo/pull/123",
     }
     return {**data, **overrides}
+
+
+# A diff that adds app.py with 30 lines, so suggestions on lines 1-30 of app.py can be placed
+SAMPLE_DIFF = (
+    "diff --git a/app.py b/app.py\nnew file mode 100644\n--- /dev/null\n+++ b/app.py\n"
+    "@@ -0,0 +1,30 @@\n" + "".join(f"+line {i}\n" for i in range(1, 31))
+)
+
+
+def suggestion(title: str, line: int = 10, **overrides) -> Dict[str, Any]:
+    """A suggestion as a model returns it (the fields of codemop's ModelSuggestion)."""
+    data = {
+        "file_path": "app.py",
+        "line": line,
+        "severity": "bug",
+        "title": title,
+        "explanation": f"Why {title.lower()} matters",
+        "suggested_code": "fixed()",
+        "confidence": 0.9,
+    }
+    return {**data, **overrides}
+
+
+class FakeReviewModel:
+    """A codemop ReviewModel whose answer comes from `respond(diff_text)`, a list of suggestion dicts."""
+    name = "fake/model"
+    chunk_tokens = 40_000
+
+    def __init__(self, respond: Callable[[str], Awaitable[List[Dict[str, Any]]]]):
+        self.respond = respond
+
+    async def review(self, instructions: str, diff_text: str):
+        suggestions = await self.respond(diff_text)
+        return (
+            ModelReview(suggestions=[ModelSuggestion(**s) for s in suggestions]),
+            Usage(input_tokens=100, output_tokens=10),
+        )

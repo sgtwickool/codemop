@@ -1,0 +1,11 @@
+# Docker builds use the repository root as context; send only what the images copy
+*
+!pyproject.toml
+!README.md
+!LICENSE
+!src/
+!backend/requirements.txt
+!backend/requirements-dev.txt
+!backend/src/
+**/__pycache__
+**/*.pyc

@@ -1,62 +1,35 @@
-# Production Dockerfile for CodeMop
-# Uses multi-stage builds for optimization
-
-# Stage 1: Build stage
-FROM python:3.14-slim as builder
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create and switch to a non-root user for security
-RUN useradd -m appuser
-USER appuser
-WORKDIR /app
-
-# Copy requirements first for better caching
-COPY --chown=appuser:appuser requirements.txt .
-RUN pip install --user -r requirements.txt
-
-# Copy application code
-COPY --chown=appuser:appuser . .
-
-# Stage 2: Runtime stage
+# Production image for the CodeMop webhook server. Build it from the repository root, since
+# the server uses the codemop package there:
+#   docker build -f backend/Dockerfile.prod -t codemop-server .
 FROM python:3.14-slim
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    libpq5 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create and switch to non-root user
+# Run as a non-root user
 RUN useradd -m appuser
 USER appuser
 WORKDIR /app
 
-# Copy only necessary files from builder
-COPY --from=builder --chown=appuser:appuser /app/src /app/src
-COPY --from=builder --chown=appuser:appuser /app/requirements.txt .
+ENV PATH=/home/appuser/.local/bin:$PATH \
+    PYTHONPATH=/app/src \
+    PYTHONUNBUFFERED=1 \
+    APP_ENV=production \
+    DEBUG=False
 
-# Install only production dependencies
+# The server's pinned dependencies first, so this layer is cached between code changes
+COPY --chown=appuser:appuser backend/requirements.txt .
 RUN pip install --user --no-cache-dir -r requirements.txt
 
-# Add user's local bin to PATH
-ENV PATH=/home/appuser/.local/bin:$PATH
+# The codemop package (its dependencies are already installed, pinned, above)
+COPY --chown=appuser:appuser pyproject.toml README.md LICENSE /tmp/codemop/
+COPY --chown=appuser:appuser src /tmp/codemop/src
+RUN pip install --user --no-cache-dir --no-deps /tmp/codemop && rm -rf /tmp/codemop
+
+# The server itself
+COPY --chown=appuser:appuser backend/src /app/src
 
 # Health check (note: Podman uses OCI format, Docker uses Docker format)
 # python:slim has no curl, so use the standard library
 HEALTHCHECK --interval=30s --timeout=3s \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=2)" || exit 1
 
-# Environment variables
-ENV PYTHONPATH=/app/src
-ENV PYTHONUNBUFFERED=1
-ENV APP_ENV=production
-ENV DEBUG=False
-
-# Expose port
 EXPOSE 8000
-
-# Run the application
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

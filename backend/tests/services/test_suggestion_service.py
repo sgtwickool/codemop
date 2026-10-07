@@ -3,17 +3,13 @@ Unit tests for Suggestion service functions.
 """
 from app.services.pr_service import pr_service
 from app.services.suggestion_service import suggestion_service
+from codemop.review.schema import ModelSuggestion
+from tests import helpers
 from tests.helpers import pr_data
 
 
-def suggestion(description, line_number=10):
-    return {
-        "line_number": line_number,
-        "file_path": "app.py",
-        "description": description,
-        "fix": "fixed()",
-        "confidence": 0.9,
-    }
+def suggestion(title, line=10):
+    return ModelSuggestion(**helpers.suggestion(title, line))
 
 
 class TestSuggestionService:
@@ -30,8 +26,11 @@ class TestSuggestionService:
         suggestion_service.replace_for_pr(db_session, pr, [suggestion("First"), suggestion("Second", 20)], "a" * 40)
 
         stored = suggestion_service.get_suggestions_by_pr_id(db_session, pr.id)
-        assert sorted(s.description for s in stored) == ["First", "Second"]
-        assert stored[0].file_path == "app.py"
+        assert sorted(s.title for s in stored) == ["First", "Second"]
+        first = next(s for s in stored if s.title == "First")
+        assert (first.file_path, first.line_number, first.severity) == ("app.py", 10, "bug")
+        assert first.description == "Why first matters"
+        assert first.fix == "fixed()"
         assert pr.analyzed_sha == "a" * 40
 
     def test_replace_removes_earlier_suggestions(self, db_session):
@@ -41,7 +40,7 @@ class TestSuggestionService:
         suggestion_service.replace_for_pr(db_session, pr, [suggestion("New")], "b" * 40)
 
         stored = suggestion_service.get_suggestions_by_pr_id(db_session, pr.id)
-        assert [s.description for s in stored] == ["New"]
+        assert [s.title for s in stored] == ["New"]
         assert pr.analyzed_sha == "b" * 40
 
     def test_suggestions_are_kept_per_pr(self, db_session):

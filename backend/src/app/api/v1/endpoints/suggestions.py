@@ -31,8 +31,11 @@ def _suggestions_response(db: Session, pr: PR) -> dict:
     formatted_suggestions = [
         {
             "id": suggestion.id,
-            "line_number": suggestion.line_number,
             "file_path": suggestion.file_path,
+            "line_number": suggestion.line_number,
+            "end_line": suggestion.end_line,
+            "severity": suggestion.severity,
+            "title": suggestion.title,
             "description": suggestion.description,
             "fix": suggestion.fix,
             "confidence": suggestion.confidence,

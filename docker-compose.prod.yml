@@ -3,8 +3,8 @@ version: '3.8'
 services:
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile.prod
+      context: .
+      dockerfile: backend/Dockerfile.prod
     ports:
       - "8000:8000"
     environment:
@@ -13,6 +13,9 @@ services:
       - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - DATABASE_URL=postgresql://codemop:codemop@db:5432/codemop
+      - AI_PROVIDER=${AI_PROVIDER:-anthropic}
+      - AI_MODEL=${AI_MODEL:-}
+      - AI_BASE_URL=${AI_BASE_URL:-}
       - AI_API_KEY=${AI_API_KEY}
       - API_KEY=${API_KEY}
     depends_on:

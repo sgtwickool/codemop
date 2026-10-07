@@ -5,6 +5,8 @@ import pytest
 import json
 from unittest.mock import AsyncMock, patch
 
+from tests.helpers import SAMPLE_DIFF, FakeReviewModel
+
 
 class TestErrorHandlingIntegration:
     """Integration tests for error handling."""
@@ -81,8 +83,8 @@ class TestErrorHandlingIntegration:
         
         # Mock AI analysis to fail
         failing_ai = AsyncMock(side_effect=Exception("AI API network timeout"))
-        with patch('app.services.pr_analysis.fetch_pr_diff', new=AsyncMock(return_value="diff")), \
-             patch('app.services.pr_analysis.analyze_diff', new=failing_ai):
+        with patch('app.services.pr_analysis.fetch_pr_diff', new=AsyncMock(return_value=SAMPLE_DIFF)), \
+             patch('app.services.pr_analysis.review_model', return_value=FakeReviewModel(failing_ai)):
             
             response = client.post(
                 "/api/v1/github/webhook",

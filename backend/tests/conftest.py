@@ -11,9 +11,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from tests.helpers import TEST_API_KEY, TEST_WEBHOOK_SECRET, pr_event, sign_body
+from tests.helpers import TEST_API_KEY, TEST_WEBHOOK_SECRET, FakeReviewModel, pr_event, sign_body
 
 _test_db_dir = tempfile.mkdtemp(prefix="codemop-tests-")
+
+# Provider keys from the developer's own environment mustn't change what the tests see
+for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "MISTRAL_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"):
+    os.environ.pop(name, None)
 
 # Environment variables take precedence over the .env file
 os.environ.update({
@@ -23,8 +27,8 @@ os.environ.update({
     "DATABASE_URL": os.environ.get("TEST_DATABASE_URL", f"sqlite:///{_test_db_dir}/test.db"),
     "GITHUB_WEBHOOK_SECRET": TEST_WEBHOOK_SECRET,
     "API_KEY": TEST_API_KEY,
+    "AI_PROVIDER": "anthropic",
     "AI_API_KEY": "test_ai_key",
-    "AI_API_URL": "https://ai.invalid/v1/chat/completions",
     "ENABLE_METRICS": "false",
     "SENTRY_DSN": "",
 })
@@ -82,10 +86,14 @@ def rate_limiting():
 
 @pytest.fixture(autouse=True)
 def no_network():
-    """Fail outbound HTTP calls by default; tests that need a response mock them."""
+    """
+    The background review can't reach GitHub or a real model: the diff fetch fails and the
+    model refuses, unless a test patches them (see the `ai` fixture in test_webhook_processing).
+    """
     blocked = AsyncMock(side_effect=RuntimeError("Network access is disabled in tests"))
-    # Every outbound call goes through app.utils.http.fetch_with_retry
-    with patch("app.utils.http.fetch_with_retry", new=blocked):
+    refusing_model = FakeReviewModel(blocked)
+    with patch("app.services.pr_analysis.fetch_pr_diff", new=blocked), \
+         patch("app.services.pr_analysis.create_model", return_value=refusing_model):
         yield blocked
 
 

@@ -1,33 +1,25 @@
-# Development Dockerfile for CodeMop
-# Uses same Python version as production for consistency
-
+# Development image for the CodeMop webhook server, used by docker-compose.yml (which mounts
+# backend/src over /app/src so changes reload). Build it from the repository root.
 FROM python:3.14-slim
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create and switch to a non-root user for security (same as production)
 RUN useradd -m appuser
 USER appuser
 WORKDIR /app
 
-# Copy requirements first for better caching
-COPY --chown=appuser:appuser requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
+ENV PATH=/home/appuser/.local/bin:$PATH \
+    PYTHONPATH=/app/src \
+    PYTHONUNBUFFERED=1 \
+    APP_ENV=development \
+    DEBUG=True
 
-# Add user's local bin to PATH
-ENV PATH=/home/appuser/.local/bin:$PATH
+COPY --chown=appuser:appuser backend/requirements.txt backend/requirements-dev.txt ./
+RUN pip install --user --no-cache-dir -r requirements-dev.txt
 
-# Environment variables for development
-ENV PYTHONPATH=/app/src
-ENV PYTHONUNBUFFERED=1
-ENV APP_ENV=development
-ENV DEBUG=True
+# The codemop package (rebuild the image after changing it)
+COPY --chown=appuser:appuser pyproject.toml README.md LICENSE /tmp/codemop/
+COPY --chown=appuser:appuser src /tmp/codemop/src
+RUN pip install --user --no-cache-dir --no-deps /tmp/codemop && rm -rf /tmp/codemop
 
-# Copy application code
-COPY --chown=appuser:appuser . .
+COPY --chown=appuser:appuser backend/src /app/src
 
-# Development command (will be overridden by docker-compose)
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
