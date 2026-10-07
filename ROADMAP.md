@@ -78,7 +78,7 @@ the server switches to that core when it lands.
 - [x] Move the compose files to Postgres 17 (13 is end of life)
 - [x] Upsert PRs in a single statement, so concurrent deliveries for the same PR can't collide
 - [x] De-duplicate deliveries by `X-GitHub-Delivery` (GitHub redelivers on timeouts and manual retries)
-- [ ] Prune old delivery records (they're only needed for a few days)
+- [x] Prune old delivery records (kept for 7 days; pruned on each webhook, using an index)
 - [x] Return from the webhook within 1s; run analysis in the background (measured: 0.08s with an 8s diff fetch behind it)
 - [x] Analyse only on `opened`, `synchronize`, `reopened` and `ready_for_review` (not drafts, not already-analysed commits); replace old suggestions per head SHA, discarding results for superseded commits
 - [x] Store PR state (open/closed/merged), not the last webhook action

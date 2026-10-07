@@ -82,6 +82,7 @@ async def handle_github_webhook(
     # Store the PR and the delivery together: if this fails, a redelivery is processed again
     try:
         pr_record = pr_service.create_pr(db, pr_db_data)
+        webhook_delivery_repository.prune(db)
         db.commit()
     except Exception as e:
         logger.error(f"Failed to store PR data: {str(e)}")

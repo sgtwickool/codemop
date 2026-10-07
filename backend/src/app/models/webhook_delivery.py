@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, UniqueConstraint
+from sqlalchemy import Index, String, UniqueConstraint
 from app.models.base import BaseModel
 
 class WebhookDelivery(BaseModel):
@@ -7,6 +7,7 @@ class WebhookDelivery(BaseModel):
     __tablename__ = "webhook_deliveries"
     __table_args__ = (
         UniqueConstraint("delivery_id", name="uq_webhook_deliveries_delivery_id"),
+        Index("ix_webhook_deliveries_created_at", "created_at"),  # for pruning old rows
     )
 
     delivery_id: Mapped[str] = mapped_column(String(64))  # X-GitHub-Delivery
