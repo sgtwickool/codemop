@@ -60,7 +60,7 @@ def extract_pr_data(payload: Dict[str, Any]) -> Dict[str, Any]:
     
     # Return only the fields needed for the PR model
     return {
-        "github_id": pr_number,
+        "number": pr_number,
         "repo_name": repo_data.get("name"),
         "repo_full_name": repo_data.get("full_name"),
         "branch": _as_dict(pr_data.get("head")).get("ref"),

@@ -10,44 +10,24 @@ from unittest.mock import patch
 class TestEdgeCasesIntegration:
     """Integration tests for edge cases."""
 
-    def test_concurrent_webhook_requests(self, client, github_signature):
-        """Concurrent webhooks for different PRs all succeed."""
-        # Concurrent deliveries for the *same* PR race on insert; the fix (upsert)
-        # is tracked in ROADMAP.md Phase 1
-        def send_request(number):
-            payload = {
-                "action": "opened",
-                "number": number,
-                "pull_request": {
-                    "title": "Test PR",
-                    "user": {"login": "testuser"},
-                    "head": {"ref": "test-branch"},
-                    "html_url": f"https://github.com/testuser/testrepo/pull/{number}",
-                    "diff_url": f"https://github.com/testuser/testrepo/pull/{number}.diff"
-                },
-                "repository": {
-                    "name": "testrepo",
-                    "full_name": "testuser/testrepo"
-                }
-            }
+    def test_concurrent_webhook_requests(self, client, github_webhook_payload, github_signature):
+        """Concurrent deliveries for the same PR all succeed and store one PR."""
+        def send_request(_):
             return client.post(
                 "/api/v1/github/webhook",
-                content=json.dumps(payload),
+                content=json.dumps(github_webhook_payload),
                 headers={
                     "X-GitHub-Event": "pull_request",
-                    "X-Hub-Signature-256": github_signature(payload),
+                    "X-Hub-Signature-256": github_signature(github_webhook_payload),
                     "Content-Type": "application/json"
                 }
             )
         
         with ThreadPoolExecutor(max_workers=5) as pool:
-            responses = list(pool.map(send_request, range(1, 6)))
+            responses = list(pool.map(send_request, range(5)))
         
-        # All should succeed
-        for response in responses:
-            assert response.status_code == 200
-            data = response.json()
-            assert data["status"] == "success"
+        assert [response.status_code for response in responses] == [200] * 5
+        assert len({response.json()["database_id"] for response in responses}) == 1
 
     def test_large_payload_handling(self, client):
         """Test handling of large payloads."""

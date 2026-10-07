@@ -28,7 +28,7 @@ services:
       - codemop_network
 
   db:
-    image: postgres:13-alpine
+    image: postgres:17-alpine
     environment:
       POSTGRES_USER: codemop
       POSTGRES_PASSWORD: codemop

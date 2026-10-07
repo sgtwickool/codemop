@@ -14,7 +14,7 @@ class TestSuggestionService:
         """Test successful suggestion creation."""
         # First create a PR for the suggestion to belong to
         pr_data = {
-            "github_id": 123,
+            "number": 123,
             "repo_name": "testrepo",
             "repo_full_name": "testuser/testrepo",
             "branch": "test-branch",
@@ -51,7 +51,7 @@ class TestSuggestionService:
         """Test creating multiple suggestions at once."""
         # Create a PR first
         pr_data = {
-            "github_id": 456,
+            "number": 456,
             "repo_name": "testrepo",
             "repo_full_name": "testuser/testrepo",
             "branch": "test-branch",
@@ -107,7 +107,7 @@ class TestSuggestionService:
         """Test getting suggestions for a specific PR."""
         # Create a PR first
         pr_data = {
-            "github_id": 789,
+            "number": 789,
             "repo_name": "testrepo",
             "repo_full_name": "testuser/testrepo",
             "branch": "test-branch",
@@ -151,7 +151,7 @@ class TestSuggestionService:
         """Test getting suggestions for PR with no suggestions."""
         # Create a PR first
         pr_data = {
-            "github_id": 999,
+            "number": 999,
             "repo_name": "testrepo",
             "repo_full_name": "testuser/testrepo",
             "branch": "test-branch",
@@ -175,7 +175,7 @@ class TestSuggestionService:
         """Test creating suggestion with missing optional fields."""
         # Create a PR first
         pr_data = {
-            "github_id": 111,
+            "number": 111,
             "repo_name": "testrepo",
             "repo_full_name": "testuser/testrepo",
             "branch": "test-branch",
