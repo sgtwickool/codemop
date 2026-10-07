@@ -14,7 +14,7 @@ source venv/bin/activate
 
 # Install the codemop package (editable) and the server's dev/test dependencies
 pip install --upgrade pip
-pip install -e . -r backend/requirements-dev.txt
+pip install -e . -r server/requirements-dev.txt
 
 if [ ! -f .env ]; then
     cp .env.example .env
@@ -27,8 +27,8 @@ echo "Setting up database..."
 createdb codemop 2>/dev/null || echo "Database already exists (or run: sudo -u postgres createdb codemop)"
 
 # Initialize database tables
-(cd backend && PYTHONPATH=src python -c "from app.db.session import init_db; init_db()")
+(cd server && PYTHONPATH=src python -c "from app.db.session import init_db; init_db()")
 
 echo "Development environment setup complete!"
-echo "Run the tests with: cd backend && pytest"
+echo "Run the tests with: cd server && pytest"
 echo "Start the server with: ./scripts/run_dev.sh"

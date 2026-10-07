@@ -13,5 +13,5 @@ severity:
 format: txt
 recursive: true
 targets:
-  - backend/src
+  - server/src
 verbose: 1

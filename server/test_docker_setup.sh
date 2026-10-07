@@ -30,11 +30,11 @@ echo "✅ Container runtime and compose tools are available"
 echo ""
 echo "📁 Checking production files..."
 
-if [ ! -f "backend/Dockerfile.prod" ]; then
-    echo "❌ backend/Dockerfile.prod not found"
+if [ ! -f "server/Dockerfile.prod" ]; then
+    echo "❌ server/Dockerfile.prod not found"
     exit 1
 fi
-echo "✅ backend/Dockerfile.prod exists"
+echo "✅ server/Dockerfile.prod exists"
 
 if [ ! -f "docker-compose.prod.yml" ]; then
     echo "❌ docker-compose.prod.yml not found"
@@ -59,7 +59,7 @@ fi
 echo ""
 echo "🐳 Testing container build..."
 
-cd backend || exit 1
+cd server || exit 1
 
 BUILD_CMD="docker"
 if [ "$USE_PODMAN" = true ]; then

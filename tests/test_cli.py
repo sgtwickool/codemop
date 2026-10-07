@@ -146,6 +146,12 @@ def test_github_token_falls_back_to_gh(monkeypatch):
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("GH_TOKEN", raising=False)
     monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/gh")
-    monkeypatch.setattr(cli.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 0, "stdout": "gho_abc\n"})())
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return type("R", (), {"returncode": 0, "stdout": "gho_abc\n"})()
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
 
     assert cli.github_token() == "gho_abc"
+    assert calls == [["/usr/bin/gh", "auth", "token"]]  # the resolved path, not whatever "gh" is on PATH later

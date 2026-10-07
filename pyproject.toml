@@ -20,7 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Software Development :: Quality Assurance",
 ]
-# A library: version ranges, not exact pins (the server in backend/ pins exactly)
+# A library: version ranges, not exact pins (the server in server/ pins exactly)
 dependencies = [
     "anthropic>=1.11,<2",
     "httpx>=0.28,<1",
@@ -47,5 +47,5 @@ packages = ["src/codemop"]
 testpaths = ["tests"]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
-# importlib: test dirs aren't packages, so they can't clash with backend/tests
+# importlib: test dirs aren't packages, so they can't clash with server/tests
 addopts = ["--strict-markers", "--import-mode=importlib"]

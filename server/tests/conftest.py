@@ -1,5 +1,5 @@
 """
-Pytest configuration and fixtures for CodeMop backend tests.
+Pytest configuration and fixtures for CodeMop server tests.
 
 Settings are fixed here, before the app is imported, so the tests never depend on a
 developer's .env file and never reach a real database, GitHub or AI provider.

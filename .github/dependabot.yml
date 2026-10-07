@@ -2,7 +2,7 @@
 version: 2
 updates:
   - package-ecosystem: pip
-    directories: ["/", "/backend"]
+    directories: ["/", "/server"]
     schedule:
       interval: monthly
     groups:
@@ -18,7 +18,7 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: docker
-    directory: /backend
+    directory: /server
     schedule:
       interval: monthly
     groups:
