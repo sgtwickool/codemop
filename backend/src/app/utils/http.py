@@ -1,7 +1,10 @@
 import httpx
 import asyncio
+import logging
 from typing import Optional, Dict, Any
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 async def fetch_with_retry(
     url: str,
@@ -29,14 +32,14 @@ async def fetch_with_retry(
             if e.response.status_code == 429 and attempt < settings.MAX_RETRIES - 1:
                 # Rate limited, wait and retry
                 wait_time = settings.RETRY_DELAY * (attempt + 1)
-                print(f"Rate limited, retrying in {wait_time}s (attempt {attempt + 1}/{settings.MAX_RETRIES})")
+                logger.warning(f"Rate limited, retrying in {wait_time}s (attempt {attempt + 1}/{settings.MAX_RETRIES})")
                 await asyncio.sleep(wait_time)
             else:
                 raise
         except Exception as e:
             if attempt < settings.MAX_RETRIES - 1:
                 wait_time = settings.RETRY_DELAY * (attempt + 1)
-                print(f"Request error, retrying in {wait_time}s (attempt {attempt + 1}/{settings.MAX_RETRIES}): {str(e)}")
+                logger.warning(f"Request error, retrying in {wait_time}s (attempt {attempt + 1}/{settings.MAX_RETRIES}): {str(e)}")
                 await asyncio.sleep(wait_time)
             else:
                 raise

@@ -51,7 +51,8 @@ def setup_logging() -> None:
     # Configure JSON logging
     log_handler = logging.StreamHandler()
     formatter = CustomJsonFormatter(
-        fmt="%(timestamp)s %(levelname)s %(service)s %(environment)s %(message)s %(name)s"
+        fmt="%(timestamp)s %(levelname)s %(service)s %(environment)s %(message)s %(name)s",
+        json_ensure_ascii=False,  # keep non-ASCII text (names, titles, emoji) readable
     )
     log_handler.setFormatter(formatter)
     
