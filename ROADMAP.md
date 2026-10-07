@@ -103,7 +103,7 @@ verified; the stored-suggestions check is done in Phase 2 with Claude.)*
 
 Extract the review logic into a package that has nothing to do with FastAPI or the database.
 
-- [ ] `codemop` core: diff → per-file chunks → prompt → model → validated suggestions
+- [x] `codemop` core: diff → per-file chunks → prompt → model → validated suggestions, with one report of what was reviewed, skipped, set aside or failed
 - [x] Handle large diffs by chunking per file (and per hunk for big files) instead of cutting off at 10k characters; report anything skipped
 - [x] Map suggestions to diff positions (GitHub only accepts comments on lines in the diff); set aside ones that aren't
 - [ ] Config file `.codemop.yml`: model, ignored paths, minimum confidence, max comments
@@ -119,14 +119,14 @@ Extract the review logic into a package that has nothing to do with FastAPI or t
 Users bring their own provider and key, and review quality varies a lot between models,
 so the core must not care which model it's talking to, and the choice of default must be measured.
 
-- [ ] A single `ReviewModel` interface the rest of the code depends on; provider SDKs are imported only inside their adapters
+- [x] A single `ReviewModel` interface the rest of the code depends on; provider SDKs are imported only inside their adapters
 - [ ] Adapters: Anthropic (official `anthropic` SDK, not an OpenAI-compatible shim, so structured output and refusal handling work properly), and one OpenAI-compatible adapter that covers Mistral (its API is OpenAI-compatible, structured output included), OpenAI, OpenRouter and local models through Ollama or vLLM
 - [ ] Each adapter uses its provider's native structured output (for Anthropic, `output_config.format` / `messages.parse()`). Every result is then validated against the same Pydantic schema, with one repair retry for providers that don't enforce a schema. Drop the plain-text scraping fallback
-- [ ] Avoid provider-specific tricks that are going away: current Claude models reject both forced `tool_choice` and assistant-message prefill
+- [x] Avoid provider-specific tricks that are going away: current Claude models reject both forced `tool_choice` and assistant-message prefill (structured output instead)
 - [ ] Treat non-answers as such: refusals, truncated output (`max_tokens`), rate limits and a rejected API key produce "no review, because …" (saying what to fix, like the GitHub errors do), and are never parsed as suggestions
-- [ ] Model-aware token budgets: count tokens with each provider's own counter (for Anthropic, the `count_tokens` endpoint, not a tiktoken estimate) and size chunks to the model's context window
+- [x] Token budgets: chunks are planned with a deliberately high estimate (3 characters per token), so they're never too big for `chunk_tokens`; real usage comes back on every response. (Counting exactly with each provider's endpoint would cost an API call per file and hunk while planning)
 - [ ] Config: `provider`, `model`, `api_key_env`, optional `base_url`; no model IDs hardcoded outside the defaults
-- [ ] Record tokens and estimated cost per run; use prompt caching where the provider supports it (the instructions are shared across every chunk of a PR)
+- [ ] Record tokens and estimated cost per run. (Prompt caching doesn't help yet: the shared instructions are a few hundred tokens, below Claude's minimum cacheable prefix of 1,024+)
 - [ ] **Model comparison eval:** a fixed set of real PR diffs with known issues, scored the same way for every provider and model (real issues found, false positives, valid line positions, cost per useful comment). It picks the default and catches regressions when prompts or models change
 - [ ] End-to-end check carried over from Phase 1: a real PR through the server with Claude ends with stored suggestions
 - [ ] Choose the default model from the eval. Start by comparing Claude Opus 5.5 (`claude-opus-5-5`) against cheaper options, Codestral (the current default) and a local model

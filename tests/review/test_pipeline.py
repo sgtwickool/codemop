@@ -1,0 +1,112 @@
+"""
+The whole review of a diff, with a fake model.
+"""
+import pytest
+
+from codemop.providers.base import NoReview, Usage
+from codemop.review.chunks import estimate_tokens
+from codemop.review.diff import parse_diff
+from codemop.review.pipeline import review_diff
+from codemop.review.prompt import SYSTEM_PROMPT, render_file
+from codemop.review.schema import ModelReview, ModelSuggestion
+
+
+def suggestion(file_path, line, confidence=0.9, title="Issue"):
+    return ModelSuggestion(file_path=file_path, line=line, severity="bug", title=title,
+                           explanation="e", suggested_code=None, confidence=confidence)
+
+
+class FakeModel:
+    """Answers each chunk by looking up the first file it mentions"""
+    name = "fake/model"
+
+    def __init__(self, answers):
+        self.answers = answers  # path -> list of suggestions, or a NoReview to raise
+        self.calls = []
+
+    async def review(self, instructions, diff_text):
+        self.calls.append((instructions, diff_text))
+        path = diff_text.split("\n", 1)[0].removeprefix("### ").rsplit(" (", 1)[0]
+        answer = self.answers.get(path, [])
+        if isinstance(answer, NoReview):
+            raise answer
+        return ModelReview(suggestions=answer), Usage(input_tokens=100, output_tokens=10)
+
+
+@pytest.mark.asyncio
+async def test_reviews_reviewable_files_and_reports_the_rest(sample_diff):
+    model = FakeModel({"app/service.py": [suggestion("app/service.py", 13), suggestion("app/service.py", 30)]})
+
+    report = await review_diff(sample_diff, model)
+
+    assert report.model == "fake/model"
+    assert [(s.file_path, s.line) for s in report.suggestions] == [("app/service.py", 13)]
+    assert [(u.suggestion.line, u.reason) for u in report.unplaced] == [
+        (30, "lines aren't added or unchanged lines in the diff")
+    ]
+    assert {s.path for s in report.skipped} == {"old.txt", "docs/b.md", "logo.png", "uv.lock"}
+    assert report.complete
+    assert model.calls[0][0] == SYSTEM_PROMPT
+    assert report.usage == Usage(input_tokens=100, output_tokens=10)  # one chunk
+
+
+@pytest.mark.asyncio
+async def test_suggestions_must_be_for_files_in_their_own_chunk(sample_diff):
+    """A model can only point at files it was shown"""
+    files = parse_diff(sample_diff)
+    service = next(f for f in files if f.path == "app/service.py")
+    model = FakeModel({"app/service.py": [suggestion("app/new_module.py", 1)]})
+
+    report = await review_diff(sample_diff, model, chunk_tokens=estimate_tokens(render_file(service)))
+
+    assert report.chunks == 2
+    assert report.suggestions == []
+    assert [u.reason for u in report.unplaced] == ["file isn't in the reviewed diff"]
+
+
+@pytest.mark.asyncio
+async def test_low_confidence_suggestions_are_counted_not_kept(sample_diff):
+    model = FakeModel({"app/service.py": [suggestion("app/service.py", 12, 0.3), suggestion("app/service.py", 13, 0.8)]})
+
+    report = await review_diff(sample_diff, model, min_confidence=0.5)
+
+    assert [s.line for s in report.suggestions] == [13]
+    assert report.below_confidence == 1
+
+
+@pytest.mark.asyncio
+async def test_a_failed_chunk_is_reported_and_the_rest_still_reviewed(sample_diff):
+    files = parse_diff(sample_diff)
+    service = next(f for f in files if f.path == "app/service.py")
+    model = FakeModel({
+        "app/service.py": NoReview("declined", usage=Usage(input_tokens=50)),
+        "app/new_module.py": [suggestion("app/new_module.py", 2)],
+    })
+
+    report = await review_diff(sample_diff, model, chunk_tokens=estimate_tokens(render_file(service)))
+
+    assert [(f.paths, f.reason) for f in report.failed] == [(["app/service.py"], "declined")]
+    assert [s.file_path for s in report.suggestions] == ["app/new_module.py"]
+    assert not report.complete
+    assert report.usage.input_tokens == 150
+
+
+@pytest.mark.asyncio
+async def test_a_fatal_error_stops_the_chunks_not_yet_started(sample_diff):
+    files = parse_diff(sample_diff)
+    service = next(f for f in files if f.path == "app/service.py")
+    model = FakeModel({"app/service.py": NoReview("rejected API key", fatal=True)})
+
+    report = await review_diff(sample_diff, model, chunk_tokens=estimate_tokens(render_file(service)), concurrency=1)
+
+    assert report.stopped == "rejected API key"
+    assert len(model.calls) == 1
+    assert [f.reason for f in report.failed] == ["rejected API key", "not reviewed: rejected API key"]
+
+
+@pytest.mark.asyncio
+async def test_empty_diff():
+    report = await review_diff("", FakeModel({}))
+
+    assert report.chunks == 0
+    assert report.suggestions == [] and report.complete

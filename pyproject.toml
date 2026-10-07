@@ -20,6 +20,7 @@ classifiers = [
 ]
 # A library: version ranges, not exact pins (the server in backend/ pins exactly)
 dependencies = [
+    "anthropic>=1.11,<2",
     "httpx>=0.28,<1",
     "pydantic>=2.13,<3",
 ]
