@@ -37,14 +37,19 @@ async def handle_github_webhook(
     
     Responds straight away; the analysis runs afterwards (GitHub gives up after 10 seconds).
     """
+    # Authenticate every request before acting on it, whatever the event
+    request_body = await request.body()
+    await validate_github_webhook_signature(request_body, x_hub_signature_256)
+    
+    # GitHub sends a ping when the webhook is created; the reply shows in its delivery log
+    if x_github_event == "ping":
+        logger.info("Received ping from GitHub")
+        return {"status": "pong", "message": "CodeMop is receiving webhooks from GitHub"}
+    
     # Only process pull_request events
     if x_github_event != "pull_request":
         logger.info(f"Received non-PR event: {x_github_event}")
         return {"status": "ignored", "reason": "not a pull_request event"}
-    
-    # Authenticate the request before looking at its contents
-    request_body = await request.body()
-    await validate_github_webhook_signature(request_body, x_hub_signature_256)
     
     payload = parse_webhook_payload(request.headers.get("content-type"), request_body)
     

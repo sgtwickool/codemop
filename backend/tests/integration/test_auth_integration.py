@@ -141,18 +141,30 @@ class TestAuthenticationIntegration:
             assert "detail" in data
 
     def test_authentication_not_required_endpoints(self, client):
-        """Test that public endpoints don't require authentication."""
-        public_endpoints = [
-            "/api/v1/health",
-            "/api/v1/github/webhook"
-        ]
+        """The health check needs no authentication."""
+        response = client.get("/api/v1/health")
         
-        for endpoint in public_endpoints:
-            if endpoint == "/api/v1/github/webhook":
-                # Webhook requires POST
-                response = client.post(endpoint, json={"action": "test"})
-            else:
-                response = client.get(endpoint)
-            
-            # Should not be 401 (Unauthorized)
-            assert response.status_code != 401
+        assert response.status_code == 200
+
+    def test_webhook_uses_signatures_not_api_keys(self, client, github_signature):
+        """The webhook authenticates GitHub by signature; it doesn't need the API key."""
+        payload = {"action": "test"}
+        
+        unsigned = client.post("/api/v1/github/webhook", json=payload)
+        signed = client.post(
+            "/api/v1/github/webhook",
+            content=json.dumps(payload),
+            headers={"X-Hub-Signature-256": github_signature(payload), "Content-Type": "application/json"}
+        )
+        
+        assert unsigned.status_code == 401
+        assert signed.status_code == 200
+
+    def test_unset_api_key_rejects_every_request(self, client, monkeypatch):
+        """With no API_KEY configured, no token (not even an empty one) is accepted."""
+        from app.config import settings
+        monkeypatch.setattr(settings, "API_KEY", "")
+        
+        for header in ["Bearer ", "Bearer", "", " "]:
+            response = client.get("/api/v1/pr/1/suggestions", headers={"Authorization": header})
+            assert response.status_code == 401, repr(header)
