@@ -14,6 +14,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 import time
 from functools import wraps
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
 from pythonjsonlogger.json import JsonFormatter
 import os
 
@@ -176,53 +177,42 @@ def monitor_endpoint(operation_name: str = None):
         return wrapper
     return decorator
 
+# Prometheus metrics. They're created on import, so they always exist (recording is cheap);
+# the HTTP server that exposes them only starts if ENABLE_METRICS is true
+REQUEST_COUNT = Counter(
+    'codemop_requests_total',
+    'Total HTTP Requests',
+    ['method', 'endpoint', 'status_code']
+)
+REQUEST_LATENCY = Histogram(
+    'codemop_request_latency_seconds',
+    'Request latency in seconds',
+    ['method', 'endpoint']
+)
+ACTIVE_REQUESTS = Gauge(
+    'codemop_active_requests',
+    'Number of active requests'
+)
+ERROR_COUNT = Counter(
+    'codemop_errors_total',
+    'Total Errors',
+    ['error_type', 'endpoint']
+)
+
 def setup_metrics() -> None:
     """
-    Set up Prometheus metrics (if configured)
+    Start the Prometheus metrics server if ENABLE_METRICS is true (off by default)
     """
+    if os.getenv("ENABLE_METRICS", "false").lower() != "true":
+        logging.getLogger(__name__).info("Metrics server disabled (set ENABLE_METRICS=true to enable)")
+        return
+    
+    metrics_port = int(os.getenv("METRICS_PORT", "8001"))
     try:
-        from prometheus_client import start_http_server, Counter, Gauge, Histogram
-        from prometheus_client.openmetrics.exposition import CONTENT_TYPE_LATEST
-        
-        # Only start metrics server in production or if explicitly enabled
-        if os.getenv("ENABLE_METRICS", "true").lower() == "true":
-            metrics_port = int(os.getenv("METRICS_PORT", "8001"))
-            start_http_server(metrics_port)
-            
-            # Define custom metrics
-            global REQUEST_COUNT, REQUEST_LATENCY, ACTIVE_REQUESTS, ERROR_COUNT
-            
-            REQUEST_COUNT = Counter(
-                'codemop_requests_total',
-                'Total HTTP Requests',
-                ['method', 'endpoint', 'status_code']
-            )
-            
-            REQUEST_LATENCY = Histogram(
-                'codemop_request_latency_seconds',
-                'Request latency in seconds',
-                ['method', 'endpoint']
-            )
-            
-            ACTIVE_REQUESTS = Gauge(
-                'codemop_active_requests',
-                'Number of active requests'
-            )
-            
-            ERROR_COUNT = Counter(
-                'codemop_errors_total',
-                'Total Errors',
-                ['error_type', 'endpoint']
-            )
-            
-            logging.getLogger(__name__).info(f"Metrics server started on port {metrics_port}")
-        else:
-            logging.getLogger(__name__).info("Metrics disabled by configuration")
-            
-    except ImportError:
-        logging.getLogger(__name__).warning("Prometheus client not installed, metrics disabled")
+        start_http_server(metrics_port)
+        logging.getLogger(__name__).info(f"Metrics server started on port {metrics_port}")
     except Exception as e:
-        logging.getLogger(__name__).error(f"Failed to initialize metrics: {e}")
+        logging.getLogger(__name__).error(f"Failed to start metrics server on port {metrics_port}: {e}")
 
 def setup_monitoring() -> None:
     """
@@ -236,9 +226,3 @@ def setup_monitoring() -> None:
     logger.info("Monitoring setup completed", extra={
         "components": ["logging", "error_tracking", "metrics"]
     })
-
-# Initialize metrics variables (will be set by setup_metrics)
-REQUEST_COUNT = None
-REQUEST_LATENCY = None
-ACTIVE_REQUESTS = None
-ERROR_COUNT = None
