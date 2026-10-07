@@ -1,0 +1,11 @@
+diff --git a/services/profile.py b/services/profile.py
+--- a/services/profile.py
++++ b/services/profile.py
+@@ -2,4 +2,6 @@
+     cached = await cache.get(f"profile:{user_id}")
+     if cached:
+         return cached
+-    return await db.fetch_profile(user_id)
++    profile = await db.fetch_profile(user_id)
++    cache.set(f"profile:{user_id}", profile, ttl=300)
++    return profile

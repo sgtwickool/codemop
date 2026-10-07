@@ -1,0 +1,20 @@
+diff --git a/geo/distance.py b/geo/distance.py
+--- a/geo/distance.py
++++ b/geo/distance.py
+@@ -1,6 +1,7 @@
+ import math
+ 
+ EARTH_RADIUS_KM = 6371.0
++KM_PER_MILE = 1.609344
+ 
+ 
+ def haversine_km(lat1, lon1, lat2, lon2):
+@@ -10,3 +11,8 @@
+     dlmb = math.radians(lon2 - lon1)
+     a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlmb / 2) ** 2
+     return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(a))
++
++
++def haversine_miles(lat1, lon1, lat2, lon2):
++    """Great-circle distance between two points, in miles"""
++    return haversine_km(lat1, lon1, lat2, lon2) / KM_PER_MILE

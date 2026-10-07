@@ -1,0 +1,11 @@
+diff --git a/auth/tokens.py b/auth/tokens.py
+--- a/auth/tokens.py
++++ b/auth/tokens.py
+@@ -7,4 +7,6 @@
+ 
+ def check_token(token):
+     """Raise TokenExpired if the token can no longer be used"""
+-    pass
++    now = datetime.now(timezone.utc)
++    if token.expires_at > now:
++        raise TokenExpired(f"token {token.id} expired at {token.expires_at}")
