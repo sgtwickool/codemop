@@ -129,7 +129,8 @@ so the core must not care which model it's talking to, and the choice of default
 - [ ] Config: `provider`, `model`, `api_key_env`, optional `base_url`; no model IDs hardcoded outside the defaults
 - [ ] Record tokens and estimated cost per run. (Prompt caching doesn't help yet: the shared instructions are a few hundred tokens, below Claude's minimum cacheable prefix of 1,024+)
 - [ ] **Model comparison eval:** a fixed set of real PR diffs with known issues, scored the same way for every provider and model (real issues found, false positives, valid line positions, cost per useful comment). It picks the default, catches regressions when prompts or models change, and later measures complexity-based routing (Phase 6)
-- [ ] End-to-end check carried over from Phase 1: a real PR through the server with Claude ends with stored suggestions. (Done with a local model on 2026-10-07: a real webhook for PR #2 went through the server, the package and qwen2.5-coder:7b, and 5 suggestions were stored. Still to do with Claude)
+- [x] End-to-end check carried over from Phase 1: a real PR through the server with Claude ends with stored suggestions. (2026-10-07: a real webhook for PR #2 went through the server, the package and claude-opus-5-5 in 12s, and 3 suggestions were stored; the CLI reviewed the same PR in 11s for about $0.02. Done with a local qwen2.5-coder:7b too)
+- [ ] One `min_confidence` for the CLI and the server (the CLI hides suggestions below 0.5; the server stores everything)
 - [ ] Choose the default model from the eval. Start by comparing Claude Opus 5.5 (`claude-opus-5-5`) against cheaper options, Codestral (the current default) and a local model
 
 **Done when:** `pipx run codemop review sgtwickool/codemop#N` prints useful suggestions
