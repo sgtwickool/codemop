@@ -105,7 +105,7 @@ Extract the review logic into a package that has nothing to do with FastAPI or t
 - [x] `codemop` core: diff → per-file chunks → prompt → model → validated suggestions, with one report of what was reviewed, skipped, set aside or failed
 - [x] Handle large diffs by chunking per file (and per hunk for big files) instead of cutting off at 10k characters; report anything skipped
 - [x] Map suggestions to diff positions (GitHub only accepts comments on lines in the diff); set aside ones that aren't
-- [ ] Config file `.codemop.yml`: model, ignored paths, minimum confidence, max comments
+- [x] Config file `.codemop.yml`: ignored paths, minimum confidence, chunk size; read from the repo's default branch by both the CLI and the server. It deliberately can't choose the provider, model or endpoint (see the decisions table). Max comments comes with posting, in Phase 3
 - [x] CLI: `codemop review owner/repo#123` (or a PR URL, or `-` for a diff on stdin) prints the review; `--json` for machines. Posting comes with `--post` in Phase 3. Uses `GITHUB_TOKEN`, or the `gh` login, for private repos
 - [ ] Golden tests from recorded diffs and model responses
 - [x] The server reviews with the package; its own Mistral-only AI code, response parser and diff fetcher are gone. Configured with `AI_PROVIDER`, `AI_MODEL`, `AI_BASE_URL` and `AI_API_KEY`
@@ -126,11 +126,11 @@ so the core must not care which model it's talking to, and the choice of default
 - [x] Detect input a server silently dropped (Ollama does when a request doesn't fit its context window): CodeMop compares the reported token count with what it sent and stops with a fix, rather than reviewing a fragment
 - [x] Treat non-answers as such: refusals, truncated output (`max_tokens`), rate limits and a rejected API key produce "no review, because …" (saying what to fix, like the GitHub errors do), and are never parsed as suggestions
 - [x] Token budgets: chunks are planned with a deliberately high estimate (3 characters per token), so they're never too big for `chunk_tokens`; real usage comes back on every response. (Counting exactly with each provider's endpoint would cost an API call per file and hunk while planning)
-- [ ] Config: `provider`, `model`, `api_key_env`, optional `base_url`; no model IDs hardcoded outside the defaults
-- [ ] Record tokens and estimated cost per run. (Prompt caching doesn't help yet: the shared instructions are a few hundred tokens, below Claude's minimum cacheable prefix of 1,024+)
+- [x] Config: `provider`, `model`, `api_key_env`, optional `base_url`, from flags or `CODEMOP_PROVIDER` / `CODEMOP_MODEL` / `CODEMOP_BASE_URL` (the server: `AI_*`); no model IDs hardcoded outside the defaults
+- [x] Record tokens and estimated cost per run (list prices, dated; no estimate for models without a known price). (Prompt caching doesn't help yet: the shared instructions are a few hundred tokens, below Claude's minimum cacheable prefix of 1,024+)
 - [ ] **Model comparison eval:** a fixed set of real PR diffs with known issues, scored the same way for every provider and model (real issues found, false positives, valid line positions, cost per useful comment). It picks the default, catches regressions when prompts or models change, and later measures complexity-based routing (Phase 6)
 - [x] End-to-end check carried over from Phase 1: a real PR through the server with Claude ends with stored suggestions. (2026-10-07: a real webhook for PR #2 went through the server, the package and claude-opus-5-5 in 12s, and 3 suggestions were stored; the CLI reviewed the same PR in 11s for about $0.02. Done with a local qwen2.5-coder:7b too)
-- [ ] One `min_confidence` for the CLI and the server (the CLI hides suggestions below 0.5; the server stores everything)
+- [x] One `min_confidence` for the CLI and the server: 0.5 by default, or the repo's `.codemop.yml`
 - [ ] Choose the default model from the eval. Start by comparing Claude Opus 5.5 (`claude-opus-5-5`) against cheaper options, Codestral (the current default) and a local model
 
 **Done when:** `pipx run codemop review sgtwickool/codemop#N` prints useful suggestions
@@ -216,6 +216,7 @@ Action).
 |------|----------|-----|
 | 2026-10-07 | Ship a GitHub Action first; the server becomes an optional self-hosted mode | Asking users to run Postgres, a server, ngrok and a webhook is too much friction |
 | 2026-10-07 | Bring your own model key; no hosted multi-tenant SaaS for now | Solo project; avoids holding other people's code and paying their inference |
+| 2026-10-07 | A repository's `.codemop.yml` controls review behaviour only, never the provider, model or endpoint, and is read from the default branch | Otherwise reviewing someone else's PR could send your API key to their server (or run up costs on an expensive model), and a PR could change how it's reviewed |
 | 2026-10-07 | Also ship as a Claude Code plugin (skill + MCP server), instead of having CodeMop call a user's Claude subscription | Anthropic doesn't allow third-party products to offer claude.ai login or rate limits without approval; running inside Claude Code is the supported way for subscribers to use it |
 | 2026-10-07 | Model agnostic: provider adapters behind one interface, selected by config; the default model is chosen by the comparison eval | Users have their own provider preferences, and quality differed noticeably between Le Chat and Claude in practice, so measure it rather than guess |
 | 2026-10-07 | The original scope (`docs/codemop_project_scope.md`, `docs/epics.md`) is superseded | It was sized for a five-person team. Epic 1 → Phases 0–1; Epic 6 → Phases 2–3; Epic 3 → Phase 3 (suggestion blocks) and Phase 6 (grouped fixes); Epics 2, 4, 5, 7, 8 deferred |

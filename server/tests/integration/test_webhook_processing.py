@@ -94,6 +94,35 @@ class TestWebhookProcessing:
         data = client.get(f"/api/v1/pr/{pr_id}/suggestions", headers=AUTH_HEADERS).json()
         assert [(s["title"], s["severity"], s["line_number"]) for s in data["suggestions"]] == [("In the diff", "bug", 5)]
 
+    def test_the_repositorys_config_is_applied(self, client, post_webhook, ai):
+        ai.return_value = [suggestion("Sure", confidence=0.95), suggestion("Unsure", confidence=0.6)]
+        config = AsyncMock(return_value="min_confidence: 0.9\n")
+
+        with patch("app.services.pr_analysis.fetch_repo_file", new=config):
+            pr_id = post_webhook(pr_event("opened")).json()["database_id"]
+
+        data = client.get(f"/api/v1/pr/{pr_id}/suggestions", headers=AUTH_HEADERS).json()
+        assert [s["title"] for s in data["suggestions"]] == ["Sure"]
+        assert config.await_args.args == ("testuser/testrepo", ".codemop.yml")
+
+    def test_without_a_config_the_default_confidence_applies(self, client, post_webhook, ai):
+        """The same default as the CLI, so both give the same review"""
+        ai.return_value = [suggestion("Sure", confidence=0.95), suggestion("Unsure", confidence=0.3)]
+
+        pr_id = post_webhook(pr_event("opened")).json()["database_id"]
+
+        data = client.get(f"/api/v1/pr/{pr_id}/suggestions", headers=AUTH_HEADERS).json()
+        assert [s["title"] for s in data["suggestions"]] == ["Sure"]
+
+    def test_a_broken_config_falls_back_to_the_defaults(self, client, post_webhook, ai):
+        ai.return_value = [suggestion("Sure", confidence=0.95)]
+
+        with patch("app.services.pr_analysis.fetch_repo_file", new=AsyncMock(return_value="min_confidence: [oops")):
+            pr_id = post_webhook(pr_event("opened")).json()["database_id"]
+
+        data = client.get(f"/api/v1/pr/{pr_id}/suggestions", headers=AUTH_HEADERS).json()
+        assert [s["title"] for s in data["suggestions"]] == ["Sure"]
+
     def test_drafts_are_analysed_once_ready_for_review(self, post_webhook, ai):
         draft = post_webhook(pr_event("opened", draft=True)).json()
         assert draft["analysis"] == "skipped"

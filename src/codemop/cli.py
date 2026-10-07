@@ -18,10 +18,17 @@ import subprocess  # nosec B404
 import sys
 import textwrap
 from enum import Enum
+from pathlib import Path
 from typing import List, Optional
 
 from codemop import __version__
-from codemop.github.client import DEFAULT_API_URL, GitHubError, fetch_pr_diff, parse_pr_reference
+from codemop.config import (
+    CONFIG_FILE, DEFAULT_MIN_CONFIDENCE, ConfigError, RepoConfig, load_config_file, parse_config,
+)
+from codemop.github.client import (
+    DEFAULT_API_URL, GitHubError, PullRequestRef, fetch_pr_diff, fetch_repo_file, parse_pr_reference,
+)
+from codemop.providers.pricing import PRICES_AS_OF
 from codemop.providers import DEFAULT_MODELS, PROVIDERS, create_model
 from codemop.review.chunks import DEFAULT_IGNORED_PATHS
 from codemop.providers.base import DEFAULT_CHUNK_TOKENS
@@ -48,21 +55,36 @@ def build_parser() -> argparse.ArgumentParser:
 
     review = commands.add_parser(
         "review", help="review a pull request or a diff",
-        description="Review a pull request (owner/repo#123 or a PR URL), or a diff on stdin (-).",
+        description=(
+            "Review a pull request (owner/repo#123 or a PR URL), or a diff on stdin (-). "
+            f"How the repository is reviewed comes from its {CONFIG_FILE} (on the default branch; "
+            "for stdin, the current directory), unless overridden here. Which model reviews it is "
+            "up to you: --provider/--model, or CODEMOP_PROVIDER / CODEMOP_MODEL / CODEMOP_BASE_URL."
+        ),
     )
     review.add_argument("target", help="owner/repo#123, a pull request URL, or - to read a diff from stdin")
-    review.add_argument("--provider", choices=PROVIDERS, default="anthropic",
-                        help="model provider (default: anthropic)")
-    review.add_argument("--model", help="model name (defaults: " + ", ".join(f"{p}: {m}" for p, m in DEFAULT_MODELS.items()) + ")")
-    review.add_argument("--base-url", help="API base URL, for openai-compatible or a self-hosted endpoint")
-    review.add_argument("--api-key-env", help="environment variable holding the provider's API key")
-    review.add_argument("--min-confidence", type=float, default=0.5,
-                        help="drop suggestions the model is less sure of (0-1, default: 0.5)")
-    review.add_argument("--chunk-tokens", type=int,
-                        help=f"largest piece of diff sent in one request (default: {DEFAULT_CHUNK_TOKENS:,}; 8,000 for ollama)")
-    review.add_argument("--ignore", action="append", metavar="PATTERN",
-                        help="path pattern to skip (repeatable; replaces the defaults: "
-                             + " ".join(DEFAULT_IGNORED_PATHS) + ")")
+
+    who = review.add_argument_group("model (chosen by you, never by the repository)")
+    who.add_argument("--provider", choices=PROVIDERS, default=os.environ.get("CODEMOP_PROVIDER", "anthropic"),
+                     help="model provider (default: $CODEMOP_PROVIDER, or anthropic)")
+    who.add_argument("--model", default=os.environ.get("CODEMOP_MODEL"),
+                     help="model name (default: $CODEMOP_MODEL, or the provider's: "
+                          + ", ".join(f"{p}: {m}" for p, m in DEFAULT_MODELS.items()) + ")")
+    who.add_argument("--base-url", default=os.environ.get("CODEMOP_BASE_URL"),
+                     help="API base URL, for openai-compatible or a self-hosted endpoint (default: $CODEMOP_BASE_URL)")
+    who.add_argument("--api-key-env", help="environment variable holding the provider's API key")
+
+    how = review.add_argument_group(f"review settings (override the repository's {CONFIG_FILE})")
+    how.add_argument("--config", type=Path, metavar="PATH",
+                     help=f"use this config file instead of the repository's {CONFIG_FILE}")
+    how.add_argument("--min-confidence", type=float,
+                     help=f"drop suggestions the model is less sure of (0-1, default: {DEFAULT_MIN_CONFIDENCE})")
+    how.add_argument("--chunk-tokens", type=int,
+                     help=f"largest piece of diff sent in one request (default: {DEFAULT_CHUNK_TOKENS:,}; 8,000 for ollama)")
+    how.add_argument("--ignore", action="append", metavar="PATTERN",
+                     help="another path pattern not to review (repeatable; added to the defaults: "
+                          + " ".join(DEFAULT_IGNORED_PATHS) + ")")
+
     review.add_argument("--github-api-url", default=DEFAULT_API_URL, help="for GitHub Enterprise Server")
     review.add_argument("--json", action="store_true", help="print the report as JSON")
     return parser
@@ -80,12 +102,24 @@ def _to_jsonable(value):
     return value
 
 
-def report_json(report: ReviewReport, target: str) -> str:
-    return json.dumps({"target": target, "complete": report.complete, **_to_jsonable(report)}, indent=2)
+def report_json(report: ReviewReport, target: str, config_source: str) -> str:
+    return json.dumps(
+        {"target": target, "config": config_source, "complete": report.complete, **_to_jsonable(report)},
+        indent=2,
+    )
 
 
-def report_text(report: ReviewReport, target: str) -> str:
-    lines: List[str] = [f"CodeMop review of {target} with {report.model}", ""]
+def format_cost(cost: Optional[float]) -> str:
+    if cost is None:
+        return "cost unknown for this model"
+    if cost == 0:
+        return "no cost (local model)"
+    return f"about ${cost:.2f}" if cost >= 0.01 else "under $0.01"
+
+
+def report_text(report: ReviewReport, target: str, config_source: str) -> str:
+    settings = "" if config_source == "defaults" else f" (settings from {config_source})"
+    lines: List[str] = [f"CodeMop review of {target} with {report.model}{settings}", ""]
     if not report.suggestions:
         lines.append("No issues found." if report.complete else "No issues found in the parts that were reviewed.")
     for s in report.suggestions:
@@ -121,22 +155,50 @@ def report_text(report: ReviewReport, target: str) -> str:
 
     u = report.usage
     lines.append(f"{len(report.suggestions)} suggestion(s) · {report.chunks} chunk(s) · "
-                 f"{u.input_tokens:,} input / {u.output_tokens:,} output tokens")
+                 f"{u.input_tokens:,} input / {u.output_tokens:,} output tokens · "
+                 f"{format_cost(report.cost)}" + ("" if not report.cost else f" (list prices as of {PRICES_AS_OF})"))
     return "\n".join(lines)
 
 
+async def load_config(args, pr: Optional[PullRequestRef], token: Optional[str]) -> tuple[RepoConfig, str]:
+    """The review settings and where they came from: --config, the repo's file, or the defaults"""
+    if args.config:
+        config = load_config_file(args.config)
+        if config is None:
+            raise ConfigError(f"{args.config} doesn't exist")
+        return config, str(args.config)
+    if pr is None:
+        config = load_config_file(Path(CONFIG_FILE))
+        return (config, CONFIG_FILE) if config else (RepoConfig(), "defaults")
+    text = await fetch_repo_file(pr.repo, CONFIG_FILE, token=token, api_url=args.github_api_url)
+    if text is None:
+        return RepoConfig(), "defaults"
+    return parse_config(text, source=f"{pr.repo}/{CONFIG_FILE}"), f"{pr.repo}/{CONFIG_FILE}"
+
+
 async def run_review(args) -> int:
-    if args.target == "-":
-        diff, target = sys.stdin.read(), "stdin"
-    else:
+    pr = None
+    token = None
+    if args.target != "-":
         try:
             pr = parse_pr_reference(args.target)
         except ValueError as e:
             print(f"codemop: {e}", file=sys.stderr)
             return 2
+        token = github_token()
+
+    try:
+        config, config_source = await load_config(args, pr, token)
+    except (ConfigError, GitHubError) as e:
+        print(f"codemop: {e}", file=sys.stderr)
+        return 2 if isinstance(e, ConfigError) else 1
+
+    if pr is None:
+        diff, target = sys.stdin.read(), "stdin"
+    else:
         target = str(pr)
         try:
-            diff = await fetch_pr_diff(pr, token=github_token(), api_url=args.github_api_url)
+            diff = await fetch_pr_diff(pr, token=token, api_url=args.github_api_url)
         except GitHubError as e:
             print(f"codemop: {e}", file=sys.stderr)
             return 1
@@ -149,11 +211,11 @@ async def run_review(args) -> int:
 
     report = await review_diff(
         diff, model,
-        chunk_tokens=args.chunk_tokens,
-        min_confidence=args.min_confidence,
-        ignored_paths=args.ignore if args.ignore else DEFAULT_IGNORED_PATHS,
+        chunk_tokens=args.chunk_tokens or config.chunk_tokens,
+        min_confidence=args.min_confidence if args.min_confidence is not None else config.min_confidence,
+        ignored_paths=[*DEFAULT_IGNORED_PATHS, *config.ignore, *(args.ignore or [])],
     )
-    print(report_json(report, target) if args.json else report_text(report, target))
+    print(report_json(report, target, config_source) if args.json else report_text(report, target, config_source))
     return 0 if report.complete else 1
 
 

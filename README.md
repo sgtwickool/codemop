@@ -89,6 +89,26 @@ print(extract_pr_data(payload))
 "
 ```
 
+### Configuring reviews
+A repository can include a `.codemop.yml` to say how its pull requests are reviewed:
+```yaml
+ignore:              # paths not to review, added to the defaults (lock files, minified files...)
+  - "docs/*"
+  - "*.snap"
+min_confidence: 0.6  # drop suggestions the model is less sure of (default: 0.5)
+chunk_tokens: 20000  # largest piece of diff sent in one request (default: the model's own)
+```
+CodeMop reads it from the repository's **default branch**, so a pull request can't change how it's
+reviewed (for `codemop review -`, from the current directory; `--config PATH` uses another file).
+Command-line flags override it.
+
+It can't choose the provider or model, or where requests go: whoever runs CodeMop decides that, with
+`--provider` / `--model` / `--base-url` or `CODEMOP_PROVIDER` / `CODEMOP_MODEL` / `CODEMOP_BASE_URL`
+(and the server's `AI_*` settings). Otherwise reviewing someone else's pull request could send your API
+key to their server.
+
+Each review ends with the tokens used and, where the model's list price is known, an estimated cost.
+
 ### Reviewing with a local model (Ollama)
 The `codemop` command can review with a model running on your own machine: no API key, no cost per
 review, and the code never leaves your computer. It's slower, and small models review less well.

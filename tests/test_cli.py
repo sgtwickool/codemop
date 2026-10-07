@@ -33,6 +33,9 @@ class FakeModel:
     name = "fake/model"
     chunk_tokens = 40_000
 
+    def cost(self, usage):
+        return usage.input_tokens * 10 / 1_000_000  # $10 per million input tokens
+
     def __init__(self, result):
         self.result = result
 
@@ -40,6 +43,17 @@ class FakeModel:
         if isinstance(self.result, Exception):
             raise self.result
         return ModelReview(suggestions=self.result), Usage(input_tokens=1234, output_tokens=56)
+
+
+@pytest.fixture(autouse=True)
+def no_repo_config(monkeypatch):
+    """Repositories have no .codemop.yml unless a test says so (and nothing reaches GitHub)"""
+    files = {}
+
+    async def fake_fetch_repo_file(repo, path, token=None, api_url=None):
+        return files.get((repo, path))
+    monkeypatch.setattr(cli, "fetch_repo_file", fake_fetch_repo_file)
+    return files
 
 
 @pytest.fixture
@@ -65,7 +79,7 @@ def test_reviews_a_diff_from_stdin(capsys, monkeypatch, fake_model):
     assert "CodeMop review of stdin with fake/model" in out
     assert "app.py:3  [bug, confidence 0.90]  Adds one to the total" in out
     assert "      return result" in out
-    assert "1 suggestion(s) · 1 chunk(s) · 1,234 input / 56 output tokens" in out
+    assert "1 suggestion(s) · 1 chunk(s) · 1,234 input / 56 output tokens · about $0.01 (list prices as of 2026-09-25)" in out
 
 
 def test_json_output(capsys, monkeypatch, fake_model):
@@ -155,3 +169,107 @@ def test_github_token_falls_back_to_gh(monkeypatch):
 
     assert cli.github_token() == "gho_abc"
     assert calls == [["/usr/bin/gh", "auth", "token"]]  # the resolved path, not whatever "gh" is on PATH later
+
+
+class RecordingModel(FakeModel):
+    """Remembers what review_diff was asked to do, via the chunks it receives"""
+    seen = []
+
+    async def review(self, instructions, diff_text):
+        RecordingModel.seen.append(diff_text)
+        return await super().review(instructions, diff_text)
+
+
+TWO_FILE_DIFF = DIFF + """\
+diff --git a/docs/guide.md b/docs/guide.md
+--- a/docs/guide.md
++++ b/docs/guide.md
+@@ -1 +1 @@
+-old
++new
+"""
+
+
+@pytest.fixture
+def pr_diff(monkeypatch):
+    async def fake_fetch(pr, token=None, api_url=None):
+        return TWO_FILE_DIFF
+    monkeypatch.setattr(cli, "fetch_pr_diff", fake_fetch)
+    monkeypatch.setenv("GITHUB_TOKEN", "x")
+
+
+def test_the_repositorys_config_is_used(capsys, monkeypatch, fake_model, no_repo_config, pr_diff):
+    fake_model([SUGGESTION.model_copy(update={"confidence": 0.6})])
+    no_repo_config[("owner/repo", ".codemop.yml")] = "min_confidence: 0.7\nignore: ['docs/*']\n"
+
+    _, out, _ = run(capsys, monkeypatch, ["review", "owner/repo#7"])
+
+    assert "(settings from owner/repo/.codemop.yml)" in out
+    assert "Skipped docs/guide.md: matches an ignored path pattern" in out
+    assert "Dropped 1 suggestion(s) below the confidence threshold" in out  # 0.6 < 0.7
+
+
+def test_flags_override_the_repositorys_config(capsys, monkeypatch, fake_model, no_repo_config, pr_diff):
+    fake_model([SUGGESTION.model_copy(update={"confidence": 0.6})])
+    no_repo_config[("owner/repo", ".codemop.yml")] = "min_confidence: 0.7\n"
+
+    _, out, _ = run(capsys, monkeypatch, ["review", "owner/repo#7", "--min-confidence", "0.5"])
+
+    assert "app.py:3" in out
+
+
+def test_ignore_flags_add_to_the_defaults_and_the_config(capsys, monkeypatch, fake_model, no_repo_config, pr_diff):
+    fake_model([])
+
+    _, out, _ = run(capsys, monkeypatch, ["review", "owner/repo#7", "--ignore", "docs/*"])
+
+    assert "Skipped docs/guide.md: matches an ignored path pattern" in out
+
+
+def test_an_invalid_config_stops_with_its_problems(capsys, monkeypatch, fake_model, no_repo_config, pr_diff):
+    fake_model([])
+    no_repo_config[("owner/repo", ".codemop.yml")] = "provider: openai-compatible\n"
+
+    code, _, err = run(capsys, monkeypatch, ["review", "owner/repo#7"])
+
+    assert code == 2
+    assert "owner/repo/.codemop.yml: unknown setting `provider`" in err
+
+
+def test_stdin_uses_the_config_in_the_current_directory(capsys, monkeypatch, fake_model, tmp_path):
+    fake_model([SUGGESTION.model_copy(update={"confidence": 0.6})])
+    (tmp_path / ".codemop.yml").write_text("min_confidence: 0.9\n")
+    monkeypatch.chdir(tmp_path)
+
+    _, out, _ = run(capsys, monkeypatch, ["review", "-"], stdin=DIFF)
+
+    assert "(settings from .codemop.yml)" in out
+    assert "No issues found." in out
+
+
+def test_an_explicit_config_file(capsys, monkeypatch, fake_model, tmp_path):
+    fake_model([])
+    config = tmp_path / "review.yml"
+    config.write_text("min_confidence: 0.9\n")
+
+    _, out, _ = run(capsys, monkeypatch, ["review", "-", "--config", str(config)], stdin=DIFF)
+    code, _, err = run(capsys, monkeypatch, ["review", "-", "--config", str(tmp_path / "missing.yml")], stdin=DIFF)
+
+    assert f"(settings from {config})" in out
+    assert code == 2 and "missing.yml doesn't exist" in err
+
+
+def test_the_model_comes_from_codemop_variables(capsys, monkeypatch):
+    chosen = {}
+
+    def fake_create_model(provider, model, **kwargs):
+        chosen.update(provider=provider, model=model, base_url=kwargs.get("base_url"))
+        return FakeModel([])
+    monkeypatch.setattr(cli, "create_model", fake_create_model)
+    monkeypatch.setenv("CODEMOP_PROVIDER", "ollama")
+    monkeypatch.setenv("CODEMOP_MODEL", "qwen2.5-coder:7b")
+    monkeypatch.setenv("CODEMOP_BASE_URL", "http://gpu-box:11434/v1")
+
+    run(capsys, monkeypatch, ["review", "-"], stdin=DIFF)
+
+    assert chosen == {"provider": "ollama", "model": "qwen2.5-coder:7b", "base_url": "http://gpu-box:11434/v1"}

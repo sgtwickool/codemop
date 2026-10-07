@@ -88,6 +88,9 @@ class FakeReviewModel:
     name = "fake/model"
     chunk_tokens = 40_000
 
+    def cost(self, usage):
+        return None
+
     def __init__(self, respond: Callable[[str], Awaitable[List[Dict[str, Any]]]]):
         self.respond = respond
 

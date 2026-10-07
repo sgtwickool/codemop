@@ -93,6 +93,7 @@ def no_network():
     blocked = AsyncMock(side_effect=RuntimeError("Network access is disabled in tests"))
     refusing_model = FakeReviewModel(blocked)
     with patch("app.services.pr_analysis.fetch_pr_diff", new=blocked), \
+         patch("app.services.pr_analysis.fetch_repo_file", new=AsyncMock(return_value=None)), \
          patch("app.services.pr_analysis.create_model", return_value=refusing_model):
         yield blocked
 

@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from codemop.github.client import GitHubError, PullRequestRef, fetch_pr_diff, parse_pr_reference
+from codemop.github.client import GitHubError, PullRequestRef, fetch_pr_diff, fetch_repo_file, parse_pr_reference
 
 PR = PullRequestRef("owner/repo", 7)
 
@@ -70,3 +70,30 @@ async def test_errors_say_what_to_do(status, body, token, expected):
 
     assert expected in str(error.value)
     assert "ghp_secret" not in str(error.value)
+
+
+@pytest.mark.asyncio
+async def test_reads_a_file_from_the_default_branch():
+    transport, requests = api(body="min_confidence: 0.7\n")
+
+    text = await fetch_repo_file("owner/repo", ".codemop.yml", token="t", transport=transport)
+
+    assert text == "min_confidence: 0.7\n"
+    [request] = requests
+    assert str(request.url) == "https://api.github.com/repos/owner/repo/contents/.codemop.yml"  # no ref: default branch
+    assert request.headers["Accept"] == "application/vnd.github.raw+json"
+
+
+@pytest.mark.asyncio
+async def test_a_missing_file_is_none():
+    transport, _ = api(404, "Not Found")
+
+    assert await fetch_repo_file("owner/repo", ".codemop.yml", transport=transport) is None
+
+
+@pytest.mark.asyncio
+async def test_other_errors_reading_a_file_are_raised():
+    transport, _ = api(500, "oops")
+
+    with pytest.raises(GitHubError, match="GitHub returned 500 reading .codemop.yml from owner/repo"):
+        await fetch_repo_file("owner/repo", ".codemop.yml", transport=transport)

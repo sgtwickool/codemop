@@ -5,7 +5,7 @@ The review code only talks to a ReviewModel; provider SDKs and HTTP details stay
 their adapter modules.
 """
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Optional, Protocol
 
 from codemop.review.schema import ModelReview
 
@@ -59,4 +59,8 @@ class ReviewModel(Protocol):
 
     async def review(self, instructions: str, diff_text: str) -> tuple[ModelReview, Usage]:
         """Review `diff_text` following `instructions`; raises NoReview if there's no usable answer"""
+        ...
+
+    def cost(self, usage: Usage) -> Optional[float]:
+        """Estimated US dollars for `usage` at list prices, or None if the price isn't known"""
         ...
