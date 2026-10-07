@@ -1,6 +1,6 @@
 # Production image for the CodeMop webhook server. Build it from the repository root, since
 # the server uses the codemop package there:
-#   docker build -f backend/Dockerfile.prod -t codemop-server .
+#   docker build -f server/Dockerfile.prod -t codemop-server .
 FROM python:3.14-slim
 
 # Run as a non-root user
@@ -15,7 +15,7 @@ ENV PATH=/home/appuser/.local/bin:$PATH \
     DEBUG=False
 
 # The server's pinned dependencies first, so this layer is cached between code changes
-COPY --chown=appuser:appuser backend/requirements.txt .
+COPY --chown=appuser:appuser server/requirements.txt .
 RUN pip install --user --no-cache-dir -r requirements.txt
 
 # The codemop package (its dependencies are already installed, pinned, above)
@@ -24,7 +24,7 @@ COPY --chown=appuser:appuser src /tmp/codemop/src
 RUN pip install --user --no-cache-dir --no-deps /tmp/codemop && rm -rf /tmp/codemop
 
 # The server itself
-COPY --chown=appuser:appuser backend/src /app/src
+COPY --chown=appuser:appuser server/src /app/src
 
 # Health check (note: Podman uses OCI format, Docker uses Docker format)
 # python:slim has no curl, so use the standard library

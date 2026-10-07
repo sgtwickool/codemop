@@ -24,8 +24,7 @@ to move on.
 
 ## Repository structure
 
-Today everything is the webhook server, under `backend/`. Phase 2 moves to this layout, when
-the review logic becomes its own package:
+The layout since Phase 2 (`action.yml` and `site/` arrive in Phases 3 and 5):
 
 ```
 codemop/
@@ -37,7 +36,7 @@ codemop/
 │   ├── github/           # GitHub API client: fetch diffs, post reviews
 │   └── cli.py
 ├── tests/                # tests for the package, mirroring src/codemop/
-├── server/               # the optional self-hosted webhook server (today's backend/), using the package
+├── server/               # the optional self-hosted webhook server, using the package
 ├── site/                 # Astro + Starlight marketing and docs site (Phase 5)
 ├── docs/                 # design notes; docs/archive/ for superseded plans
 └── scripts/              # developer scripts
@@ -110,7 +109,7 @@ Extract the review logic into a package that has nothing to do with FastAPI or t
 - [x] CLI: `codemop review owner/repo#123` (or a PR URL, or `-` for a diff on stdin) prints the review; `--json` for machines. Posting comes with `--post` in Phase 3. Uses `GITHUB_TOKEN`, or the `gh` login, for private repos
 - [ ] Golden tests from recorded diffs and model responses
 - [x] The server reviews with the package; its own Mistral-only AI code, response parser and diff fetcher are gone. Configured with `AI_PROVIDER`, `AI_MODEL`, `AI_BASE_URL` and `AI_API_KEY`
-- [ ] Move to the target [repository structure](#repository-structure): the package at the root, `backend/` becomes `server/` and uses it
+- [x] Move to the target [repository structure](#repository-structure): the package at the root, `backend/` became `server/` and uses it
 - [ ] In the server, stop running synchronous database work inside `async` handlers and the background job (make DB-only handlers plain `def`, or move to async SQLAlchemy); it blocks the event loop under load
 - [ ] Move the older integration tests' inline payloads and headers onto `tests/helpers.py` / the `post_webhook` fixture
 - [ ] Publish to PyPI
@@ -176,7 +175,7 @@ Action).
 - [ ] `CONTRIBUTING.md` (dev setup, tests, branch naming)
 - [ ] `SECURITY.md` (how to report issues, plus the accepted risks from `SECURITY_DECISIONS.md`)
 - [ ] `CHANGELOG.md`
-- [ ] Archive the original scope and epics to `docs/archive/`; delete or archive the local process docs (`PHASE_1_IMPLEMENTATION.md`, `BRANCH_STRATEGY_UPDATE.md`, `CI_CD_ROLLOUT_PLAN.md`, `STEERING.md`, `TESTING_GUIDE.md`, `backend/docs/`)
+- [ ] Archive the original scope and epics to `docs/archive/`; delete or archive the local process docs (`PHASE_1_IMPLEMENTATION.md`, `BRANCH_STRATEGY_UPDATE.md`, `CI_CD_ROLLOUT_PLAN.md`, `STEERING.md`, `TESTING_GUIDE.md`, `server/docs/`)
 
 ## Phase 5: Website (marketing and docs)
 

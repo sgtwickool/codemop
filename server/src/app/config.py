@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import List, Optional
 from pydantic_settings import BaseSettings
 
-# backend/src/app/config.py -> repo root
+# server/src/app/config.py -> repo root
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # Secrets the server needs, and what happens without them in development.

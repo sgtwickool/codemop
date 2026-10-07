@@ -21,17 +21,17 @@ jobs:
         python-version: '3.14'
 
     - name: Install dependencies
-      run: pip install -e . -r backend/requirements-dev.txt
+      run: pip install -e . -r server/requirements-dev.txt
 
     # Fails the job if any pinned runtime dependency has a known vulnerability
     - name: pip-audit (dependency vulnerability scanning)
-      run: pip-audit -r backend/requirements.txt
+      run: pip-audit -r server/requirements.txt
 
     - name: Bandit (security linting)
-      run: bandit -c backend/.bandit -r backend/src/ src/
+      run: bandit -c server/.bandit -r server/src/ src/
 
     - name: Build Docker image for scanning
-      run: docker build -f backend/Dockerfile.prod -t codemop-scan:latest .
+      run: docker build -f server/Dockerfile.prod -t codemop-scan:latest .
 
     - name: Trivy (container scanning)
       uses: aquasecurity/trivy-action@v0.36.0

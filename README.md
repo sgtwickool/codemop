@@ -65,23 +65,23 @@ sudo systemctl start postgresql
 ### Testing
 
 The tests need no database, network or `.env`: they use a temporary SQLite database and
-fixed test settings (see `backend/tests/conftest.py`).
+fixed test settings (see `server/tests/conftest.py`).
 
 **Run all tests:**
 ```bash
-cd backend
+cd server
 pytest
 ```
 
 **Run specific tests:**
 ```bash
-cd backend
+cd server
 pytest tests/integration/test_webhook_integration.py -k health
 ```
 
 **Try a service function interactively:**
 ```bash
-cd backend
+cd server
 PYTHONPATH=src python -c "
 from app.services.github import extract_pr_data
 payload = {'action': 'opened', 'number': 123, 'pull_request': {'title': 'Test'}, 'repository': {'full_name': 'test/repo'}}
@@ -108,10 +108,10 @@ input was dropped, it stops with an error instead of reviewing a fragment.
 
 ### Database migrations
 The server applies any pending migrations when it starts (and `setup_dev.sh` runs them too),
-so there's nothing to run by hand. After changing a model in `backend/src/app/models/`,
+so there's nothing to run by hand. After changing a model in `server/src/app/models/`,
 generate a migration, review it, and commit it:
 ```bash
-cd backend
+cd server
 alembic revision --autogenerate -m "describe the change"   # creates src/app/migrations/versions/<rev>_....py
 alembic upgrade head                                       # apply it to the database in DATABASE_URL
 ```
@@ -133,7 +133,7 @@ If port 8000 is in use:
 If you have virtual environment issues:
 1. Remove existing venv: `rm -rf venv`
 2. Recreate it: `python -m venv venv`
-3. Activate and install: `source venv/bin/activate && pip install -r backend/requirements-dev.txt`
+3. Activate and install: `source venv/bin/activate && pip install -r server/requirements-dev.txt`
 
 ### API Endpoints
 - `POST /api/v1/github/webhook` - GitHub webhook endpoint (versioned)
@@ -146,7 +146,7 @@ If you have virtual environment issues:
 ### Project Structure
 ```
 codemop/
-├── backend/                  # FastAPI backend
+├── server/                  # FastAPI server
 │   ├── src/                 # Source code (modern structure)
 │   │   ├── app/             # Main application package
 │   │   │   ├── main.py      # FastAPI app setup
@@ -185,7 +185,7 @@ codemop/
 ## User Story 1: GitHub Webhook Integration
 
 This implementation provides:
-- FastAPI backend with GitHub webhook endpoint
+- FastAPI server with GitHub webhook endpoint
 - Webhook signature validation for security
 - PR data extraction and logging
 - Database schema for PR storage
@@ -235,10 +235,10 @@ CodeMop uses GitHub Actions for Continuous Integration and Deployment with the f
 #### Running Tests Locally
 ```bash
 # Install test and security tooling
-pip install -r backend/requirements-dev.txt
+pip install -r server/requirements-dev.txt
 
 # Run tests (coverage is reported by default)
-cd backend
+cd server
 pytest
 
 # Run security scanning
@@ -249,7 +249,7 @@ bandit -c .bandit -r src/
 #### Building Docker Images Locally
 ```bash
 # Build production image
-docker build -f backend/Dockerfile.prod -t codemop:latest backend/
+docker build -f server/Dockerfile.prod -t codemop:latest server/
 
 # Run the container
 docker run -p 8000:8000 --env-file .env codemop:latest

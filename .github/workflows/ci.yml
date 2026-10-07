@@ -32,7 +32,7 @@ jobs:
     - name: Run package tests
       run: pytest --cov=codemop --cov-report=term
 
-  # The webhook server (backend/)
+  # The webhook server (server/)
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -47,23 +47,23 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
         cache: pip
-        cache-dependency-path: backend/requirements*.txt
+        cache-dependency-path: server/requirements*.txt
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -e . -r backend/requirements-dev.txt
+        pip install -e . -r server/requirements-dev.txt
 
     # The tests configure their own SQLite database and settings (see tests/conftest.py)
     - name: Run tests with coverage
-      working-directory: backend
+      working-directory: server
       run: pytest
 
     - name: Upload coverage to Codecov
       if: matrix.python-version == '3.14'
       uses: codecov/codecov-action@v7
       with:
-        files: backend/coverage.xml
+        files: server/coverage.xml
         flags: unittests
         fail_ci_if_error: false
 
@@ -95,15 +95,15 @@ jobs:
       with:
         python-version: '3.14'
         cache: pip
-        cache-dependency-path: backend/requirements*.txt
+        cache-dependency-path: server/requirements*.txt
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -e . -r backend/requirements-dev.txt
+        pip install -e . -r server/requirements-dev.txt
 
     - name: Run tests against PostgreSQL
-      working-directory: backend
+      working-directory: server
       env:
         TEST_DATABASE_URL: postgresql://codemop:codemop@localhost:5432/codemop_test
       run: pytest --no-cov

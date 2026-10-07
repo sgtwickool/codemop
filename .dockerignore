@@ -4,8 +4,8 @@
 !README.md
 !LICENSE
 !src/
-!backend/requirements.txt
-!backend/requirements-dev.txt
-!backend/src/
+!server/requirements.txt
+!server/requirements-dev.txt
+!server/src/
 **/__pycache__
 **/*.pyc

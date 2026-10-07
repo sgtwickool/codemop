@@ -9,5 +9,5 @@ if [ -d venv ]; then
 fi
 
 echo "Starting codemop development server..."
-cd backend
+cd server
 uvicorn app.main:app --app-dir src --reload --host 0.0.0.0 --port 8000

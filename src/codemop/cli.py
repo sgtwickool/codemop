@@ -14,7 +14,7 @@ import dataclasses
 import json
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404
 import sys
 import textwrap
 from enum import Enum
@@ -31,9 +31,11 @@ from codemop.review.pipeline import ReviewReport, review_diff
 def github_token() -> Optional[str]:
     """GITHUB_TOKEN, or the token from a `gh auth login`, so private repos work without setup"""
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    if token or not shutil.which("gh"):
+    gh = shutil.which("gh")
+    if token or not gh:
         return token
-    result = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True)
+    # Fixed arguments and no shell, so nothing from the user reaches the command
+    result = subprocess.run([gh, "auth", "token"], capture_output=True, text=True)  # nosec B603
     if result.returncode != 0:
         return None
     return result.stdout.strip() or None

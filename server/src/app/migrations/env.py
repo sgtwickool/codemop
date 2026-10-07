@@ -4,7 +4,7 @@ Alembic environment.
 Two ways in:
 - The app (app.db.session.init_db) passes its own connection in
   `config.attributes["connection"]`, so migrations use the app's engine and settings.
-- The `alembic` CLI (run from backend/) connects using DATABASE_URL from app settings.
+- The `alembic` CLI (run from server/) connects using DATABASE_URL from app settings.
 """
 from logging.config import fileConfig
 
