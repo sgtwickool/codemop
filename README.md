@@ -59,7 +59,8 @@ sudo systemctl start postgresql
    - Set content type to `application/json`
    - Add your webhook secret (same as in `.env` file)
    - Select "Let me select individual events" and check "Pull requests"
-4. **Test the webhook**: GitHub sends a `ping` when the webhook is created; its delivery log should show `"status": "pong"`. Then open a test pull request and check that delivery too
+4. **Private repositories**: set `GITHUB_TOKEN` in `.env` so CodeMop can fetch PR diffs through the GitHub API. Create a [fine-grained token](https://github.com/settings/personal-access-tokens/new) limited to the repos you want reviewed, with read-only **Pull requests** and **Contents** permissions. Public repos work without one, but a token raises the API rate limit from 60 to 5,000 requests an hour.
+5. **Test the webhook**: GitHub sends a `ping` when the webhook is created; its delivery log should show `"status": "pong"`. Then open a test pull request and check that delivery too
 
 ### Testing
 

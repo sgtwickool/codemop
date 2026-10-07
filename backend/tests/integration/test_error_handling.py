@@ -81,7 +81,8 @@ class TestErrorHandlingIntegration:
         
         # Mock AI analysis to fail
         failing_ai = AsyncMock(side_effect=Exception("AI API network timeout"))
-        with patch('app.services.pr_analysis.analyze_pr_with_ai', new=failing_ai):
+        with patch('app.services.pr_analysis.fetch_pr_diff', new=AsyncMock(return_value="diff")), \
+             patch('app.services.pr_analysis.analyze_diff', new=failing_ai):
             
             response = client.post(
                 "/api/v1/github/webhook",
@@ -127,7 +128,7 @@ class TestErrorHandlingIntegration:
         
         # Mock GitHub diff fetch to fail
         failing_fetch = AsyncMock(side_effect=Exception("GitHub API unavailable"))
-        with patch('app.services.ai_analysis.fetch_diff_content', new=failing_fetch):
+        with patch('app.services.pr_analysis.fetch_pr_diff', new=failing_fetch):
             
             response = client.post(
                 "/api/v1/github/webhook",

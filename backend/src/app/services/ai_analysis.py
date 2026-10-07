@@ -6,23 +6,13 @@ from app.utils.parsing import parse_ai_response
 
 logger = logging.getLogger(__name__)
 
-async def analyze_pr_with_ai(diff_url: str) -> List[Dict[str, Any]]:
+async def analyze_diff(diff_content: str) -> List[Dict[str, Any]]:
     """
-    Call Mistral AI API to analyze PR diff and generate code suggestions
+    Ask the AI model to review a diff, returning its code suggestions
     Uses chat completions API with structured prompting for code analysis
     """
-    if not settings.AI_API_KEY:
-        logger.warning("AI_API_KEY not configured, skipping AI analysis")
-        return []
-    
     try:
-        # Fetch the actual diff content from GitHub
-        diff_content = await fetch_diff_content(diff_url)
-        
-        # Create a prompt for code analysis
         prompt = create_ai_prompt(diff_content)
-        
-        # Call AI API
         suggestions = await call_ai_api(prompt)
         
         logger.info(f"✅ AI analysis completed: {len(suggestions)} suggestions")
@@ -31,11 +21,6 @@ async def analyze_pr_with_ai(diff_url: str) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"💥 AI analysis failed: {str(e)}")
         raise
-
-async def fetch_diff_content(diff_url: str) -> str:
-    """Fetch the actual diff content from GitHub"""
-    response = await fetch_with_retry(diff_url, "GET")
-    return response.text
 
 def create_ai_prompt(diff_content: str) -> str:
     """Create AI prompt for code analysis"""
