@@ -12,7 +12,7 @@ AUTH = {"Authorization": "Bearer test_api_key"}
 
 
 def _limit(endpoint: str) -> int:
-    """Requests allowed per window, e.g. "10/minute" -> 10."""
+    """Requests allowed per window, e.g. "60/minute" -> 60."""
     return int(RATE_LIMITS[endpoint].split("/")[0])
 
 
@@ -31,15 +31,19 @@ def _post_webhook(client, payload, github_signature):
 class TestRateLimitingIntegration:
     """Integration tests for rate limiting."""
 
-    def test_webhook_rate_limiting(self, client, rate_limiting, github_webhook_payload, github_signature):
-        """Requests beyond the webhook limit get 429."""
-        statuses = [
+    def test_webhook_is_not_rate_limited(self, client, rate_limiting, github_webhook_payload, github_signature):
+        """GitHub's deliveries share a few IPs, so a limit would only drop real events."""
+        statuses = {
             _post_webhook(client, github_webhook_payload, github_signature).status_code
-            for _ in range(_limit("webhook") + 1)
-        ]
+            for _ in range(50)
+        }
 
-        assert statuses[:-1] == [200] * _limit("webhook")
-        assert statuses[-1] == 429
+        assert statuses == {200}
+
+    def test_health_check_is_not_rate_limited(self, client, rate_limiting):
+        statuses = {client.get("/api/v1/health").status_code for _ in range(150)}
+
+        assert statuses == {200}
 
     def test_suggestions_rate_limiting(self, client, rate_limiting, github_webhook_payload, github_signature):
         """Requests beyond the suggestions limit get 429."""
@@ -63,14 +67,10 @@ class TestRateLimitingIntegration:
         assert "Rate limit exceeded" in data["detail"]
         assert int(response.headers["Retry-After"]) > 0
 
-    def test_rate_limiting_different_endpoints(self, client, rate_limiting, github_webhook_payload, github_signature):
-        """Exhausting the webhook limit doesn't block the suggestions endpoint."""
-        responses = [
-            _post_webhook(client, github_webhook_payload, github_signature)
-            for _ in range(_limit("webhook") + 1)
-        ]
-        assert responses[-1].status_code == 429
+    def test_exhausted_api_limit_doesnt_block_webhooks(self, client, rate_limiting, github_webhook_payload, github_signature):
+        for _ in range(_limit("suggestions") + 1):
+            client.get("/api/v1/pr/1/suggestions", headers=AUTH)
 
-        pr_id = responses[0].json()["database_id"]
-        response = client.get(f"/api/v1/pr/{pr_id}/suggestions", headers=AUTH)
+        response = _post_webhook(client, github_webhook_payload, github_signature)
+
         assert response.status_code == 200

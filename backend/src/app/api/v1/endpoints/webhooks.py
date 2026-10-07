@@ -1,8 +1,6 @@
 from fastapi import APIRouter, BackgroundTasks, Request, HTTPException, Header, Depends
 from typing import Optional
 from sqlalchemy.orm import Session
-from app.core.rate_limit import limiter
-from app.core.security_config import RATE_LIMITS
 from app.services.github import (
     validate_github_webhook_signature,
     parse_webhook_payload,
@@ -22,8 +20,10 @@ logger = logging.getLogger(__name__)
 # PR fields that may legitimately be missing from a payload
 OPTIONAL_PR_FIELDS = {"head_sha"}
 
+# Deliberately not rate limited: every delivery comes from GitHub's few IP addresses (or a
+# proxy's), so a limit would only drop real events, and GitHub doesn't retry a 429. Forged
+# requests fail the cheap signature check, and analysis runs at most once per commit.
 @router.post("/github/webhook")
-@limiter.limit(RATE_LIMITS["webhook"])
 async def handle_github_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
