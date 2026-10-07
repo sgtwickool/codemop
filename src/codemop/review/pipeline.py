@@ -6,6 +6,7 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence
 
+from codemop.config import DEFAULT_MIN_CONFIDENCE
 from codemop.providers.base import NoReview, ReviewModel, Usage
 from codemop.review.chunks import DEFAULT_IGNORED_PATHS, Skipped, plan_chunks
 from codemop.review.diff import parse_diff
@@ -33,6 +34,7 @@ class ReviewReport:
     stopped: Optional[str] = None  # why the review stopped early, if it did
     chunks: int = 0
     usage: Usage = Usage()
+    cost: Optional[float] = None  # estimated US dollars at list prices; None if unknown
 
     @property
     def complete(self) -> bool:
@@ -47,7 +49,7 @@ async def review_diff(
     chunk_tokens: Optional[int] = None,
     concurrency: int = DEFAULT_CONCURRENCY,
     ignored_paths: Sequence[str] = DEFAULT_IGNORED_PATHS,
-    min_confidence: float = 0.0,
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE,
 ) -> ReviewReport:
     """Review a unified diff with `model` (chunk_tokens defaults to the model's own chunk size)"""
     plan = plan_chunks(parse_diff(diff), chunk_tokens or model.chunk_tokens, ignored_paths=ignored_paths)
@@ -79,4 +81,5 @@ async def review_diff(
 
     await asyncio.gather(*(review_chunk(chunk) for chunk in plan.chunks))
     report.suggestions.sort(key=lambda s: (s.file_path, s.line))
+    report.cost = model.cost(report.usage)
     return report

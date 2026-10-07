@@ -7,9 +7,11 @@ the webhook only stores the PR and queues the analysis.
 import logging
 from typing import Optional
 
-from codemop.github.client import PullRequestRef, fetch_pr_diff
+from codemop.config import CONFIG_FILE, ConfigError, RepoConfig, parse_config
+from codemop.github.client import PullRequestRef, fetch_pr_diff, fetch_repo_file
 from codemop.providers import create_model
 from codemop.providers.base import ReviewModel
+from codemop.review.chunks import DEFAULT_IGNORED_PATHS
 from codemop.review.pipeline import review_diff
 
 from app.config import settings
@@ -47,6 +49,23 @@ def review_model() -> ReviewModel:
     )
 
 
+async def repo_config(repo_full_name: str) -> RepoConfig:
+    """
+    The repository's .codemop.yml (from its default branch), or the defaults. A broken file is
+    logged and ignored rather than stopping reviews.
+    """
+    text = await fetch_repo_file(
+        repo_full_name, CONFIG_FILE, token=settings.GITHUB_TOKEN or None, api_url=settings.GITHUB_API_URL
+    )
+    if text is None:
+        return RepoConfig()
+    try:
+        return parse_config(text, source=f"{repo_full_name}/{CONFIG_FILE}")
+    except ConfigError as e:
+        logger.warning(f"Using default review settings: {e}")
+        return RepoConfig()
+
+
 async def analyze_pr_in_background(
     pr_id: int, repo_full_name: str, number: int, head_sha: Optional[str]
 ) -> None:
@@ -58,7 +77,13 @@ async def analyze_pr_in_background(
             token=settings.GITHUB_TOKEN or None,
             api_url=settings.GITHUB_API_URL,
         )
-        report = await review_diff(diff, review_model())
+        config = await repo_config(repo_full_name)
+        report = await review_diff(
+            diff, review_model(),
+            chunk_tokens=config.chunk_tokens,
+            min_confidence=config.min_confidence,
+            ignored_paths=[*DEFAULT_IGNORED_PATHS, *config.ignore],
+        )
     except Exception as e:
         # analyzed_sha stays unset, so the next push or a redelivery retries
         logger.error(f"Analysis failed for {label}: {str(e)}")
@@ -82,9 +107,10 @@ async def analyze_pr_in_background(
                 logger.info(f"{label} has new commits since {head_sha[:7]} was analysed; discarding stale results")
                 return
             suggestion_service.replace_for_pr(db, pr, report.suggestions, head_sha)
+        cost = f", about ${report.cost:.4f}" if report.cost else ""
         logger.info(
             f"💾 Stored {len(report.suggestions)} suggestions for {label} from {report.model} "
-            f"({report.usage.input_tokens:,} input / {report.usage.output_tokens:,} output tokens)"
+            f"({report.usage.input_tokens:,} input / {report.usage.output_tokens:,} output tokens{cost})"
         )
     except Exception as e:
         logger.error(f"💾 Failed to store suggestions for {label}: {str(e)}")

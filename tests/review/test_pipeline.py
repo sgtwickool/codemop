@@ -21,6 +21,9 @@ class FakeModel:
     name = "fake/model"
     chunk_tokens = 40_000
 
+    def cost(self, usage):
+        return usage.input_tokens * 10 / 1_000_000  # $10 per million input tokens
+
     def __init__(self, answers):
         self.answers = answers  # path -> list of suggestions, or a NoReview to raise
         self.calls = []

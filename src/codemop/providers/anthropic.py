@@ -10,6 +10,7 @@ import anthropic
 import pydantic
 
 from codemop.providers.base import DEFAULT_CHUNK_TOKENS, NoReview, Usage
+from codemop.providers.pricing import ANTHROPIC_PRICES
 from codemop.review.schema import ModelReview
 
 DEFAULT_MODEL = "claude-opus-5-5"
@@ -48,6 +49,10 @@ class AnthropicModel:
     @property
     def name(self) -> str:
         return f"anthropic/{self.model}"
+
+    def cost(self, usage: Usage) -> Optional[float]:
+        price = ANTHROPIC_PRICES.get(self.model)
+        return price.cost(usage) if price else None
 
     async def review(self, instructions: str, diff_text: str) -> tuple[ModelReview, Usage]:
         request = dict(

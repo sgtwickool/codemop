@@ -89,6 +89,10 @@ class OpenAICompatibleModel:
     def name(self) -> str:
         return f"{self.provider}/{self.model}"
 
+    def cost(self, usage: Usage) -> Optional[float]:
+        # Local models cost nothing per request; hosted prices vary too much to guess
+        return 0.0 if self.provider == "ollama" else None
+
     def _key_hint(self) -> str:
         return f"check {self.key_env} is set to a valid key" if self.key_env else "check the API key"
 

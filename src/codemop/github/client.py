@@ -54,6 +54,19 @@ def _error_message(status: int, body: str, pr: PullRequestRef, has_token: bool) 
     return f"GitHub returned {status} while fetching the diff for {pr}"
 
 
+async def _get(
+    url: str, accept: str, token: Optional[str], transport: Optional[httpx.AsyncBaseTransport]
+) -> httpx.Response:
+    headers = {"Accept": accept, "X-GitHub-Api-Version": "2022-11-28"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    async with httpx.AsyncClient(headers=headers, timeout=60.0, transport=transport) as client:
+        try:
+            return await client.get(url)
+        except httpx.TransportError:
+            raise GitHubError(f"Couldn't connect to {url.split('/repos/')[0]}; check the network")
+
+
 async def fetch_pr_diff(
     pr: PullRequestRef,
     *,
@@ -62,16 +75,32 @@ async def fetch_pr_diff(
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> str:
     """The PR's diff, from GET /repos/{owner}/{repo}/pulls/{number} as application/vnd.github.diff"""
-    headers = {"Accept": "application/vnd.github.diff", "X-GitHub-Api-Version": "2022-11-28"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
     url = f"{api_url.rstrip('/')}/repos/{pr.repo}/pulls/{pr.number}"
-
-    async with httpx.AsyncClient(headers=headers, timeout=60.0, transport=transport) as client:
-        try:
-            response = await client.get(url)
-        except httpx.TransportError:
-            raise GitHubError(f"Couldn't connect to {api_url}; check the network")
+    response = await _get(url, "application/vnd.github.diff", token, transport)
     if response.status_code != 200:
         raise GitHubError(_error_message(response.status_code, response.text, pr, bool(token)))
+    return response.text
+
+
+async def fetch_repo_file(
+    repo: str,
+    path: str,
+    *,
+    token: Optional[str] = None,
+    api_url: str = DEFAULT_API_URL,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> Optional[str]:
+    """
+    A file's contents on the repository's default branch, or None if there's no such file.
+
+    (The default branch, not the PR's: a pull request mustn't be able to change how it's
+    reviewed.) A 404 also covers a private repository read without access; fetching its diff
+    reports that properly.
+    """
+    url = f"{api_url.rstrip('/')}/repos/{repo}/contents/{path}"
+    response = await _get(url, "application/vnd.github.raw+json", token, transport)
+    if response.status_code == 404:
+        return None
+    if response.status_code != 200:
+        raise GitHubError(f"GitHub returned {response.status_code} reading {path} from {repo}")
     return response.text
