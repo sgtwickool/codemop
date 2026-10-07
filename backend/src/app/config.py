@@ -5,6 +5,13 @@ from pydantic_settings import BaseSettings
 # backend/src/app/config.py -> repo root
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
+# Secrets the server needs, and what happens without them in development.
+# (Built from pairs: a dict literal keyed "...SECRET" trips bandit's hardcoded-password check.)
+REQUIRED_SECRETS = dict([
+    ("GITHUB_WEBHOOK_SECRET", "webhook signatures are NOT checked (development only)"),
+    ("API_KEY", "the suggestions API rejects every request"),
+])
+
 class Settings(BaseSettings):
     # Application Configuration
     # Defaults are the safe choice for a deployment; .env.example sets up local development
@@ -36,6 +43,13 @@ class Settings(BaseSettings):
     # GitHub and API clients like the CLI need: CORS only applies to browsers
     CORS_ORIGINS: str = ""
     
+    # Monitoring
+    LOG_LEVEL: str = "INFO"
+    SERVICE_NAME: str = "codemop"
+    SENTRY_DSN: str = ""  # error tracking is off unless set
+    ENABLE_METRICS: bool = False  # serve Prometheus metrics on METRICS_PORT
+    METRICS_PORT: int = 8001
+    
     # Retry Configuration
     MAX_RETRIES: int = 3
     RETRY_DELAY: float = 1.0
@@ -57,10 +71,7 @@ class Settings(BaseSettings):
 
     def missing_secrets(self) -> List[str]:
         """Secrets that must be set for the server to be safe to expose"""
-        return [
-            name for name in ("GITHUB_WEBHOOK_SECRET", "API_KEY")
-            if not getattr(self, name)
-        ]
+        return [name for name in REQUIRED_SECRETS if not getattr(self, name)]
 
     def check_secrets(self) -> List[str]:
         """

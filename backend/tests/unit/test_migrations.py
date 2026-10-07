@@ -9,7 +9,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import create_engine, inspect, text
 
-from app.db.session import alembic_config, init_db, BASELINE_REVISION
+from app.db.session import alembic_config, alembic_connection, init_db, BASELINE_REVISION
 from app.models.base import Base
 
 
@@ -21,9 +21,7 @@ def fresh_engine(tmp_path):
 
 
 def _run(engine, fn, revision):
-    config = alembic_config()
-    with engine.begin() as connection:
-        config.attributes["connection"] = connection
+    with alembic_connection(engine) as (config, _):
         fn(config, revision)
 
 

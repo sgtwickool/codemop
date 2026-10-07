@@ -1,6 +1,5 @@
+from contextlib import contextmanager
 from pathlib import Path
-from alembic import command
-from alembic.config import Config
 from sqlalchemy import create_engine, inspect
 from starlette.exceptions import HTTPException
 from sqlalchemy.orm import sessionmaker
@@ -25,39 +24,56 @@ engine = create_engine(
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Dependency
-def get_db():
-    """Database session dependency"""
+@contextmanager
+def session_scope():
+    """A session that commits if the block succeeds, and rolls back if it raises"""
     db = SessionLocal()
     try:
         yield db
-        db.commit()  # Commit transaction if successful
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+# Dependency
+def get_db():
+    """Database session dependency: one transaction per request"""
+    try:
+        with session_scope() as db:
+            yield db
     except Exception as e:
-        db.rollback()  # Rollback on error
         # HTTP errors (401, 404, 429...) are expected responses, not database failures
         if not isinstance(e, HTTPException):
             logger.error(f"Database transaction failed: {str(e)}")
         raise
-    finally:
-        db.close()
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
 
 # The schema that Base.metadata.create_all() produced before migrations existed
 BASELINE_REVISION = "0001"
 
-def alembic_config() -> Config:
+def alembic_config():
     """Alembic config for running migrations from code (no alembic.ini needed)"""
+    from alembic.config import Config  # Alembic is only needed when migrating
     config = Config()
     config.set_main_option("script_location", str(MIGRATIONS_DIR))
     return config
 
+@contextmanager
+def alembic_connection(db_engine=None):
+    """An Alembic config bound to one connection and transaction, for running commands on"""
+    config = alembic_config()
+    with (db_engine or engine).begin() as connection:
+        config.attributes["connection"] = connection
+        yield config, connection
+
 def init_db(db_engine=None):
     """Bring the database schema up to date by running any pending migrations"""
-    config = alembic_config()
+    from alembic import command
     try:
-        with (db_engine or engine).begin() as connection:
-            config.attributes["connection"] = connection
+        with alembic_connection(db_engine) as (config, connection):
             tables = inspect(connection).get_table_names()
             if "prs" in tables and "alembic_version" not in tables:
                 logger.info("Database predates migrations; marking it as the baseline schema")

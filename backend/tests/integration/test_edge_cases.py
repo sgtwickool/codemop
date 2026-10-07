@@ -10,21 +10,10 @@ from unittest.mock import patch
 class TestEdgeCasesIntegration:
     """Integration tests for edge cases."""
 
-    def test_concurrent_webhook_requests(self, client, github_webhook_payload, github_signature):
+    def test_concurrent_webhook_requests(self, post_webhook, github_webhook_payload):
         """Concurrent deliveries for the same PR all succeed and store one PR."""
-        def send_request(_):
-            return client.post(
-                "/api/v1/github/webhook",
-                content=json.dumps(github_webhook_payload),
-                headers={
-                    "X-GitHub-Event": "pull_request",
-                    "X-Hub-Signature-256": github_signature(github_webhook_payload),
-                    "Content-Type": "application/json"
-                }
-            )
-        
         with ThreadPoolExecutor(max_workers=5) as pool:
-            responses = list(pool.map(send_request, range(5)))
+            responses = list(pool.map(lambda _: post_webhook(github_webhook_payload), range(5)))
         
         assert [response.status_code for response in responses] == [200] * 5
         assert len({response.json()["database_id"] for response in responses}) == 1

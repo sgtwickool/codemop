@@ -1,53 +1,24 @@
 """
-Unit tests for GitHub service functions.
+Unit tests for GitHub service functions: webhook signatures and pull_request payloads.
 """
-import pytest
-from app.services.github import (
-    validate_github_webhook_signature,
-    extract_pr_data,
-    extract_pr_metadata,
-    _get_pr_payload_data
-)
-import hmac
 import hashlib
+import hmac
 import json
+
+import pytest
+from fastapi import HTTPException
+
+from app.services.github import parse_pull_request_event, validate_github_webhook_signature
+
+
+def parse(payload, content_type="application/json"):
+    body = payload if isinstance(payload, str) else json.dumps(payload)
+    return parse_pull_request_event(content_type, body.encode())
 
 
 class TestGitHubService:
     """Test GitHub service functions."""
-    
-    def test_get_pr_payload_data(self, github_webhook_payload):
-        """Test the helper function for extracting payload data."""
-        action, pr_number, pr_data, repo_data = _get_pr_payload_data(github_webhook_payload)
-        
-        assert action == "opened"
-        assert pr_number == 123
-        assert "title" in pr_data
-        assert "full_name" in repo_data
-    
-    def test_extract_pr_data(self, github_webhook_payload):
-        """Test PR data extraction for database."""
-        pr_data = extract_pr_data(github_webhook_payload)
-        
-        assert pr_data["number"] == 123
-        assert pr_data["repo_name"] == "testrepo"
-        assert pr_data["repo_full_name"] == "testuser/testrepo"
-        assert pr_data["branch"] == "test-branch"
-        assert pr_data["author"] == "testuser"
-        assert pr_data["title"] == "Test PR"
-        assert pr_data["status"] == "open"  # the PR state, not the webhook action
-        assert pr_data["github_url"] == "https://github.com/testuser/testrepo/pull/123"
-        assert pr_data["diff_url"] == "https://github.com/testuser/testrepo/pull/123.diff"
-    
-    def test_extract_pr_metadata(self, github_webhook_payload):
-        """Test PR metadata extraction for logging."""
-        metadata = extract_pr_metadata(github_webhook_payload)
-        
-        assert metadata["action"] == "opened"
-        assert metadata["pr_number"] == 123
-        assert "title" in metadata["pr_data"]
-        assert "full_name" in metadata["repo_data"]
-    
+
     @pytest.mark.asyncio
     async def test_validate_github_webhook_signature_valid(self):
         """Test valid GitHub webhook signature validation."""
@@ -85,23 +56,70 @@ class TestGitHubService:
             await validate_github_webhook_signature(body.encode(), None)
         
         assert "Missing signature" in str(exc_info.value)
-    
-    def test_extract_pr_data_missing_fields(self):
-        """Test PR data extraction with missing fields."""
-        minimal_payload = {
-            "action": "opened",
-            "number": 456,
-            "pull_request": {},
-            "repository": {}
+
+
+class TestPullRequestEvent:
+    """Parsing and validating pull_request payloads."""
+
+    def test_pr_fields(self, github_webhook_payload):
+        fields = parse(github_webhook_payload).pr_fields()
+
+        assert fields == {
+            "number": 123,
+            "repo_name": "testrepo",
+            "repo_full_name": "testuser/testrepo",
+            "branch": "test-branch",
+            "author": "testuser",
+            "title": "Test PR",
+            "status": "open",  # the PR state, not the webhook action
+            "github_url": "https://github.com/testuser/testrepo/pull/123",
+            "head_sha": "a" * 40,
         }
-        
-        pr_data = extract_pr_data(minimal_payload)
-        
-        assert pr_data["number"] == 456
-        assert pr_data["repo_name"] is None
-        assert pr_data["branch"] is None
-        assert pr_data["author"] is None
-        assert pr_data["title"] is None
-        assert pr_data["status"] == "open"  # the PR state, not the webhook action
-        assert pr_data["github_url"] is None
-        assert pr_data["diff_url"] is None
+
+    @pytest.mark.parametrize("state, merged, expected", [
+        ("open", False, "open"),
+        ("closed", False, "closed"),
+        ("closed", True, "merged"),
+    ])
+    def test_state(self, github_webhook_payload, state, merged, expected):
+        github_webhook_payload["pull_request"].update(state=state, merged=merged)
+
+        assert parse(github_webhook_payload).state == expected
+
+    def test_unknown_fields_are_ignored(self, github_webhook_payload):
+        github_webhook_payload["installation"] = {"id": 1}
+        github_webhook_payload["pull_request"]["labels"] = [{"name": "bug"}]
+
+        assert parse(github_webhook_payload).number == 123
+
+    def test_missing_fields_are_named(self):
+        with pytest.raises(HTTPException) as error:
+            parse({"action": "opened", "number": 456, "pull_request": {}, "repository": {}})
+
+        assert error.value.status_code == 422
+        assert "missing required fields" in error.value.detail
+        assert "pull_request.title" in error.value.detail
+        assert "repository.full_name" in error.value.detail
+
+    def test_wrong_types_are_rejected(self, github_webhook_payload):
+        """A signed but malformed payload is a 422, not a database error."""
+        github_webhook_payload["number"] = "abc"
+
+        with pytest.raises(HTTPException) as error:
+            parse(github_webhook_payload)
+
+        assert error.value.status_code == 422
+        assert "(number)" in error.value.detail
+
+    @pytest.mark.parametrize("body", ["{not json", "[]", "true", ""])
+    def test_bodies_that_arent_a_json_object_are_rejected(self, body):
+        with pytest.raises(HTTPException) as error:
+            parse(body)
+
+        assert error.value.status_code == 422
+
+    def test_non_json_content_type_is_415(self, github_webhook_payload):
+        with pytest.raises(HTTPException) as error:
+            parse(github_webhook_payload, content_type="application/x-www-form-urlencoded")
+
+        assert error.value.status_code == 415

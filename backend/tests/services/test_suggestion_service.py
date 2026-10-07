@@ -1,208 +1,63 @@
 """
 Unit tests for Suggestion service functions.
 """
-import pytest
+from app.services.pr_service import pr_service
 from app.services.suggestion_service import suggestion_service
-from app.models.suggestion import Suggestion
-from app.models.pr import PR
+from tests.helpers import pr_data
+
+
+def suggestion(description, line_number=10):
+    return {
+        "line_number": line_number,
+        "file_path": "app.py",
+        "description": description,
+        "fix": "fixed()",
+        "confidence": 0.9,
+    }
 
 
 class TestSuggestionService:
     """Test Suggestion service functions."""
-    
-    def test_create_suggestion_success(self, db_session):
-        """Test successful suggestion creation."""
-        # First create a PR for the suggestion to belong to
-        pr_data = {
-            "number": 123,
-            "repo_name": "testrepo",
-            "repo_full_name": "testuser/testrepo",
-            "branch": "test-branch",
-            "author": "testuser",
-            "title": "Test PR",
-            "status": "opened",
-            "github_url": "https://github.com/testuser/testrepo/pull/123",
-            "diff_url": "https://github.com/testuser/testrepo/pull/123.diff"
-        }
-        
-        from app.services.pr_service import pr_service
-        pr = pr_service.create_pr(db_session, pr_data)
-        
-        # Now create a suggestion for this PR
-        suggestion_data = {
-            "pr_id": pr.id,
-            "line_number": 42,
-            "file_path": "test.py",
-            "description": "Test suggestion description",
-            "fix": "Test fix code",
-            "confidence": 0.95
-        }
-        
-        suggestion = suggestion_service.create_suggestion(db_session, suggestion_data)
-        
-        assert suggestion.pr_id == pr.id
-        assert suggestion.line_number == 42
-        assert suggestion.file_path == "test.py"
-        assert suggestion.description == "Test suggestion description"
-        assert suggestion.fix == "Test fix code"
-        assert suggestion.confidence == 0.95
-    
-    def test_create_suggestion_batch(self, db_session):
-        """Test creating multiple suggestions at once."""
-        # Create a PR first
-        pr_data = {
-            "number": 456,
-            "repo_name": "testrepo",
-            "repo_full_name": "testuser/testrepo",
-            "branch": "test-branch",
-            "author": "testuser",
-            "title": "Test PR",
-            "status": "opened",
-            "github_url": "https://github.com/testuser/testrepo/pull/456",
-            "diff_url": "https://github.com/testuser/testrepo/pull/456.diff"
-        }
-        
-        from app.services.pr_service import pr_service
-        pr = pr_service.create_pr(db_session, pr_data)
-        
-        # Create multiple suggestions
-        suggestions_data = [
-            {
-                "line_number": 10,
-                "file_path": "file1.py",
-                "description": "First suggestion",
-                "fix": "First fix",
-                "confidence": 0.90
-            },
-            {
-                "line_number": 20,
-                "file_path": "file2.py",
-                "description": "Second suggestion",
-                "fix": "Second fix",
-                "confidence": 0.85
-            },
-            {
-                "line_number": 30,
-                "file_path": "file3.py",
-                "description": "Third suggestion",
-                "fix": "Third fix",
-                "confidence": 0.80
-            }
-        ]
-        
-        created_suggestions = suggestion_service.create_suggestions_batch(
-            db_session, pr.id, suggestions_data
-        )
-        
-        assert len(created_suggestions) == 3
-        assert created_suggestions[0].line_number == 10
-        assert created_suggestions[1].line_number == 20
-        assert created_suggestions[2].line_number == 30
-        
-        # Verify all suggestions belong to the same PR
-        for suggestion in created_suggestions:
-            assert suggestion.pr_id == pr.id
-    
-    def test_get_suggestions_by_pr_id(self, db_session):
-        """Test getting suggestions for a specific PR."""
-        # Create a PR first
-        pr_data = {
-            "number": 789,
-            "repo_name": "testrepo",
-            "repo_full_name": "testuser/testrepo",
-            "branch": "test-branch",
-            "author": "testuser",
-            "title": "Test PR",
-            "status": "opened",
-            "github_url": "https://github.com/testuser/testrepo/pull/789",
-            "diff_url": "https://github.com/testuser/testrepo/pull/789.diff"
-        }
-        
-        from app.services.pr_service import pr_service
-        pr = pr_service.create_pr(db_session, pr_data)
-        
-        # Create some suggestions
-        suggestion1 = suggestion_service.create_suggestion(db_session, {
-            "pr_id": pr.id,
-            "line_number": 10,
-            "file_path": "test.py",
-            "description": "First suggestion",
-            "fix": "First fix",
-            "confidence": 0.90
-        })
-        
-        suggestion2 = suggestion_service.create_suggestion(db_session, {
-            "pr_id": pr.id,
-            "line_number": 20,
-            "file_path": "test.py",
-            "description": "Second suggestion",
-            "fix": "Second fix",
-            "confidence": 0.85
-        })
-        
-        # Get suggestions for this PR
-        suggestions = suggestion_service.get_suggestions_by_pr_id(db_session, pr.id)
-        
-        assert len(suggestions) == 2
-        assert suggestions[0].id == suggestion1.id
-        assert suggestions[1].id == suggestion2.id
-    
-    def test_get_suggestions_by_pr_id_empty(self, db_session):
-        """Test getting suggestions for PR with no suggestions."""
-        # Create a PR first
-        pr_data = {
-            "number": 999,
-            "repo_name": "testrepo",
-            "repo_full_name": "testuser/testrepo",
-            "branch": "test-branch",
-            "author": "testuser",
-            "title": "Test PR",
-            "status": "opened",
-            "github_url": "https://github.com/testuser/testrepo/pull/999",
-            "diff_url": "https://github.com/testuser/testrepo/pull/999.diff"
-        }
-        
-        from app.services.pr_service import pr_service
-        pr = pr_service.create_pr(db_session, pr_data)
-        
-        # Get suggestions for PR with no suggestions
-        suggestions = suggestion_service.get_suggestions_by_pr_id(db_session, pr.id)
-        
-        assert len(suggestions) == 0
-        assert suggestions == []
-    
-    def test_create_suggestion_with_missing_fields(self, db_session):
-        """Test creating suggestion with missing optional fields."""
-        # Create a PR first
-        pr_data = {
-            "number": 111,
-            "repo_name": "testrepo",
-            "repo_full_name": "testuser/testrepo",
-            "branch": "test-branch",
-            "author": "testuser",
-            "title": "Test PR",
-            "status": "opened",
-            "github_url": "https://github.com/testuser/testrepo/pull/111",
-            "diff_url": "https://github.com/testuser/testrepo/pull/111.diff"
-        }
-        
-        from app.services.pr_service import pr_service
-        pr = pr_service.create_pr(db_session, pr_data)
-        
-        # Create suggestion with minimal data
-        suggestion_data = {
-            "pr_id": pr.id,
-            "line_number": 5,
-            "file_path": "minimal.py",
-            "description": "Minimal suggestion"
-            # Missing: fix, confidence (should use defaults)
-        }
-        
-        suggestion = suggestion_service.create_suggestion(db_session, suggestion_data)
-        
-        assert suggestion.pr_id == pr.id
-        assert suggestion.line_number == 5
-        assert suggestion.description == "Minimal suggestion"
-        # Should have default values for missing fields
-        assert suggestion.fix is not None
-        assert suggestion.confidence is not None
+
+    def test_no_suggestions_for_a_new_pr(self, db_session):
+        pr = pr_service.create_pr(db_session, pr_data())
+
+        assert suggestion_service.get_suggestions_by_pr_id(db_session, pr.id) == []
+
+    def test_replace_stores_suggestions_and_the_analysed_commit(self, db_session):
+        pr = pr_service.create_pr(db_session, pr_data())
+
+        suggestion_service.replace_for_pr(db_session, pr, [suggestion("First"), suggestion("Second", 20)], "a" * 40)
+
+        stored = suggestion_service.get_suggestions_by_pr_id(db_session, pr.id)
+        assert sorted(s.description for s in stored) == ["First", "Second"]
+        assert stored[0].file_path == "app.py"
+        assert pr.analyzed_sha == "a" * 40
+
+    def test_replace_removes_earlier_suggestions(self, db_session):
+        pr = pr_service.create_pr(db_session, pr_data())
+        suggestion_service.replace_for_pr(db_session, pr, [suggestion("Old")], "a" * 40)
+
+        suggestion_service.replace_for_pr(db_session, pr, [suggestion("New")], "b" * 40)
+
+        stored = suggestion_service.get_suggestions_by_pr_id(db_session, pr.id)
+        assert [s.description for s in stored] == ["New"]
+        assert pr.analyzed_sha == "b" * 40
+
+    def test_suggestions_are_kept_per_pr(self, db_session):
+        first = pr_service.create_pr(db_session, pr_data(number=1))
+        second = pr_service.create_pr(db_session, pr_data(number=2))
+
+        suggestion_service.replace_for_pr(db_session, first, [suggestion("For the first PR")], "a" * 40)
+
+        assert suggestion_service.get_suggestions_by_pr_id(db_session, second.id) == []
+
+    def test_replace_doesnt_commit(self, db_session):
+        """The caller owns the transaction, so the swap can be atomic."""
+        pr = pr_service.create_pr(db_session, pr_data())
+        db_session.commit()
+        suggestion_service.replace_for_pr(db_session, pr, [suggestion("Uncommitted")], "a" * 40)
+
+        db_session.rollback()
+
+        assert suggestion_service.get_suggestions_by_pr_id(db_session, pr.id) == []

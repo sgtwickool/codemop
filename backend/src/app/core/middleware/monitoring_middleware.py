@@ -5,6 +5,7 @@ This module contains middleware for request monitoring and error tracking.
 """
 
 from fastapi import Request
+from fastapi.routing import iter_route_contexts
 from typing import Callable, Awaitable
 import time
 import logging
@@ -17,19 +18,17 @@ def endpoint_label(request: Request) -> str:
     The route template (e.g. /api/v1/pr/{pr_id}/suggestions) rather than the raw path, so
     each PR doesn't become a separate metric series. Unmatched paths share one label.
     """
-    path_format = getattr(request.scope.get("route"), "path_format", None)
-    if not path_format:
-        return "unmatched"
-    
-    # Routes from an included router don't carry its prefix (/api/v1), so take the prefix
-    # from the request path: whatever comes before the route's own part
-    path = request.scope.get("path", "")
-    try:
-        own_part = path_format.format(**request.scope.get("path_params", {}))
-    except (KeyError, IndexError, ValueError):
-        return path_format
-    prefix = path[:-len(own_part)] if own_part and path.endswith(own_part) else ""
-    return prefix + path_format
+    # scope["route"] is the route as declared on its router, without the prefix it was
+    # included under (/api/v1); FastAPI's route contexts have the full template
+    templates = getattr(request.app.state, "route_templates", None)
+    if templates is None:
+        templates = {
+            id(context.original_route): context.path_format
+            for context in iter_route_contexts(request.app.routes)
+        }
+        request.app.state.route_templates = templates
+    return templates.get(id(request.scope.get("route")), "unmatched")
+
 
 async def error_tracking_middleware(
     request: Request,

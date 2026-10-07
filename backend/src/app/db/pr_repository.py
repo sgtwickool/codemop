@@ -36,10 +36,9 @@ class PRRepository(BaseRepository[PR]):
         statement = statement.on_conflict_do_update(
             index_elements=["repo_full_name", "number"],
             set_=updates,
-        ).returning(PR.id)
+        ).returning(PR)
         
-        pr_id = db.execute(statement).scalar_one()
-        # The row was changed outside the ORM, so refresh any copy already in the session
-        return db.get(PR, pr_id, populate_existing=True)
+        # populate_existing: refresh any copy of this PR already in the session
+        return db.scalars(statement, execution_options={"populate_existing": True}).one()
 
 pr_repository = PRRepository()

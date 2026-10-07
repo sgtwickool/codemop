@@ -89,7 +89,8 @@ the server switches to that core when it lands.
 - [x] Rethink the webhook rate limit: removed, since it could only drop GitHub's own deliveries (they share a few IPs, or a proxy's, and GitHub doesn't retry a 429); signatures and once-per-commit analysis are the protection
 - [x] Fix Prometheus metrics (the middleware bound `None` at import, so nothing was recorded) and label them by route template, not raw path; the metrics server is off unless `ENABLE_METRICS=true`
 - [x] Replace `print` with logging (and stop the JSON logs escaping non-ASCII); tighten CORS: off unless `CORS_ORIGINS` lists origins, never with credentials
-- [ ] End-of-phase tidy: `/simplify` over the Phase 1 diff (`git diff phase-0..HEAD`), then remove dead code it can't see (`BaseRepository.get_by_field`, `SuggestionService.create_suggestions_batch`, `enforce_https`, `PerformanceMonitor`, `monitor_endpoint`) and the `src/main.py` shim; tag `phase-1`
+- [x] End-of-phase tidy: `/simplify` over the Phase 1 diff, then remove dead code it can't see (unused helpers, the committing `BaseRepository` methods, the `src/main.py` shim, the side-effecting `app/__init__.py` import)
+- [ ] Check the "done when" end to end with a real PR and a real AI key, then tag `phase-1`
 
 **Done when:** a real PR on a real (including private) repo gets stored suggestions,
 with no GitHub delivery failures.
@@ -105,6 +106,8 @@ Extract the review logic into a package that has nothing to do with FastAPI or t
 - [ ] CLI: `codemop review owner/repo#123 [--post] [--dry-run]`
 - [ ] Golden tests from recorded diffs and model responses
 - [ ] Move to the target [repository structure](#repository-structure): the package at the root, `backend/` becomes `server/` and uses it
+- [ ] In the server, stop running synchronous database work inside `async` handlers and the background job (make DB-only handlers plain `def`, or move to async SQLAlchemy); it blocks the event loop under load
+- [ ] Move the older integration tests' inline payloads and headers onto `tests/helpers.py` / the `post_webhook` fixture
 - [ ] Publish to PyPI
 
 ### Model agnostic

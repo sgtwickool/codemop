@@ -42,11 +42,3 @@ def cors_settings(origins):
         "allow_methods": ["GET"],
         "allow_headers": ["Authorization", "Content-Type"],
     }
-
-# API security settings
-API_SECURITY = {
-    "default_rate_limit": "60/minute",
-    "max_request_size": MAX_REQUEST_SIZE,
-    "require_https": True,
-    "strict_transport_security": "max-age=31536000; includeSubDomains; preload"
-}

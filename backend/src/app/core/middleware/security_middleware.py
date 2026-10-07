@@ -44,12 +44,3 @@ async def add_security_headers(request: Request, call_next):
         response.headers["Content-Security-Policy"] = DOCS_CONTENT_SECURITY_POLICY
     
     return response
-
-
-async def enforce_https(request: Request, call_next):
-    """Enforce HTTPS for all requests."""
-    if request.url.scheme != "https" and not request.headers.get("X-Forwarded-Proto"):
-        logger.warning(f"Non-HTTPS request: {request.url}")
-        # In production, you would redirect to HTTPS here
-        # For now, just log and continue
-    return await call_next(request)

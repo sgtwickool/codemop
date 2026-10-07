@@ -9,8 +9,8 @@ from typing import Optional
 
 from app.config import settings
 from app.db.pr_repository import pr_repository
-from app.db.session import SessionLocal
-from app.models.pr import PR
+from app.db.session import session_scope
+from app.models.pr import PR, pr_label
 from app.services.ai_analysis import analyze_diff
 from app.services.github import fetch_pr_diff
 from app.services.suggestion_service import suggestion_service
@@ -38,28 +38,25 @@ async def analyze_pr_in_background(
     pr_id: int, repo_full_name: str, number: int, head_sha: Optional[str]
 ) -> None:
     """Fetch a PR's diff, analyse it, and replace the PR's suggestions with the results"""
+    label = pr_label(repo_full_name, number)
     try:
         diff = await fetch_pr_diff(repo_full_name, number)
         suggestions = await analyze_diff(diff)
     except Exception as e:
         # analyzed_sha stays unset, so the next push or a redelivery retries
-        logger.error(f"Analysis failed for {repo_full_name}#{number}: {str(e)}")
+        logger.error(f"Analysis failed for {label}: {str(e)}")
         return
     
-    db = SessionLocal()
     try:
-        pr = pr_repository.get(db, pr_id)
-        if pr is None:
-            logger.warning(f"PR {pr_id} no longer exists; discarding its analysis")
-            return
-        if head_sha is not None and pr.head_sha != head_sha:
-            logger.info(f"PR {pr_id} has new commits since {head_sha[:7]} was analysed; discarding stale results")
-            return
-        stored = suggestion_service.replace_for_pr(db, pr, suggestions, head_sha)
-        db.commit()
-        logger.info(f"💾 Stored {len(stored)} suggestions for {pr.repo_full_name}#{pr.number}")
+        with session_scope() as db:
+            pr = pr_repository.get(db, pr_id)
+            if pr is None:
+                logger.warning(f"{label} no longer exists; discarding its analysis")
+                return
+            if head_sha is not None and pr.head_sha != head_sha:
+                logger.info(f"{label} has new commits since {head_sha[:7]} was analysed; discarding stale results")
+                return
+            suggestion_service.replace_for_pr(db, pr, suggestions, head_sha)
+        logger.info(f"💾 Stored {len(suggestions)} suggestions for {label}")
     except Exception as e:
-        db.rollback()
-        logger.error(f"💾 Failed to store suggestions for PR {pr_id}: {str(e)}")
-    finally:
-        db.close()
+        logger.error(f"💾 Failed to store suggestions for {label}: {str(e)}")

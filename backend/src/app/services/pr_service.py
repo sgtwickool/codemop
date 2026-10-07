@@ -1,6 +1,6 @@
 from typing import Dict, Any
 from sqlalchemy.orm import Session
-from app.models.pr import PR
+from app.models.pr import PR, pr_label
 from app.db.pr_repository import pr_repository
 import logging
 
@@ -13,9 +13,7 @@ class PRService:
         """Create a new PR record, or update the existing one for this repo and number"""
         try:
             pr_record = pr_repository.upsert(db, pr_data)
-            logger.info(
-                f"Saved PR {pr_data['repo_full_name']}#{pr_data['number']} with ID {pr_record.id}"
-            )
+            logger.info(f"Saved PR {pr_record.label} with ID {pr_record.id}")
             return pr_record
         except Exception as e:
             logger.error(f"Failed to store PR data: {str(e)}")
@@ -32,7 +30,7 @@ class PRService:
         """Get PR by repository and PR number"""
         pr = pr_repository.get_by_number(db, repo_full_name, number)
         if not pr:
-            raise ValueError(f"PR {repo_full_name}#{number} not found")
+            raise ValueError(f"PR {pr_label(repo_full_name, number)} not found")
         return pr
 
 pr_service = PRService()

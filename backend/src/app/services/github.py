@@ -1,12 +1,14 @@
 import hmac
-import json
 import hashlib
 from fastapi import HTTPException, Header
-from typing import Optional, Dict, Any
+from typing import Optional
 import logging
 import httpx
+from pydantic import ValidationError
 from app.config import settings
-from app.utils.http import fetch_with_retry
+from app.models.pr import pr_label
+from app.schemas.github_webhook import PullRequestEvent
+from app.utils import http
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +32,8 @@ async def validate_github_webhook_signature(
     if not hmac.compare_digest(expected_signature, x_hub_signature_256):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
-def parse_webhook_payload(content_type: Optional[str], body: bytes) -> Dict[str, Any]:
-    """Parse a webhook body, rejecting anything that isn't a JSON object"""
+def parse_pull_request_event(content_type: Optional[str], body: bytes) -> PullRequestEvent:
+    """Parse and validate a pull_request webhook body; anything malformed is a 4xx"""
     media_type = (content_type or "").split(";")[0].strip().lower()
     if media_type != "application/json":
         # GitHub's default webhook content type is form-encoded, so say how to fix it
@@ -41,61 +43,17 @@ def parse_webhook_payload(content_type: Optional[str], body: bytes) -> Dict[str,
         )
 
     try:
-        payload = json.loads(body)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Webhook body is not valid JSON")
-
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=422, detail="Webhook body must be a JSON object")
-    return payload
-
-def _as_dict(value: Any) -> Dict[str, Any]:
-    """Treat a missing, null or non-object payload field as empty"""
-    return value if isinstance(value, dict) else {}
-
-def _get_pr_payload_data(payload: Dict[str, Any]) -> tuple:
-    """Helper function to extract common payload data"""
-    action = payload.get("action")
-    pr_number = payload.get("number")
-    pr_data = _as_dict(payload.get("pull_request"))
-    repo_data = _as_dict(payload.get("repository"))
-    return action, pr_number, pr_data, repo_data
-
-def pr_state(pr_data: Dict[str, Any]) -> str:
-    """The PR's state: open, closed or merged (GitHub reports merged PRs as closed)"""
-    if pr_data.get("merged"):
-        return "merged"
-    return pr_data.get("state") or "open"
-
-def extract_pr_data(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract PR data from GitHub webhook payload"""
-    action, pr_number, pr_data, repo_data = _get_pr_payload_data(payload)
-    head = _as_dict(pr_data.get("head"))
-    
-    # Return only the fields needed for the PR model
-    return {
-        "number": pr_number,
-        "repo_name": repo_data.get("name"),
-        "repo_full_name": repo_data.get("full_name"),
-        "branch": head.get("ref"),
-        "author": _as_dict(pr_data.get("user")).get("login"),
-        "title": pr_data.get("title"),
-        "status": pr_state(pr_data),
-        "github_url": pr_data.get("html_url"),
-        "diff_url": pr_data.get("diff_url"),
-        "head_sha": head.get("sha"),
-    }
-
-def extract_pr_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract metadata about the PR for logging and processing"""
-    action, pr_number, pr_data, repo_data = _get_pr_payload_data(payload)
-    
-    return {
-        "action": action,
-        "pr_number": pr_number,
-        "pr_data": pr_data,
-        "repo_data": repo_data
-    }
+        return PullRequestEvent.model_validate_json(body)
+    except ValidationError as e:
+        errors = e.errors()
+        missing = [".".join(map(str, error["loc"])) for error in errors if error["type"] == "missing"]
+        if missing:
+            detail = f"pull_request payload is missing required fields: {', '.join(missing)}"
+        else:
+            error = errors[0]
+            location = ".".join(map(str, error["loc"])) or "body"
+            detail = f"Invalid pull_request payload ({location}): {error['msg']}"
+        raise HTTPException(status_code=422, detail=detail)
 
 
 class GitHubAPIError(Exception):
@@ -103,7 +61,7 @@ class GitHubAPIError(Exception):
 
 
 def _diff_error_message(status: int, body: str, repo_full_name: str, number: int) -> str:
-    pr = f"{repo_full_name}#{number}"
+    pr = pr_label(repo_full_name, number)
     if status == 401:
         return f"GitHub rejected GITHUB_TOKEN while fetching {pr}; check it's valid and hasn't expired"
     if status == 403 and "rate limit" in body.lower():
@@ -136,7 +94,7 @@ async def fetch_pr_diff(repo_full_name: str, number: int) -> str:
         headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
     
     try:
-        response = await fetch_with_retry(url, "GET", headers=headers)
+        response = await http.fetch_with_retry(url, "GET", headers=headers)
     except httpx.HTTPStatusError as e:
         raise GitHubAPIError(
             _diff_error_message(e.response.status_code, e.response.text, repo_full_name, number)
