@@ -18,7 +18,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan context manager (modern alternative to on_event)"""
-    # Startup: Initialize database
+    # Startup: refuse to run without secrets (except in development), then migrate
+    for name in settings.check_secrets():
+        if name == "GITHUB_WEBHOOK_SECRET":
+            logger.warning("⚠️ GITHUB_WEBHOOK_SECRET is not set: webhook signatures are NOT checked (development only)")
+        else:
+            logger.warning(f"⚠️ {name} is not set: the API that needs it will reject every request")
     init_db()
     logger.info("✅ Database initialized")
     yield

@@ -1,3 +1,4 @@
+import hmac
 from fastapi import HTTPException, Security
 from fastapi.security import APIKeyHeader
 from app.config import settings
@@ -18,7 +19,15 @@ async def get_api_key(api_key_header: str = Security(api_key_header)):
     else:
         api_key = api_key_header.strip()
     
-    if api_key != settings.API_KEY:
+    # An unset API_KEY must never match (e.g. an empty bearer token)
+    if not settings.API_KEY:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid API key"
+        )
+    
+    # Constant-time comparison, so response timing doesn't reveal how much of the key matched
+    if not hmac.compare_digest(api_key.encode(), settings.API_KEY.encode()):
         raise HTTPException(
             status_code=401,
             detail="Invalid API key"

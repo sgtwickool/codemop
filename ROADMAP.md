@@ -47,8 +47,8 @@ the server switches to that core when it lands.
 - [x] Return from the webhook within 1s; run analysis in the background (measured: 0.08s with an 8s diff fetch behind it)
 - [x] Analyse only on `opened`, `synchronize`, `reopened` and `ready_for_review` (not drafts, not already-analysed commits); replace old suggestions per head SHA, discarding results for superseded commits
 - [x] Store PR state (open/closed/merged), not the last webhook action
-- [ ] Refuse to start without `GITHUB_WEBHOOK_SECRET` and `API_KEY` (outside dev); compare keys in constant time
-- [ ] Validate signatures on every event, not just `pull_request`
+- [x] Refuse to start without `GITHUB_WEBHOOK_SECRET` and `API_KEY` (outside dev; `APP_ENV` now defaults to `production`); compare keys in constant time
+- [x] Validate signatures on every event, not just `pull_request` (and answer GitHub's `ping`)
 - [ ] Fetch diffs with a GitHub token so private repos work
 - [ ] Look up suggestions by repo + PR number
 - [ ] Rethink the webhook rate limit (10/min drops legitimate bursts, and GitHub doesn't retry a 429)

@@ -21,7 +21,7 @@ import os
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 SERVICE_NAME = os.getenv("SERVICE_NAME", "codemop")
-ENVIRONMENT = os.getenv("APP_ENV", "development")
+ENVIRONMENT = os.getenv("APP_ENV", "production")  # same default as app.config
 
 class CustomJsonFormatter(JsonFormatter):
     """

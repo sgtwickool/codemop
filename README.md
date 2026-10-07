@@ -35,6 +35,9 @@ sudo systemctl start postgresql
    ```bash
    cp .env.example .env
    ```
+   `GITHUB_WEBHOOK_SECRET` and `API_KEY` are required: the server refuses to start without
+   them unless `APP_ENV=development` (which `.env.example` sets). `APP_ENV` defaults to
+   `production` when unset.
 3. Install dependencies and set up the database (creates `venv/` and, if missing, `.env`):
    ```bash
    ./scripts/setup_dev.sh
@@ -56,7 +59,7 @@ sudo systemctl start postgresql
    - Set content type to `application/json`
    - Add your webhook secret (same as in `.env` file)
    - Select "Let me select individual events" and check "Pull requests"
-4. **Test the webhook**: Create a test pull request and verify the webhook delivery in GitHub
+4. **Test the webhook**: GitHub sends a `ping` when the webhook is created; its delivery log should show `"status": "pong"`. Then open a test pull request and check that delivery too
 
 ### Testing
 
