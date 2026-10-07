@@ -41,3 +41,17 @@ def test_openai_compatible_takes_a_base_url_and_key_variable(monkeypatch):
 def test_explains_what_is_missing(args, message):
     with pytest.raises(ValueError, match=message):
         create_model(*args)
+
+
+def test_an_explicit_key_wins():
+    assert create_model("mistral", api_key="explicit").api_key == "explicit"
+    assert create_model("anthropic", api_key="explicit")._client.api_key == "explicit"
+
+
+def test_key_env_names_each_providers_variable():
+    from codemop.providers import key_env
+
+    assert key_env("anthropic") == "ANTHROPIC_API_KEY"
+    assert key_env("mistral") == "MISTRAL_API_KEY"
+    assert key_env("ollama") is None
+    assert key_env("openai-compatible") is None

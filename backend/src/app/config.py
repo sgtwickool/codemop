@@ -1,5 +1,6 @@
+import os
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings
 
 # backend/src/app/config.py -> repo root
@@ -27,10 +28,13 @@ class Settings(BaseSettings):
     GITHUB_TOKEN: str = ""
     GITHUB_API_URL: str = "https://api.github.com"  # change for GitHub Enterprise Server
 
-    # AI API Configuration
+    # AI review, through the codemop package. AI_PROVIDER is one of: anthropic, mistral,
+    # openai, openrouter, ollama, openai-compatible. The key is AI_API_KEY if set, otherwise the
+    # provider's own environment variable (ANTHROPIC_API_KEY, MISTRAL_API_KEY...); ollama needs none
+    AI_PROVIDER: str = "anthropic"
+    AI_MODEL: str = ""  # empty: the provider's default (claude-opus-5-5, codestral-latest)
+    AI_BASE_URL: str = ""  # for openai-compatible, or a self-hosted endpoint
     AI_API_KEY: str = ""
-    AI_API_URL: str = "https://api.mistral.ai/v1/chat/completions"
-    AI_MODEL: str = "codestral-latest"
 
     # API Authentication
     API_KEY: str = ""
@@ -50,10 +54,6 @@ class Settings(BaseSettings):
     ENABLE_METRICS: bool = False  # serve Prometheus metrics on METRICS_PORT
     METRICS_PORT: int = 8001
     
-    # Retry Configuration
-    MAX_RETRIES: int = 3
-    RETRY_DELAY: float = 1.0
-
     model_config = {
         # Environment variables take precedence over the .env file
         'env_file': REPO_ROOT / '.env',
@@ -64,6 +64,19 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> List[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def ai_key_env(self) -> Optional[str]:
+        """The provider's own API key variable (None: it needs no key)"""
+        from codemop.providers import key_env
+        return key_env(self.AI_PROVIDER)
+
+    @property
+    def ai_key_configured(self) -> bool:
+        # (The provider's own variable has to be a real environment variable: values from .env
+        # are only available as settings, which is what AI_API_KEY is for)
+        key_env = self.ai_key_env
+        return bool(self.AI_API_KEY) or key_env is None or bool(os.environ.get(key_env))
 
     @property
     def is_development(self) -> bool:

@@ -7,12 +7,15 @@ the webhook only stores the PR and queues the analysis.
 import logging
 from typing import Optional
 
+from codemop.github.client import PullRequestRef, fetch_pr_diff
+from codemop.providers import create_model
+from codemop.providers.base import ReviewModel
+from codemop.review.pipeline import review_diff
+
 from app.config import settings
 from app.db.pr_repository import pr_repository
 from app.db.session import session_scope
 from app.models.pr import PR, pr_label
-from app.services.ai_analysis import analyze_diff
-from app.services.github import fetch_pr_diff
 from app.services.suggestion_service import suggestion_service
 
 logger = logging.getLogger(__name__)
@@ -23,8 +26,8 @@ ANALYZE_ACTIONS = {"opened", "synchronize", "reopened", "ready_for_review"}
 
 def skip_reason(action: Optional[str], is_draft: bool, pr: PR) -> Optional[str]:
     """Why this event shouldn't trigger an analysis, or None if it should"""
-    if not settings.AI_API_KEY:
-        return "AI_API_KEY is not configured"
+    if not settings.ai_key_configured:
+        return f"no API key for {settings.AI_PROVIDER}: set AI_API_KEY (or {settings.ai_key_env})"
     if action not in ANALYZE_ACTIONS:
         return f"'{action}' events don't change the code"
     if is_draft:
@@ -34,18 +37,40 @@ def skip_reason(action: Optional[str], is_draft: bool, pr: PR) -> Optional[str]:
     return None
 
 
+def review_model() -> ReviewModel:
+    """The model configured by AI_PROVIDER, AI_MODEL, AI_BASE_URL and AI_API_KEY"""
+    return create_model(
+        settings.AI_PROVIDER,
+        settings.AI_MODEL or None,
+        base_url=settings.AI_BASE_URL or None,
+        api_key=settings.AI_API_KEY or None,
+    )
+
+
 async def analyze_pr_in_background(
     pr_id: int, repo_full_name: str, number: int, head_sha: Optional[str]
 ) -> None:
-    """Fetch a PR's diff, analyse it, and replace the PR's suggestions with the results"""
+    """Review a PR's diff with codemop, and replace the PR's suggestions with the results"""
     label = pr_label(repo_full_name, number)
     try:
-        diff = await fetch_pr_diff(repo_full_name, number)
-        suggestions = await analyze_diff(diff)
+        diff = await fetch_pr_diff(
+            PullRequestRef(repo_full_name, number),
+            token=settings.GITHUB_TOKEN or None,
+            api_url=settings.GITHUB_API_URL,
+        )
+        report = await review_diff(diff, review_model())
     except Exception as e:
         # analyzed_sha stays unset, so the next push or a redelivery retries
         logger.error(f"Analysis failed for {label}: {str(e)}")
         return
+    
+    if not report.complete:
+        # Keep the old suggestions and leave analyzed_sha unset, so it's retried
+        reasons = "; ".join(sorted({failed.reason for failed in report.failed}))
+        logger.error(f"Review of {label} with {report.model} was incomplete: {reasons}")
+        return
+    for skipped in report.skipped:
+        logger.info(f"Skipped {skipped.path} in {label}: {skipped.reason}")
     
     try:
         with session_scope() as db:
@@ -56,7 +81,10 @@ async def analyze_pr_in_background(
             if head_sha is not None and pr.head_sha != head_sha:
                 logger.info(f"{label} has new commits since {head_sha[:7]} was analysed; discarding stale results")
                 return
-            suggestion_service.replace_for_pr(db, pr, suggestions, head_sha)
-        logger.info(f"💾 Stored {len(suggestions)} suggestions for {label}")
+            suggestion_service.replace_for_pr(db, pr, report.suggestions, head_sha)
+        logger.info(
+            f"💾 Stored {len(report.suggestions)} suggestions for {label} from {report.model} "
+            f"({report.usage.input_tokens:,} input / {report.usage.output_tokens:,} output tokens)"
+        )
     except Exception as e:
         logger.error(f"💾 Failed to store suggestions for {label}: {str(e)}")
