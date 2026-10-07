@@ -13,7 +13,7 @@ from sqlalchemy import create_engine
 
 from app.config import settings
 from app.models.base import Base
-from app.models import pr, suggestion  # noqa: F401 - registers the tables on Base
+import app.models  # noqa: F401 - registers every table on Base
 
 config = context.config
 target_metadata = Base.metadata

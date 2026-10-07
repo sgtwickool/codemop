@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, HTTPException, Header, Depends
+from fastapi import APIRouter, BackgroundTasks, Request, HTTPException, Header, Depends
 from typing import Optional
 from sqlalchemy.orm import Session
 from app.core.rate_limit import limiter
@@ -10,23 +10,33 @@ from app.services.github import (
     extract_pr_metadata,
 )
 from app.services.pr_service import pr_service
-from app.services.suggestion_service import suggestion_service
-from app.services.ai_analysis import analyze_pr_with_ai
+from app.services.pr_analysis import analyze_pr_in_background, skip_reason
 from app.db.session import get_db
+from app.db.webhook_delivery_repository import webhook_delivery_repository
 import logging
 from datetime import datetime, timezone
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# PR fields that may legitimately be missing from a payload
+OPTIONAL_PR_FIELDS = {"head_sha"}
+
 @router.post("/github/webhook")
 @limiter.limit(RATE_LIMITS["webhook"])
 async def handle_github_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     x_github_event: Optional[str] = Header(None),
     x_hub_signature_256: Optional[str] = Header(None),
+    x_github_delivery: Optional[str] = Header(None),
     db: Session = Depends(get_db)  # Proper dependency injection
 ):
+    """
+    Store the PR from a pull_request event and queue an AI analysis if the code changed.
+    
+    Responds straight away; the analysis runs afterwards (GitHub gives up after 10 seconds).
+    """
     # Only process pull_request events
     if x_github_event != "pull_request":
         logger.info(f"Received non-PR event: {x_github_event}")
@@ -40,7 +50,10 @@ async def handle_github_webhook(
     
     # Extract PR data for database
     pr_db_data = extract_pr_data(payload)
-    missing_fields = [field for field, value in pr_db_data.items() if value is None]
+    missing_fields = [
+        field for field, value in pr_db_data.items()
+        if value is None and field not in OPTIONAL_PR_FIELDS
+    ]
     if missing_fields:
         raise HTTPException(
             status_code=422,
@@ -49,39 +62,36 @@ async def handle_github_webhook(
     
     # Extract PR metadata for logging
     pr_metadata = extract_pr_metadata(payload)
+    pr_label = f"{pr_db_data['repo_full_name']}#{pr_metadata['pr_number']}"
     
-    logger.info(f"Processing PR #{pr_metadata['pr_number']} - Action: {pr_metadata['action']}")
-    logger.info(f"Repository: {pr_db_data['repo_full_name']}")
+    # GitHub redelivers on timeouts and manual retries; only process each delivery once
+    if x_github_delivery and not webhook_delivery_repository.record(db, x_github_delivery, x_github_event):
+        logger.info(f"Ignoring redelivery {x_github_delivery} for {pr_label}")
+        return {"status": "duplicate", "reason": f"delivery {x_github_delivery} was already processed"}
+    
+    logger.info(f"Processing {pr_label} - Action: {pr_metadata['action']}")
     logger.info(f"PR Title: {pr_db_data['title']}")
     logger.info(f"Author: {pr_db_data['author']}")
     logger.info(f"Branch: {pr_db_data['branch']}")
     
-    # Store PR data in database
+    # Store the PR and the delivery together: if this fails, a redelivery is processed again
     try:
         pr_record = pr_service.create_pr(db, pr_db_data)
+        db.commit()
     except Exception as e:
         logger.error(f"Failed to store PR data: {str(e)}")
         raise HTTPException(status_code=500, detail="Database error while storing PR")
     
-    # Trigger AI analysis
-    suggestions = []
-    diff_url = pr_db_data.get("diff_url")
-    if isinstance(diff_url, str) and diff_url:
-        try:
-            logger.info(f"Starting AI analysis for PR #{pr_metadata['pr_number']}")
-            suggestions = await analyze_pr_with_ai(diff_url)
-        except Exception as e:
-            logger.error(f"AI analysis failed for PR #{pr_metadata['pr_number']}: {str(e)}")
-            # Don't fail the entire webhook if AI analysis fails
-    
-    # Store suggestions in database
-    if suggestions:
-        try:
-            suggestion_service.create_suggestions_batch(db, pr_record.id, suggestions)
-            logger.info(f"💾 Stored {len(suggestions)} suggestions for PR #{pr_metadata['pr_number']}")
-        except Exception as e:
-            logger.error(f"💾 Failed to store suggestions for PR #{pr_metadata['pr_number']}: {str(e)}")
-            # Don't fail the entire webhook if suggestion storage fails
+    reason = skip_reason(pr_metadata["action"], bool(pr_metadata["pr_data"].get("draft")), pr_record)
+    if reason is None:
+        logger.info(f"Queueing AI analysis for {pr_label}")
+        background_tasks.add_task(
+            analyze_pr_in_background, pr_record.id, pr_record.head_sha, pr_record.diff_url
+        )
+        analysis = {"analysis": "queued"}
+    else:
+        logger.info(f"Not analysing {pr_label}: {reason}")
+        analysis = {"analysis": "skipped", "reason": reason}
     
     return {
         "status": "success",
@@ -89,6 +99,6 @@ async def handle_github_webhook(
         "action": pr_metadata['action'],
         "repository": pr_db_data['repo_full_name'],
         "database_id": pr_record.id,
-        "suggestions_count": len(suggestions),
+        **analysis,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
