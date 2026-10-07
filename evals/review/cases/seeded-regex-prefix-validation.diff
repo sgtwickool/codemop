@@ -1,0 +1,14 @@
+diff --git a/ops/backup.py b/ops/backup.py
+--- a/ops/backup.py
++++ b/ops/backup.py
+@@ -1,5 +1,9 @@
++import re
+ import subprocess
+ 
+ 
+ def backup(database):
+-    subprocess.run(["pg_dump", "--file", "/backups/latest.sql", database], check=True)
++    """Back up one database to /backups/<database>.sql"""
++    if not re.match(r"[a-z_]+", database):
++        raise ValueError(f"invalid database name: {database!r}")
++    subprocess.run(f"pg_dump --file /backups/{database}.sql {database}", shell=True, check=True)

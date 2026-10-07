@@ -45,7 +45,7 @@ dev = [
 packages = ["src/codemop"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "evals"]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
 # importlib: test dirs aren't packages, so they can't clash with server/tests

@@ -1,0 +1,13 @@
+diff --git a/src/sync.ts b/src/sync.ts
+--- a/src/sync.ts
++++ b/src/sync.ts
+@@ -1,3 +1,8 @@
+ export async function syncAll(accounts: Account[]): Promise<number> {
+-  return 0;
++  let synced = 0;
++  accounts.forEach(async (account) => {
++    await syncAccount(account);
++    synced += 1;
++  });
++  return synced;
+ }

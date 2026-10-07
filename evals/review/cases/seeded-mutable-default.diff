@@ -1,0 +1,10 @@
+diff --git a/notify/email.py b/notify/email.py
+--- a/notify/email.py
++++ b/notify/email.py
+@@ -1,2 +1,4 @@
+-def build_message(subject, body):
+-    return {"subject": subject, "body": body}
++def build_message(subject, body, recipients=[]):
++    """A message for `recipients`, always copying in the on-call address"""
++    recipients.append("oncall@example.com")
++    return {"subject": subject, "body": body, "to": recipients}

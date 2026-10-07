@@ -1,0 +1,11 @@
+diff --git a/api/listing.py b/api/listing.py
+--- a/api/listing.py
++++ b/api/listing.py
+@@ -1,3 +1,4 @@
+-def list_orders(orders, page_size=20):
+-    """Return the first page of orders"""
+-    return orders[:page_size]
++def list_orders(orders, page=1, page_size=20):
++    """Return one page of orders; pages are numbered from 1"""
++    start = page * page_size
++    return orders[start:start + page_size]

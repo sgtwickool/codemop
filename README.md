@@ -109,6 +109,13 @@ key to their server.
 
 Each review ends with the tokens used and, where the model's list price is known, an estimated cost.
 
+### Choosing a model
+The default is Claude Opus 5.5 (`claude-opus-5-5`) at high effort, chosen by the
+[review eval](evals/review/README.md): it found the most known issues, with almost no false alarms,
+for about two cents a review. `--effort` (or `CODEMOP_EFFORT`) sets Claude's effort level. For less
+cost, `--model claude-sonnet-5-5 --effort low` was as good on simple changes and missed a little more
+on complex ones. Claude Haiku 4.5 isn't recommended: half its comments were wrong.
+
 ### Reviewing with a local model (Ollama)
 The `codemop` command can review with a model running on your own machine: no API key, no cost per
 review, and the code never leaves your computer. It's slower, and small models review less well.

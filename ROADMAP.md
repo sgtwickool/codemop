@@ -128,10 +128,10 @@ so the core must not care which model it's talking to, and the choice of default
 - [x] Token budgets: chunks are planned with a deliberately high estimate (3 characters per token), so they're never too big for `chunk_tokens`; real usage comes back on every response. (Counting exactly with each provider's endpoint would cost an API call per file and hunk while planning)
 - [x] Config: `provider`, `model`, `api_key_env`, optional `base_url`, from flags or `CODEMOP_PROVIDER` / `CODEMOP_MODEL` / `CODEMOP_BASE_URL` (the server: `AI_*`); no model IDs hardcoded outside the defaults
 - [x] Record tokens and estimated cost per run (list prices, dated; no estimate for models without a known price). (Prompt caching doesn't help yet: the shared instructions are a few hundred tokens, below Claude's minimum cacheable prefix of 1,024+)
-- [ ] **Model comparison eval:** a fixed set of real PR diffs with known issues, scored the same way for every provider and model (real issues found, false positives, valid line positions, cost per useful comment). It picks the default, catches regressions when prompts or models change, and later measures complexity-based routing (Phase 6)
+- [x] **Model comparison eval:** a fixed set of real PR diffs with known issues, scored the same way for every provider and model (real issues found, false positives, valid line positions, cost per useful comment). It picks the default, catches regressions when prompts or models change, and later measures complexity-based routing (Phase 6). (2026-10-08: [`evals/review/`](evals/review/README.md), 25 cases (real bugs from this repo's history, seeded bugs, clean changes), five Claude configurations, graded by location and a Claude Opus 4.8 judge; about $9 for the full run)
 - [x] End-to-end check carried over from Phase 1: a real PR through the server with Claude ends with stored suggestions. (2026-10-07: a real webhook for PR #2 went through the server, the package and claude-opus-5-5 in 12s, and 3 suggestions were stored; the CLI reviewed the same PR in 11s for about $0.02. Done with a local qwen2.5-coder:7b too)
 - [x] One `min_confidence` for the CLI and the server: 0.5 by default, or the repo's `.codemop.yml`
-- [ ] Choose the default model from the eval. Start by comparing Claude Opus 5.5 (`claude-opus-5-5`) against cheaper options, Codestral (the current default) and a local model
+- [x] Choose the default model from the eval. Start by comparing Claude Opus 5.5 (`claude-opus-5-5`) against cheaper options, Codestral (the current default) and a local model. (2026-10-08: Claude Opus 5.5 at high effort stays the default: 47/50 cases passed, best on complex changes, about $0.02 a review. Sonnet 5.5 matched it on simple changes for 40% of the cost; Haiku 4.5 got half its comments wrong. Codestral wasn't compared (no key); the local model is for demonstration only)
 
 **Done when:** `pipx run codemop review sgtwickool/codemop#N` prints useful suggestions
 with at least two providers, and the eval results are in the repo.
@@ -189,7 +189,9 @@ Action).
 
 ## Phase 6: Later, maybe
 
-- **Complexity-based routing** (needs the Phase 2 eval to tune and trust it). Route each chunk,
+- **Complexity-based routing** (needs the Phase 2 eval to tune and trust it). *Parked on
+  2026-10-08: the eval found it would save about a cent per review, for a little more risk on
+  changes that look simple and aren't; revisit if reviews get expensive.* Route each chunk,
   not the whole PR, to the cheapest review that's good enough:
   1. Free checks first, with no model: skip only what's certainly trivial (docs-only, lock
      files, pure renames, whitespace); send obviously risky code (auth, crypto, SQL and
@@ -220,3 +222,4 @@ Action).
 | 2026-10-07 | Also ship as a Claude Code plugin (skill + MCP server), instead of having CodeMop call a user's Claude subscription | Anthropic doesn't allow third-party products to offer claude.ai login or rate limits without approval; running inside Claude Code is the supported way for subscribers to use it |
 | 2026-10-07 | Model agnostic: provider adapters behind one interface, selected by config; the default model is chosen by the comparison eval | Users have their own provider preferences, and quality differed noticeably between Le Chat and Claude in practice, so measure it rather than guess |
 | 2026-10-07 | The original scope (`docs/codemop_project_scope.md`, `docs/epics.md`) is superseded | It was sized for a five-person team. Epic 1 → Phases 0–1; Epic 6 → Phases 2–3; Epic 3 → Phase 3 (suggestion blocks) and Phase 6 (grouped fixes); Epics 2, 4, 5, 7, 8 deferred |
+| 2026-10-08 | Claude Opus 5.5 at high effort stays the default model; complexity-based routing is parked | The review eval: Opus did best on complex changes (17/20 against 14–15 for the alternatives), and reviews cost about two cents, so routing to cheaper models would save little |

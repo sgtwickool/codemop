@@ -1,0 +1,51 @@
+diff --git a/src/codemop/providers/pricing.py b/src/codemop/providers/pricing.py
+new file mode 100644
+index 0000000..9765e90
+--- /dev/null
++++ b/src/codemop/providers/pricing.py
+@@ -0,0 +1,45 @@
++"""
++Estimating what a review cost, from list prices.
++
++Prices change, so these are dated and the result is always described as an estimate. A model
++without a known price gets no estimate rather than a guess.
++"""
++from dataclasses import dataclass
++from typing import Dict, Optional
++
++from codemop.providers.base import Usage
++
++PRICES_AS_OF = "2026-09-25"
++
++
++@dataclass(frozen=True)
++class Price:
++    """US dollars per million tokens"""
++    input: float
++    output: float
++    cache_read: Optional[float] = None  # default: a tenth of the input price
++
++    def cost(self, usage: Usage) -> float:
++        cache_read = self.cache_read if self.cache_read is not None else self.input / 10
++        return (
++            usage.input_tokens * self.input
++            + usage.output_tokens * self.output
++            + usage.cache_read_tokens * cache_read
++            + usage.cache_write_tokens * self.input * 1.25  # five-minute cache writes
++        ) / 1_000_000
++
++
++# Anthropic list prices on the Claude API
++ANTHROPIC_PRICES: Dict[str, Price] = {
++    "claude-fable-5-1": Price(10.00, 50.00, cache_read=0.25),
++    "claude-fable-5": Price(10.00, 50.00),
++    "claude-opus-5-5": Price(4.00, 20.00, cache_read=0.20),
++    "claude-opus-5": Price(5.00, 25.00),
++    "claude-opus-4-8": Price(5.00, 25.00),
++    "claude-opus-4-7": Price(5.00, 25.00),
++    "claude-opus-4-6": Price(5.00, 25.00),
++    "claude-sonnet-5-5": Price(2.00, 10.00, cache_read=0.20),
++    "claude-sonnet-5": Price(2.00, 10.00),
++    "claude-sonnet-4-6": Price(3.00, 15.00),
++    "claude-haiku-4-5": Price(1.00, 5.00),
++}

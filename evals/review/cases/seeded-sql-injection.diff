@@ -1,0 +1,16 @@
+diff --git a/store/users.py b/store/users.py
+--- a/store/users.py
++++ b/store/users.py
+@@ -2,3 +2,12 @@
+     cur = conn.cursor()
+     cur.execute("SELECT id, email FROM users WHERE email = %s", (email,))
+     return cur.fetchone()
++
++
++def search_users(conn, name_fragment, limit=50):
++    """Users whose name contains `name_fragment`"""
++    cur = conn.cursor()
++    cur.execute(
++        f"SELECT id, name FROM users WHERE name ILIKE '%{name_fragment}%' LIMIT {int(limit)}"
++    )
++    return cur.fetchall()

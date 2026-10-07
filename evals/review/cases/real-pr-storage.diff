@@ -1,0 +1,122 @@
+diff --git a/backend/src/database.py b/backend/src/database.py
+index 888be8d..18d3044 100644
+--- a/backend/src/database.py
++++ b/backend/src/database.py
+@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
+ from datetime import datetime
+ import os
+ 
+-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/codemop")
++DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://codemop:codemop@localhost:5432/codemop")
+ 
+ engine = create_engine(DATABASE_URL)
+ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+@@ -49,4 +49,36 @@ def get_db():
+     try:
+         yield db
+     finally:
+-        db.close()
+\ No newline at end of file
++        db.close()
++
++# PR storage functions
++def create_pr(db, pr_data: dict):
++    """Create a new PR record in the database"""
++    db_pr = PR(
++        github_id=pr_data.get("github_id"),
++        repo_name=pr_data.get("repo_name"),
++        repo_full_name=pr_data.get("repo_full_name"),
++        branch=pr_data.get("branch"),
++        author=pr_data.get("author"),
++        title=pr_data.get("title"),
++        status=pr_data.get("status"),
++        github_url=pr_data.get("github_url"),
++        diff_url=pr_data.get("diff_url")
++    )
++    db.add(db_pr)
++    db.commit()
++    db.refresh(db_pr)
++    return db_pr
++
++def get_pr_by_github_id(db, github_id: int):
++    """Get PR by GitHub ID"""
++    return db.query(PR).filter(PR.github_id == github_id).first()
++
++def update_pr_status(db, github_id: int, status: str):
++    """Update PR status"""
++    db_pr = get_pr_by_github_id(db, github_id)
++    if db_pr:
++        db_pr.status = status
++        db.commit()
++        db.refresh(db_pr)
++    return db_pr
+\ No newline at end of file
+diff --git a/backend/src/main.py b/backend/src/main.py
+index aae8b8f..d8f4981 100644
+--- a/backend/src/main.py
++++ b/backend/src/main.py
+@@ -1,5 +1,5 @@
+ import os
+-from fastapi import FastAPI, Request, HTTPException, Header
++from fastapi import FastAPI, Request, HTTPException, Header, Depends
+ from fastapi.middleware.cors import CORSMiddleware
+ import hmac
+ import hashlib
+@@ -7,6 +7,7 @@ from typing import Optional
+ from pydantic import BaseModel
+ import logging
+ from datetime import datetime
++from database import get_db, create_pr, update_pr_status, init_db
+ 
+ # Configure logging
+ logging.basicConfig(level=logging.INFO)
+@@ -14,6 +15,11 @@ logger = logging.getLogger(__name__)
+ 
+ app = FastAPI()
+ 
++# Initialize database on startup
++@app.on_event("startup")
++def on_startup():
++    init_db()
++
+ # CORS configuration
+ app.add_middleware(
+     CORSMiddleware,
+@@ -67,8 +73,28 @@ async def handle_github_webhook(
+     logger.info(f"Author: {pr_data.get('user', {}).get('login')}")
+     logger.info(f"Branch: {pr_data.get('head', {}).get('ref')}")
+ 
++    # Store PR data in database
++    db = next(get_db())
++    try:
++        pr_record = create_pr(db, {
++            "github_id": pr_number,
++            "repo_name": repo_data.get("name"),
++            "repo_full_name": repo_data.get("full_name"),
++            "branch": pr_data.get("head", {}).get("ref"),
++            "author": pr_data.get("user", {}).get("login"),
++            "title": pr_data.get("title"),
++            "status": action,
++            "github_url": pr_data.get("html_url"),
++            "diff_url": pr_data.get("diff_url")
++        })
++        logger.info(f"Stored PR #{pr_number} in database with ID {pr_record.id}")
++    except Exception as e:
++        logger.error(f"Failed to store PR data: {str(e)}")
++        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
++    finally:
++        db.close()
++
+     # Here you would:
+-    # 1. Store PR data in database
+     # 2. Trigger AI analysis
+     # 3. Return appropriate response
+ 
+@@ -77,6 +103,7 @@ async def handle_github_webhook(
+         "pr_number": pr_number,
+         "action": action,
+         "repository": repo_data.get("full_name"),
++        "database_id": pr_record.id,
+         "timestamp": datetime.utcnow().isoformat()
+     }
+ 
