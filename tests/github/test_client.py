@@ -310,7 +310,7 @@ async def test_lists_review_threads_page_by_page():
         return (200, {"data": {"repository": {"pullRequest": {"reviewThreads": {
             "pageInfo": {"hasNextPage": more, "endCursor": "c1" if more else None}, "nodes": nodes}}}}})
     node = {"id": "T1", "isResolved": True, "path": "app.py", "line": 3,
-            "comments": {"nodes": [{"databaseId": 9, "body": "b", "author": {"__typename": "Bot"}}]}}
+            "comments": {"nodes": [{"databaseId": 9, "body": "b", "authorAssociation": "NONE", "author": {"__typename": "Bot"}}]}}
     transport, requests = json_api(page([node], True), page([{**node, "id": "T2", "isResolved": False}], False))
 
     threads = await list_review_threads(PR, transport=transport)
