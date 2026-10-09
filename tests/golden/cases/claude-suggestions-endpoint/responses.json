@@ -1,0 +1,50 @@
+{
+  "model": "anthropic/claude-opus-5-5",
+  "chunk_tokens": 40000,
+  "recorded": "2026-10-08 (the review eval's baseline run, rep 0)",
+  "chunks": [
+    {
+      "key": "### backend/src/main.py (modified)\n@@ -1,6 +1,8 @@\n@@ -12,10 +14,38 @@ import httpx\n@@ -39,6 +69,10 @@ GITHUB_WEBHOOK_SECRET = os.getenv(\"GITHUB_WEBHOOK_SECRET\")\n@@ -319,6 +353,79 @@ def extract_suggestions_from_text(text: str) -> list:",
+      "review": {
+        "suggestions": [
+          {
+            "file_path": "backend/src/main.py",
+            "line": 18,
+            "end_line": null,
+            "severity": "bug",
+            "title": "Hardcoded developer-specific absolute path for .env",
+            "explanation": "`/home/sgtwickool/...` only exists on one developer's machine. In any other environment the .env file is silently not loaded, so config like API_KEY will be missing.",
+            "suggested_code": "load_dotenv()",
+            "confidence": 0.85
+          },
+          {
+            "file_path": "backend/src/main.py",
+            "line": 41,
+            "end_line": 45,
+            "severity": "security",
+            "title": "Authentication bypass when API_KEY is unset; non-constant-time comparison",
+            "explanation": "API_KEY defaults to an empty string. A header such as `Authorization: Bearer ` is non-empty, so it passes the missing-header check, then strips to \"\" and matches the empty key, granting access. The `!=` comparison is also not constant-time.",
+            "suggested_code": "    if not API_KEY or not api_key or not hmac.compare_digest(api_key, API_KEY):\n        raise HTTPException(\n            status_code=401,\n            detail=\"Invalid API key\"\n        )",
+            "confidence": 0.85
+          },
+          {
+            "file_path": "backend/src/main.py",
+            "line": 420,
+            "end_line": 425,
+            "severity": "bug",
+            "title": "HTTPException (404) is caught and re-raised as 500",
+            "explanation": "The broad `except Exception` also catches the HTTPException raised for a missing PR. Clients get a 500 'Error retrieving suggestions: ...' instead of a 404.",
+            "suggested_code": "    except HTTPException:\n        raise\n    except Exception as e:\n        logger.error(f\"Error fetching suggestions for PR {pr_id}: {str(e)}\")\n        raise HTTPException(\n            status_code=500,\n            detail=\"Error retrieving suggestions\"\n        )",
+            "confidence": 0.95
+          }
+        ]
+      },
+      "usage": {
+        "input_tokens": 3810,
+        "output_tokens": 1000,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      }
+    }
+  ]
+}

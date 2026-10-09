@@ -138,11 +138,11 @@ Extract the review logic into a package that has nothing to do with FastAPI or t
 - [x] Map suggestions to diff positions (GitHub only accepts comments on lines in the diff); set aside ones that aren't
 - [x] Config file `.codemop.yml`: ignored paths, minimum confidence, chunk size; read from the repo's default branch by both the CLI and the server. It deliberately can't choose the provider, model or endpoint (see the decisions table). Max comments comes with posting, in Phase 3
 - [x] CLI: `codemop review owner/repo#123` (or a PR URL, or `-` for a diff on stdin) prints the review; `--json` for machines. Posting comes with `--post` in Phase 3. Uses `GITHUB_TOKEN`, or the `gh` login, for private repos
-- [ ] Golden tests from recorded diffs and model responses
+- [x] Golden tests from recorded diffs and model responses: `tests/golden/` replays real recorded answers (Claude Opus 5.5 from the eval, and a local model over three chunks) through the whole review and checks what's sent to the model and both reports; `record.py` records a new case
 - [x] The server reviews with the package; its own Mistral-only AI code, response parser and diff fetcher are gone. Configured with `AI_PROVIDER`, `AI_MODEL`, `AI_BASE_URL` and `AI_API_KEY`
 - [x] Move to the target [repository structure](#repository-structure): the package at the root, `backend/` became `server/` and uses it
-- [ ] In the server, stop running synchronous database work inside `async` handlers and the background job (make DB-only handlers plain `def`, or move to async SQLAlchemy); it blocks the event loop under load
-- [ ] Move the older integration tests' inline payloads and headers onto `tests/helpers.py` / the `post_webhook` fixture
+- [x] In the server, stop running synchronous database work inside `async` handlers and the background job (make DB-only handlers plain `def`, or move to async SQLAlchemy); it blocks the event loop under load. (The suggestions endpoints are plain `def`; the webhook and the background review do their database work in the thread pool; tests check none of it runs on the event loop)
+- [x] Move the older integration tests' inline payloads and headers onto `tests/helpers.py` / the `post_webhook` fixture
 - [ ] Publish to PyPI
 
 ### Model agnostic

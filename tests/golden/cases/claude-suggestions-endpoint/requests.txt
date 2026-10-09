@@ -1,0 +1,161 @@
+You are reviewing a pull request. Report real problems in the changed code: bugs, security
+issues, performance problems, and code that is hard to maintain in a way that will cause bugs.
+Don't report style preferences, naming, formatting or missing comments.
+
+The diff shows each file's changes in hunks. Every line has a marker and a line number:
+  "+ 12 | ..." is an added line, number 12 in the new version of the file
+  "  12 | ..." is an unchanged line, number 12 in the new version
+  "-    | ..." is a removed line; it has no new line number, so never point at it
+
+For each problem:
+- file_path is the path exactly as it appears after "###"
+- line (and end_line, for several lines) are new-file numbers of added or unchanged lines
+  shown in the diff. Prefer pointing at added lines
+- suggested_code, if you have a concrete fix, replaces lines line..end_line exactly: the
+  complete new code for those lines, with no "+"/"-" markers and no line numbers
+- confidence is how sure you are the problem is real
+
+Only report problems you are confident about. If the changes look fine, return no suggestions.
+
+===== chunk
+### backend/src/main.py (modified)
+@@ -1,6 +1,8 @@
+    1 | import os
+    2 | import json
+-     | from fastapi import FastAPI, Request, HTTPException, Header, Depends
++   3 | from dotenv import load_dotenv
++   4 | from fastapi import FastAPI, Request, HTTPException, Header, Depends, Security
++   5 | from fastapi.security import APIKeyHeader
+    6 | from fastapi.middleware.cors import CORSMiddleware
+    7 | import hmac
+    8 | import hashlib
+@@ -12,10 +14,38 @@ import httpx
+   14 | import asyncio
+   15 | from database import get_db, create_pr, update_pr_status, init_db, create_suggestion
+   16 | 
++  17 | # Load environment variables from .env file
++  18 | load_dotenv('/home/sgtwickool/repos/codemop/.env')
++  19 | 
+   20 | # Configure logging
+   21 | logging.basicConfig(level=logging.INFO)
+   22 | logger = logging.getLogger(__name__)
+   23 | 
++  24 | # API Key Security
++  25 | api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
++  26 | 
++  27 | async def get_api_key(api_key_header: str = Security(api_key_header)):
++  28 |     """Extract and validate API key from Authorization header"""
++  29 |     if not api_key_header:
++  30 |         raise HTTPException(
++  31 |             status_code=401,
++  32 |             detail="Authorization header missing"
++  33 |         )
++  34 |     
++  35 |     # Handle "Bearer " prefix
++  36 |     if api_key_header.startswith("Bearer "):
++  37 |         api_key = api_key_header[7:].strip()
++  38 |     else:
++  39 |         api_key = api_key_header.strip()
++  40 |     
++  41 |     if api_key != API_KEY:
++  42 |         raise HTTPException(
++  43 |             status_code=401,
++  44 |             detail="Invalid API key"
++  45 |         )
++  46 |     
++  47 |     return api_key
++  48 | 
+   49 | app = FastAPI()
+   50 | 
+   51 | # Initialize database on startup
+@@ -39,6 +69,10 @@ GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET")
+   69 | AI_API_KEY = os.getenv("AI_API_KEY", "")
+   70 | AI_API_URL = os.getenv("AI_API_URL", "https://api.mistral.ai/v1/chat/completions")
+   71 | AI_MODEL = os.getenv("AI_MODEL", "codestral-latest")
++  72 | 
++  73 | # API Authentication
++  74 | API_KEY = os.getenv("API_KEY", "")
++  75 | 
+   76 | MAX_RETRIES = 3
+   77 | RETRY_DELAY = 1.0
+   78 | 
+@@ -319,6 +353,79 @@ def extract_suggestions_from_text(text: str) -> list:
+  353 |     
+  354 |     return suggestions
+  355 | 
++ 356 | @app.get("/pr/{pr_id}/suggestions")
++ 357 | async def get_suggestions(
++ 358 |     pr_id: int,
++ 359 |     api_key: str = Depends(get_api_key)
++ 360 | ):
++ 361 |     """
++ 362 |     Get all suggestions for a specific PR
++ 363 |     
++ 364 |     Args:
++ 365 |         pr_id: The database ID of the PR
++ 366 |         api_key: Valid API key for authentication
++ 367 |     
++ 368 |     Returns:
++ 369 |         List of suggestions with line numbers, descriptions, and fixes
++ 370 |     """
++ 371 |     db = next(get_db())
++ 372 |     try:
++ 373 |         # Import PR model here to avoid circular imports
++ 374 |         from database import PR, Suggestion
++ 375 |         
++ 376 |         # First check if PR exists
++ 377 |         pr = db.query(PR).filter(PR.id == pr_id).first()
++ 378 |         if not pr:
++ 379 |             raise HTTPException(
++ 380 |                 status_code=404,
++ 381 |                 detail=f"PR with ID {pr_id} not found"
++ 382 |             )
++ 383 |         
++ 384 |         # Get all suggestions for this PR
++ 385 |         suggestions = db.query(Suggestion).filter(Suggestion.pr_id == pr_id).all()
++ 386 |         
++ 387 |         if not suggestions:
++ 388 |             return {
++ 389 |                 "pr_id": pr_id,
++ 390 |                 "github_id": pr.github_id,
++ 391 |                 "repo": pr.repo_full_name,
++ 392 |                 "title": pr.title,
++ 393 |                 "suggestions": [],
++ 394 |                 "message": "No suggestions found for this PR"
++ 395 |             }
++ 396 |         
++ 397 |         # Format suggestions for API response
++ 398 |         formatted_suggestions = []
++ 399 |         for suggestion in suggestions:
++ 400 |             formatted_suggestions.append({
++ 401 |                 "id": suggestion.id,
++ 402 |                 "line_number": suggestion.line_number,
++ 403 |                 "file_path": suggestion.file_path,
++ 404 |                 "description": suggestion.description,
++ 405 |                 "fix": suggestion.fix,
++ 406 |                 "confidence": suggestion.confidence,
++ 407 |                 "created_at": suggestion.created_at.isoformat() if suggestion.created_at else None
++ 408 |             })
++ 409 |         
++ 410 |         return {
++ 411 |             "pr_id": pr_id,
++ 412 |             "github_id": pr.github_id,
++ 413 |             "repo": pr.repo_full_name,
++ 414 |             "title": pr.title,
++ 415 |             "status": pr.status,
++ 416 |             "suggestions_count": len(formatted_suggestions),
++ 417 |             "suggestions": formatted_suggestions
++ 418 |         }
++ 419 |         
++ 420 |     except Exception as e:
++ 421 |         logger.error(f"Error fetching suggestions for PR {pr_id}: {str(e)}")
++ 422 |         raise HTTPException(
++ 423 |             status_code=500,
++ 424 |             detail=f"Error retrieving suggestions: {str(e)}"
++ 425 |         )
++ 426 |     finally:
++ 427 |         db.close()
++ 428 | 
+  429 | @app.get("/health")
+  430 | async def health_check():
+  431 |     return {"status": "healthy"}
