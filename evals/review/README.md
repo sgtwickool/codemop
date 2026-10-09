@@ -78,3 +78,27 @@ which may be noise at this size; worth watching. The model grouped sparingly and
 fits: the undefined `pr_data` used in two places, and the backup command injection, whose
 fix needs both the regex anchored and `shell=True` dropped.
 
+## Repository context, 2026-10-09
+
+The same default with repository context: the whole of each changed function, and the
+definitions the change uses (in the same file, or imported from the repository), read at the
+case's commit with git. Only the cases from this repository's history can have any; the seeded
+and synthetic ones are self-contained.
+
+| | Without context | With context |
+|---|---|---|
+| Cases passed | 47/50 | 44/50 |
+| Complex cases | 17/20 | 14/20 |
+| Major issues found | 37/40 | 34/40 |
+| Minor issues found | 4/16 | 8/16 |
+| False alarms | 1 | 2 |
+| Review cost per case | $0.024 | $0.026 |
+
+No measurable gain; the differences look like noise. One of the three cases that changed
+(real-pr-model) got no context at all, so the same input passed once less; in another
+(real-security-config) the model found the issue with context but rated it 0.45, just under
+the 0.5 threshold. Why so little: most of the real cases are commits that created whole
+files, so the diff already shows everything the context would add, and what they lack is in
+other files that call the changed code (where `github_id` is set to the PR number, for
+real-pr-model), which this version doesn't look for.
+

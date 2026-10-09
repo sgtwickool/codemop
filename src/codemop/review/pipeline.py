@@ -9,6 +9,7 @@ from typing import List, Literal, Optional, Sequence
 from codemop.config import DEFAULT_MIN_CONFIDENCE
 from codemop.providers.base import NoReview, NoReviewKind, ReviewModel, Usage
 from codemop.review.chunks import DEFAULT_IGNORED_PATHS, Skipped, plan_chunks
+from codemop.review.context import DEFAULT_CONTEXT_TOKENS, FileSource, build_context
 from codemop.review.diff import parse_diff
 from codemop.review.fixes import file_lines, fit_fix
 from codemop.review.learned import Settled
@@ -66,15 +67,20 @@ async def review_diff(
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
     max_changed_lines: Optional[int] = None,
     settled: Settled = Settled(),
+    context: Optional[FileSource] = None,
+    context_tokens: int = DEFAULT_CONTEXT_TOKENS,
 ) -> ReviewReport:
     """
     Review a unified diff with `model` (chunk_tokens defaults to the model's own chunk size).
     With max_changed_lines, a diff with more added and removed lines to review than that
     isn't sent to the model at all (a cost limit). `settled` is what the model is told not to
-    raise again (and dismissed issues it raises anyway are dropped).
+    raise again (and dismissed issues it raises anyway are dropped). With `context`, the
+    repository's files at the commit under review, each chunk comes with the code around and
+    beneath its changes (up to context_tokens, or half the chunk size if that's less).
     """
     instructions = SYSTEM_PROMPT + settled.instructions()
-    plan = plan_chunks(parse_diff(diff), chunk_tokens or model.chunk_tokens, ignored_paths=ignored_paths)
+    plan_budget = chunk_tokens or model.chunk_tokens
+    plan = plan_chunks(parse_diff(diff), plan_budget, ignored_paths=ignored_paths)
     report = ReviewReport(model=model.name, skipped=list(plan.skipped), chunks=len(plan.chunks))
     changed = sum(
         line.kind != "context"
@@ -92,8 +98,12 @@ async def review_diff(
             if report.stopped:
                 report.failed.append(FailedChunk(paths, f"not reviewed: {report.stopped}", "not_reviewed"))
                 return
+            text = chunk.text
+            if context is not None:
+                around = await build_context(chunk.files, context, min(context_tokens, plan_budget // 2))
+                text = f"{around}\n\n### The change\n\n{chunk.text}" if around else chunk.text
             try:
-                review, usage = await model.review(instructions, chunk.text)
+                review, usage = await model.review(instructions, text)
             except NoReview as e:
                 report.usage += e.usage
                 report.failed.append(FailedChunk(paths, e.reason, e.kind))

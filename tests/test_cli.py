@@ -48,17 +48,31 @@ class FakeModel:
 
 
 @pytest.fixture(autouse=True)
-def no_repo_config(monkeypatch):
-    """Repositories have no .codemop.yml unless a test says so (and nothing reaches GitHub)"""
+def no_repo_config(monkeypatch, tmp_path):
+    """
+    Repositories have no .codemop.yml unless a test says so, and nothing reaches GitHub. Runs
+    in an empty folder, so a local diff's context isn't read from this repository's own files.
+    """
     files = {}
+    monkeypatch.chdir(tmp_path)
 
-    async def fake_fetch_repo_file(repo, path, token=None, api_url=None):
+    async def fake_fetch_repo_file(repo, path, ref=None, token=None, api_url=None):
         return files.get((repo, path))
 
     async def no_threads(pr, token=None, api_url=None):
         return []
+
+    async def an_open_pr(pr, token=None, api_url=None):
+        return PullRequest(head_sha="abc1234" + "0" * 33, state="open", draft=False, head_ref="feature",
+                           head_repo=pr.repo)
+
+    async def no_paths(repo, ref, token=None, api_url=None):
+        return []
     monkeypatch.setattr(cli, "fetch_repo_file", fake_fetch_repo_file)
     monkeypatch.setattr(cli, "list_review_threads", no_threads)
+    monkeypatch.setattr(cli, "fetch_pull_request", an_open_pr)
+    monkeypatch.setattr("codemop.github.files.fetch_repo_file", fake_fetch_repo_file)
+    monkeypatch.setattr("codemop.github.files.list_paths", no_paths)
     return files
 
 
@@ -364,6 +378,7 @@ def github(monkeypatch):
         state["comments"][comment_id] = (body, "github-actions[bot]", "NONE")
         return f"https://github.com/owner/repo/pull/7#issuecomment-{comment_id}"
 
+    monkeypatch.setattr("codemop.github.files.fetch_repo_file", fetch_repo_file)
     for name, fake in [("fetch_pull_request", fetch_pull_request), ("list_issue_comments", list_issue_comments),
                        ("fetch_pr_diff", fetch_pr_diff), ("post_review", post_review),
                        ("post_issue_comment", post_issue_comment), ("fetch_repo_file", fetch_repo_file),
@@ -1054,3 +1069,22 @@ def test_a_fix_committed_on_top_of_someone_elses_push_isnt_counted_as_reviewed(c
 
     assert cli.read_state(summary_of(github)).commit == reviewed  # their push gets its own review
     assert len(github["statuses"]) == statuses  # and nothing is set on unreviewed code
+
+
+def test_a_pr_review_sends_the_code_around_the_change(capsys, monkeypatch, github):
+    # The PR's app.py at its head: total() runs on past the three lines the diff shows
+    github["files"]["app.py"] = "def total(items):\n    result = sum(items)\n    return result + 1\n    # note\n    pass\n"
+    seen = []
+
+    class Recording(FakeModel):
+        async def review(self, instructions, diff_text):
+            seen.append(diff_text)
+            return await super().review(instructions, diff_text)
+    monkeypatch.setattr(cli, "create_model", lambda *a, **k: Recording([]))
+
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--context"])
+    run(capsys, monkeypatch, ["review", "owner/repo#8"])  # off by default
+
+    with_context, without = seen
+    assert "#### app.py, lines 1-5 (def total)" in with_context  # the PR's file at its head commit
+    assert without.startswith("### app.py (modified)")

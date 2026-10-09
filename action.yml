@@ -30,6 +30,9 @@ inputs:
   checklist:
     description: A checkbox in the summary for each fix; ticking them commits them (needs the issue_comment trigger and contents write, see the README)
     default: "true"
+  context:
+    description: Send the code around each change too (whole functions, definitions it uses), not just the diff. Costs a little more; it hasn't measurably helped in CodeMop's eval yet
+    default: "false"
   review-drafts:
     description: Review draft pull requests too
     default: "false"
@@ -63,6 +66,7 @@ runs:
         MAX_COMMENTS: ${{ inputs.max-comments }}
         REVIEW_DRAFTS: ${{ inputs.review-drafts }}
         CHECKLIST: ${{ inputs.checklist }}
+        CONTEXT: ${{ inputs.context }}
         EVENT_NAME: ${{ github.event_name }}
         EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
         EVENT_ISSUE_IS_PR: ${{ github.event.issue.pull_request && 'true' || '' }}
@@ -122,4 +126,5 @@ runs:
         [ -n "$MAX_CHANGED_LINES" ] && args+=(--max-changed-lines "$MAX_CHANGED_LINES")
         [ -n "$MAX_COMMENTS" ] && args+=(--max-comments "$MAX_COMMENTS")
         [ "$CHECKLIST" = "true" ] && args+=(--checklist)
+        [ "$CONTEXT" = "true" ] && args+=(--context)
         "$codemop" "${args[@]}"

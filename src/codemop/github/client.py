@@ -505,3 +505,19 @@ async def react_to_issue_comment(
     """Add a reaction (+1, eyes, ...) to a comment in a PR's conversation; best effort"""
     url = f"{api_url.rstrip('/')}/repos/{repo}/issues/comments/{comment_id}/reactions"
     await _request("POST", url, JSON, token, transport, json={"content": reaction})
+
+
+async def list_paths(
+    repo: str,
+    ref: str,
+    *,
+    token: Optional[str] = None,
+    api_url: str = DEFAULT_API_URL,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> List[str]:
+    """The paths of the files in the repository at `ref` (GitHub may cut a very large tree short)"""
+    url = f"{api_url.rstrip('/')}/repos/{repo}/git/trees/{ref}?recursive=1"
+    response = await _request("GET", url, JSON, token, transport)
+    if response.status_code != 200:
+        raise GitHubError(f"GitHub returned {response.status_code} listing the files in {repo}", response.status_code)
+    return [entry["path"] for entry in response.json().get("tree", []) if entry.get("type") == "blob"]
