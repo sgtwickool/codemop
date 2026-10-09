@@ -1,15 +1,19 @@
 """
 Writes the synthetic cases (seeded bugs and clean changes) in cases/ as unified diffs,
-from the before/after sources below. Run from the repository root:
+from the before/after sources below; and for the cross-file cases, the repository after the
+change in repos/<case>/, which is what repository context reads. Run from the repository root:
 
     python evals/review/build_synthetic_cases.py
 
 The real cases (real-*.diff) come from CodeMop's own git history; see cases.yml.
 """
 import difflib
+import shutil
 from pathlib import Path
+from typing import Dict, NamedTuple
 
 CASES = Path(__file__).parent / "cases"
+REPOS = Path(__file__).parent / "repos"
 
 
 def diff(path: str, before: str, after: str) -> str:
@@ -254,7 +258,315 @@ def haversine_miles(lat1, lon1, lat2, lon2):
 }
 
 
+class CrossFile(NamedTuple):
+    """A change to one file, and the rest of the repository: where the change is used"""
+    path: str
+    before: str
+    after: str
+    others: Dict[str, str]
+
+
+LEDGER_BEFORE = '''\
+from payments.accounts import Account
+
+
+class InsufficientFunds(Exception):
+    pass
+
+
+def transfer(amount, source: Account, target: Account):
+    """Move `amount` (in cents) from one account to another"""
+    if source.balance < amount:
+        raise InsufficientFunds(source.id)
+    source.balance -= amount
+    target.balance += amount
+'''
+
+CROSS_FILE = {
+    # ---- bugs that are only bugs because of how other files use the changed code ----
+    "cross-file-arg-order": CrossFile("payments/ledger.py", LEDGER_BEFORE, LEDGER_BEFORE.replace(
+        "def transfer(amount, source: Account, target: Account):\n"
+        "    \"\"\"Move `amount` (in cents) from one account to another\"\"\"",
+        "def transfer(source: Account, target: Account, amount: int):\n"
+        "    \"\"\"Move `amount` (in cents) from one account to another (accounts first, like the rest of\n"
+        "    the ledger)\"\"\""), {
+        "payments/__init__.py": "",
+        "payments/accounts.py": '''\
+from dataclasses import dataclass
+
+
+@dataclass
+class Account:
+    id: str
+    balance: int = 0
+''',
+        "billing/__init__.py": "",
+        "billing/invoices.py": '''\
+from payments.ledger import InsufficientFunds, transfer
+
+
+def pay_invoice(invoice, customer, shop):
+    """Charge the customer for an invoice and mark it paid"""
+    try:
+        transfer(invoice.total, customer.account, shop.account)
+    except InsufficientFunds:
+        invoice.status = "declined"
+        return False
+    invoice.status = "paid"
+    return True
+''',
+    }),
+    "cross-file-none-instead-of-raise": CrossFile("accounts/users.py", '''\
+from dataclasses import dataclass
+
+
+class UserNotFound(Exception):
+    pass
+
+
+@dataclass
+class User:
+    id: int
+    email: str
+    password_hash: str
+
+    def check_password(self, password, hasher):
+        return hasher.verify(password, self.password_hash)
+
+
+def find_user(db, email):
+    """The user with this email address"""
+    row = db.fetch_one("SELECT id, email, password_hash FROM users WHERE email = ?", (email,))
+    if row is None:
+        raise UserNotFound(email)
+    return User(**row)
+''', '''\
+from dataclasses import dataclass
+from typing import Optional
+
+
+class UserNotFound(Exception):
+    pass
+
+
+@dataclass
+class User:
+    id: int
+    email: str
+    password_hash: str
+
+    def check_password(self, password, hasher):
+        return hasher.verify(password, self.password_hash)
+
+
+def find_user(db, email) -> Optional["User"]:
+    """The user with this email address, or None if there isn't one"""
+    row = db.fetch_one("SELECT id, email, password_hash FROM users WHERE email = ?", (email.lower(),))
+    if row is None:
+        return None
+    return User(**row)
+''', {
+        "accounts/__init__.py": "",
+        "api/__init__.py": "",
+        "api/login.py": '''\
+from accounts.users import UserNotFound, find_user
+from api.tokens import issue_token
+
+
+def login(db, hasher, email, password):
+    """POST /login: a session token for the right email and password"""
+    try:
+        user = find_user(db, email)
+    except UserNotFound:
+        return {"error": "Wrong email or password"}, 401
+    if not user.check_password(password, hasher):
+        return {"error": "Wrong email or password"}, 401
+    return {"token": issue_token(user)}, 200
+''',
+        "api/tokens.py": '''\
+import secrets
+
+
+def issue_token(user):
+    return f"{user.id}.{secrets.token_urlsafe(32)}"
+''',
+    }),
+    "cross-file-units": CrossFile("config/settings.py", '''\
+import os
+
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///app.db")
+SESSION_TIMEOUT = 30  # minutes
+REQUEST_TIMEOUT = 10
+''', '''\
+import os
+
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///app.db")
+# Timeouts, all in seconds
+SESSION_TIMEOUT = 30 * 60
+REQUEST_TIMEOUT = 10
+''', {
+        "config/__init__.py": "",
+        "auth/__init__.py": "",
+        "auth/sessions.py": '''\
+from datetime import datetime, timedelta, timezone
+
+from config.settings import SESSION_TIMEOUT
+
+
+def new_session(user_id, store):
+    """Start a session that expires after SESSION_TIMEOUT"""
+    expires = datetime.now(timezone.utc) + timedelta(minutes=SESSION_TIMEOUT)
+    return store.create(user_id=user_id, expires=expires)
+
+
+def is_active(session):
+    return session.expires > datetime.now(timezone.utc)
+''',
+        "web/__init__.py": "",
+        "web/client.py": '''\
+import httpx
+
+from config.settings import REQUEST_TIMEOUT
+
+
+def fetch(url):
+    return httpx.get(url, timeout=REQUEST_TIMEOUT)
+''',
+    }),
+    "cross-file-sync-to-async": CrossFile("features/flags.py", '''\
+import requests
+
+FLAGS_URL = "https://flags.internal/api/flags"
+
+
+def load_flags():
+    """The feature flags for this deployment"""
+    response = requests.get(FLAGS_URL, timeout=5)
+    response.raise_for_status()
+    return response.json()
+''', '''\
+import httpx
+
+FLAGS_URL = "https://flags.internal/api/flags"
+
+
+async def load_flags():
+    """The feature flags for this deployment"""
+    async with httpx.AsyncClient(timeout=5) as client:
+        response = await client.get(FLAGS_URL)
+    response.raise_for_status()
+    return response.json()
+''', {
+        "features/__init__.py": "",
+        "web/__init__.py": "",
+        "web/views.py": '''\
+from features.flags import load_flags
+
+
+def home(request, render):
+    """The home page, with the new dashboard for accounts in the beta"""
+    flags = load_flags()
+    template = "dashboard_v2.html" if flags.get("new_dashboard") else "dashboard.html"
+    return render(template, user=request.user)
+''',
+    }),
+    "cross-file-renamed-key": CrossFile("orders/serialize.py", '''\
+def order_to_dict(order):
+    """An order as JSON, for the API and the background jobs"""
+    return {
+        "id": order.id,
+        "customer_id": order.customer_id,
+        "total": order.total,
+        "items": [{"sku": item.sku, "quantity": item.quantity} for item in order.items],
+    }
+''', '''\
+def order_to_dict(order):
+    """An order as JSON, for the API and the background jobs (camelCase, for the web app)"""
+    return {
+        "id": order.id,
+        "customerId": order.customer_id,
+        "total": order.total,
+        "items": [{"sku": item.sku, "quantity": item.quantity} for item in order.items],
+    }
+''', {
+        "orders/__init__.py": "",
+        "jobs/__init__.py": "",
+        "jobs/receipts.py": '''\
+from orders.serialize import order_to_dict
+
+
+def send_receipt(order, customers, mailer):
+    """Email the customer a receipt for their order"""
+    data = order_to_dict(order)
+    customer = customers.get(data["customer_id"])
+    mailer.send(customer.email, "Your receipt", f"Order {data['id']}: {data['total'] / 100:.2f}")
+''',
+    }),
+
+    # ---- clean: changes that look like they could break callers, and don't ----
+    "clean-cross-file-optional-argument": CrossFile("notify/email.py", '''\
+def send_email(smtp, to, subject, body):
+    """Send a plain-text email"""
+    message = f"To: {to}\\nSubject: {subject}\\n\\n{body}"
+    smtp.sendmail("noreply@example.com", [to], message)
+''', '''\
+def send_email(smtp, to, subject, body, reply_to=None):
+    """Send a plain-text email, with a Reply-To address if there's one"""
+    headers = f"To: {to}\\nSubject: {subject}\\n"
+    if reply_to:
+        headers += f"Reply-To: {reply_to}\\n"
+    smtp.sendmail("noreply@example.com", [to], f"{headers}\\n{body}")
+''', {
+        "notify/__init__.py": "",
+        "shop/__init__.py": "",
+        "shop/orders.py": '''\
+from notify.email import send_email
+
+
+def confirm(smtp, order):
+    send_email(smtp, order.email, f"Order {order.id} confirmed", "Thanks for your order!")
+
+
+def ask_for_review(smtp, order, support_address):
+    send_email(smtp, order.email, "How was it?", "Reply and tell us.", reply_to=support_address)
+''',
+    }),
+    "clean-cross-file-generator": CrossFile("reports/users.py", '''\
+def active_users(db):
+    """Every user who has logged in during the last 30 days"""
+    return [row for row in db.query("SELECT * FROM users WHERE last_login > now() - interval '30 days'")]
+''', '''\
+def active_users(db):
+    """Every user who has logged in during the last 30 days, a row at a time (there are millions)"""
+    yield from db.stream("SELECT * FROM users WHERE last_login > now() - interval '30 days'")
+''', {
+        "reports/__init__.py": "",
+        "reports/export.py": '''\
+import csv
+
+from reports.users import active_users
+
+
+def export_active_users(db, out):
+    """Write every active user to a CSV file"""
+    writer = csv.writer(out)
+    writer.writerow(["id", "email", "last_login"])
+    for user in active_users(db):
+        writer.writerow([user["id"], user["email"], user["last_login"]])
+''',
+    }),
+}
+
+
 if __name__ == "__main__":
     for name, text in SYNTHETIC.items():
         (CASES / f"{name}.diff").write_text(text)
         print(f"wrote {name}.diff")
+    for name, case in CROSS_FILE.items():
+        (CASES / f"{name}.diff").write_text(diff(case.path, case.before, case.after))
+        repo = REPOS / name
+        shutil.rmtree(repo, ignore_errors=True)
+        for path, text in {**case.others, case.path: case.after}.items():
+            (repo / path).parent.mkdir(parents=True, exist_ok=True)
+            (repo / path).write_text(text)
+        print(f"wrote {name}.diff and repos/{name}/")

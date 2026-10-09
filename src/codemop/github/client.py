@@ -56,6 +56,13 @@ def _error_message(status: int, body: str, pr: PullRequestRef, has_token: bool) 
     if status == 406:
         return f"The diff for {pr} is too large for the GitHub API to return"
     return f"GitHub returned {status} while fetching the diff for {pr}"
+def headers(accept: str, token: Optional[str]) -> dict:
+    sent = {"Accept": accept, "X-GitHub-Api-Version": "2022-11-28"}
+    if token:
+        sent["Authorization"] = f"Bearer {token}"
+    return sent
+
+
 async def _request(
     method: str,
     url: str,
@@ -64,11 +71,8 @@ async def _request(
     transport: Optional[httpx.AsyncBaseTransport],
     json: Optional[dict] = None,
 ) -> httpx.Response:
-    headers = {"Accept": accept, "X-GitHub-Api-Version": "2022-11-28"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
     retries = RETRY_DELAYS if method in RETRY_METHODS else []
-    async with httpx.AsyncClient(headers=headers, timeout=60.0, transport=transport) as client:
+    async with httpx.AsyncClient(headers=headers(accept, token), timeout=60.0, transport=transport) as client:
         for attempt in range(len(retries) + 1):
             try:
                 response = await client.request(method, url, json=json)

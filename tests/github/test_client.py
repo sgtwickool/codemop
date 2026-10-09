@@ -1,11 +1,15 @@
+import io
 import json
 import re
+import tarfile
 
 import httpx
 import pytest
 
+from codemop.github import pulls
 from codemop.github.api import (
     GitHubError, PullRequestRef, commit_files, compare_commits, fetch_pr_diff, fetch_pull_request, fetch_repo_file,
+    fetch_snapshot,
     list_issue_comments, list_review_threads, parse_pr_reference, post_issue_comment, post_review,
     reply_to_review_comment, resolve_thread, set_commit_status, user_permission,
 )
@@ -410,3 +414,40 @@ async def test_setting_a_status_without_permission_says_what_the_token_needs():
 
     with pytest.raises(GitHubError, match="the token needs statuses: write"):
         await set_commit_status("owner/repo", "abc", "success", "ok", transport=transport)
+
+
+def tarball(files, top="owner-repo-abc1234"):
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for path, content in files.items():
+            data = content if isinstance(content, bytes) else content.encode()
+            info = tarfile.TarInfo(f"{top}/{path}")
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+    return buffer.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_a_snapshot_is_the_repositorys_text_files_from_one_download():
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if request.url.host == "api.github.com":  # GitHub redirects to the download
+            return httpx.Response(302, headers={"Location": "https://codeload.github.com/owner/repo/tar.gz/abc"})
+        return httpx.Response(200, content=tarball({"app.py": "x = 1\n", "logo.png": b"\x89PNG\x00\xff",
+                                                    "big.txt": "a" * 600_000}))
+
+    files = await fetch_snapshot("owner/repo", "abc", token="ghp_x", transport=httpx.MockTransport(handler))
+
+    assert files == {"app.py": "x = 1\n"}  # not binary files or large ones
+    assert str(requests[0].url) == "https://api.github.com/repos/owner/repo/tarball/abc"
+    assert "authorization" not in requests[1].headers  # the token stays with GitHub's API
+
+
+@pytest.mark.asyncio
+async def test_no_snapshot_when_its_too_large_or_cant_be_downloaded(monkeypatch):
+    big = tarball({"a.py": "x = 1\n" * 1000})
+    monkeypatch.setattr(pulls, "MAX_SNAPSHOT_BYTES", len(big) - 1)
+    for response in (httpx.Response(200, content=big), httpx.Response(404), httpx.Response(200, content=b"not a tarball")):
+        assert await fetch_snapshot("owner/repo", "abc", transport=httpx.MockTransport(lambda r: response)) is None

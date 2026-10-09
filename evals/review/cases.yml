@@ -227,6 +227,56 @@
         passes validation, and the command runs through a shell: command injection
       locations: [{file: ops/backup.py, lines: [7, 9]}]
 
+# ---- seeded bugs in other files: the change is fine in itself, and breaks code that uses it ----
+# The repository after the change is in repos/<id>/, for repository context. Only a reviewer
+# that reads the callers can be sure; one that only sees the diff can at best guess.
+
+- id: cross-file-arg-order
+  tags: [seeded-bug, complex, python, cross-file]
+  issues:
+    - severity: major
+      description: >-
+        transfer's arguments are reordered (amount moved last), but billing/invoices.py still calls
+        transfer(invoice.total, customer.account, shop.account), so it passes the amount as the source account
+      locations: [{file: payments/ledger.py, lines: [8, 10]}]
+
+- id: cross-file-none-instead-of-raise
+  tags: [seeded-bug, complex, python, cross-file]
+  issues:
+    - severity: major
+      description: >-
+        find_user now returns None for an unknown email instead of raising UserNotFound, but api/login.py
+        still catches UserNotFound and then calls user.check_password, so logging in with an unknown
+        email crashes (AttributeError, a 500) instead of answering 401
+      locations: [{file: accounts/users.py, lines: [19, 23]}]
+
+- id: cross-file-units
+  tags: [seeded-bug, complex, python, cross-file, security]
+  issues:
+    - severity: major
+      description: >-
+        SESSION_TIMEOUT is now in seconds (1800), but auth/sessions.py still uses it as minutes
+        (timedelta(minutes=SESSION_TIMEOUT)), so sessions last 30 hours instead of 30 minutes
+      locations: [{file: config/settings.py, lines: [4, 5]}]
+
+- id: cross-file-sync-to-async
+  tags: [seeded-bug, complex, python, cross-file]
+  issues:
+    - severity: major
+      description: >-
+        load_flags is now async, but web/views.py still calls it without await from a plain function,
+        so flags is a coroutine and flags.get raises AttributeError: the home page breaks
+      locations: [{file: features/flags.py, lines: [6, 6]}]
+
+- id: cross-file-renamed-key
+  tags: [seeded-bug, complex, python, cross-file]
+  issues:
+    - severity: major
+      description: >-
+        The customer_id key is renamed to customerId, but jobs/receipts.py still reads data["customer_id"],
+        so sending a receipt raises KeyError
+      locations: [{file: orders/serialize.py, lines: [5, 5]}]
+
 # ---- clean changes: no known issue ----
 
 - {id: clean-rename-refactor, tags: [clean, simple, python], issues: []}
@@ -236,3 +286,5 @@
 - {id: clean-real-placement, tags: [clean, complex, python], source: "commit 495398d, src/codemop/review/placement.py", issues: []}
 - {id: clean-real-pricing, tags: [clean, simple, python], source: "commit a82f899, src/codemop/providers/pricing.py", issues: []}
 - {id: clean-real-github-client, tags: [clean, complex, python], source: "commit 576d45f, src/codemop/github/client.py", issues: []}
+- {id: clean-cross-file-optional-argument, tags: [clean, complex, python, cross-file], issues: []}
+- {id: clean-cross-file-generator, tags: [clean, complex, python, cross-file], issues: []}

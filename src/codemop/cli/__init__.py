@@ -74,9 +74,9 @@ def build_parser() -> argparse.ArgumentParser:
                      help=f"largest piece of diff sent in one request (default: {DEFAULT_CHUNK_TOKENS:,}; 8,000 for ollama)")
     who.add_argument("--max-changed-lines", type=int, metavar="N",
                      help="don't review a diff with more added and removed lines than this (a cost limit)")
-    how.add_argument("--context", action="store_true",
-                     help="send the code around each change too: whole functions, and definitions it uses "
-                          "(costs a little more; it hasn't measurably helped in CodeMop's eval yet)")
+    how.add_argument("--context", action=argparse.BooleanOptionalAction, default=True,
+                     help="send the code around each change too: whole functions, where the changed code is used "
+                          "in other files, and definitions it uses (on by default; about 13%% more per review)")
     how.add_argument("--max-comments", type=int, metavar="N",
                      help="with --post, the most inline comments (default: 10); the rest go in the summary")
     how.add_argument("--ignore", action="append", metavar="PATTERN",

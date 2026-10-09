@@ -1,0 +1,9 @@
+diff --git a/reports/users.py b/reports/users.py
+--- a/reports/users.py
++++ b/reports/users.py
+@@ -1,3 +1,3 @@
+ def active_users(db):
+-    """Every user who has logged in during the last 30 days"""
+-    return [row for row in db.query("SELECT * FROM users WHERE last_login > now() - interval '30 days'")]
++    """Every user who has logged in during the last 30 days, a row at a time (there are millions)"""
++    yield from db.stream("SELECT * FROM users WHERE last_login > now() - interval '30 days'")

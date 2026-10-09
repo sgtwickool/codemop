@@ -22,13 +22,20 @@ Generated from `cases.yml` and `cases/` by `render_cases.py`. Line numbers are n
 | 16 | [seeded-inverted-expiry](#seeded-inverted-expiry) | seeded-bug | 1 major, 0 minor |
 | 17 | [seeded-assignment-in-condition](#seeded-assignment-in-condition) | seeded-bug | 1 major, 0 minor |
 | 18 | [seeded-regex-prefix-validation](#seeded-regex-prefix-validation) | seeded-bug | 1 major, 0 minor |
-| 19 | [clean-rename-refactor](#clean-rename-refactor) | clean | none (clean) |
-| 20 | [clean-add-tests](#clean-add-tests) | clean | none (clean) |
-| 21 | [clean-docs](#clean-docs) | clean | none (clean) |
-| 22 | [clean-small-feature](#clean-small-feature) | clean | none (clean) |
-| 23 | [clean-real-placement](#clean-real-placement) | clean | none (clean) |
-| 24 | [clean-real-pricing](#clean-real-pricing) | clean | none (clean) |
-| 25 | [clean-real-github-client](#clean-real-github-client) | clean | none (clean) |
+| 19 | [cross-file-arg-order](#cross-file-arg-order) | seeded-bug | 1 major, 0 minor |
+| 20 | [cross-file-none-instead-of-raise](#cross-file-none-instead-of-raise) | seeded-bug | 1 major, 0 minor |
+| 21 | [cross-file-units](#cross-file-units) | seeded-bug | 1 major, 0 minor |
+| 22 | [cross-file-sync-to-async](#cross-file-sync-to-async) | seeded-bug | 1 major, 0 minor |
+| 23 | [cross-file-renamed-key](#cross-file-renamed-key) | seeded-bug | 1 major, 0 minor |
+| 24 | [clean-rename-refactor](#clean-rename-refactor) | clean | none (clean) |
+| 25 | [clean-add-tests](#clean-add-tests) | clean | none (clean) |
+| 26 | [clean-docs](#clean-docs) | clean | none (clean) |
+| 27 | [clean-small-feature](#clean-small-feature) | clean | none (clean) |
+| 28 | [clean-real-placement](#clean-real-placement) | clean | none (clean) |
+| 29 | [clean-real-pricing](#clean-real-pricing) | clean | none (clean) |
+| 30 | [clean-real-github-client](#clean-real-github-client) | clean | none (clean) |
+| 31 | [clean-cross-file-optional-argument](#clean-cross-file-optional-argument) | clean | none (clean) |
+| 32 | [clean-cross-file-generator](#clean-cross-file-generator) | clean | none (clean) |
 
 ## real-pr-model
 
@@ -207,7 +214,7 @@ index 0000000..aae8b8f
 
 **3. real-bug, complex, python** · commit 6208175, backend/src/main.py and database.py (fixed in ca1830a and 24298d8)
 
-- **major**: PRs are looked up by PR number alone, with no repository, so a PR with the same number in another repo is found and updated instead (`backend/src/database.py` lines 73-81)
+- **major**: PRs are looked up by PR number alone, with no repository, so a PR with the same number in another repo is found and updated instead (`backend/src/database.py` lines 73-81; `backend/src/main.py` lines 80-80)
 - **minor**: The PR's status is set to the webhook action (e.g. "synchronize", "labeled") rather than its state (open, closed, merged) (`backend/src/main.py` lines 86-86; `backend/src/database.py` lines 64-64)
 - **minor**: The raw database exception text is returned to the client in the 500 response (`backend/src/main.py` lines 93-93)
 
@@ -1649,9 +1656,135 @@ diff --git a/ops/backup.py b/ops/backup.py
 +    subprocess.run(f"pg_dump --file /backups/{database}.sql {database}", shell=True, check=True)
 ```
 
+## cross-file-arg-order
+
+**19. seeded-bug, complex, python, cross-file**
+
+- **major**: transfer's arguments are reordered (amount moved last), but billing/invoices.py still calls transfer(invoice.total, customer.account, shop.account), so it passes the amount as the source account (`payments/ledger.py` lines 8-10)
+
+```diff
+diff --git a/payments/ledger.py b/payments/ledger.py
+--- a/payments/ledger.py
++++ b/payments/ledger.py
+@@ -5,8 +5,9 @@
+     pass
+ 
+ 
+-def transfer(amount, source: Account, target: Account):
+-    """Move `amount` (in cents) from one account to another"""
++def transfer(source: Account, target: Account, amount: int):
++    """Move `amount` (in cents) from one account to another (accounts first, like the rest of
++    the ledger)"""
+     if source.balance < amount:
+         raise InsufficientFunds(source.id)
+     source.balance -= amount
+```
+
+## cross-file-none-instead-of-raise
+
+**20. seeded-bug, complex, python, cross-file**
+
+- **major**: find_user now returns None for an unknown email instead of raising UserNotFound, but api/login.py still catches UserNotFound and then calls user.check_password, so logging in with an unknown email crashes (AttributeError, a 500) instead of answering 401 (`accounts/users.py` lines 19-23)
+
+```diff
+diff --git a/accounts/users.py b/accounts/users.py
+--- a/accounts/users.py
++++ b/accounts/users.py
+@@ -1,4 +1,5 @@
+ from dataclasses import dataclass
++from typing import Optional
+ 
+ 
+ class UserNotFound(Exception):
+@@ -15,9 +16,9 @@
+         return hasher.verify(password, self.password_hash)
+ 
+ 
+-def find_user(db, email):
+-    """The user with this email address"""
+-    row = db.fetch_one("SELECT id, email, password_hash FROM users WHERE email = ?", (email,))
++def find_user(db, email) -> Optional["User"]:
++    """The user with this email address, or None if there isn't one"""
++    row = db.fetch_one("SELECT id, email, password_hash FROM users WHERE email = ?", (email.lower(),))
+     if row is None:
+-        raise UserNotFound(email)
++        return None
+     return User(**row)
+```
+
+## cross-file-units
+
+**21. seeded-bug, complex, python, cross-file, security**
+
+- **major**: SESSION_TIMEOUT is now in seconds (1800), but auth/sessions.py still uses it as minutes (timedelta(minutes=SESSION_TIMEOUT)), so sessions last 30 hours instead of 30 minutes (`config/settings.py` lines 4-5)
+
+```diff
+diff --git a/config/settings.py b/config/settings.py
+--- a/config/settings.py
++++ b/config/settings.py
+@@ -1,5 +1,6 @@
+ import os
+ 
+ DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///app.db")
+-SESSION_TIMEOUT = 30  # minutes
++# Timeouts, all in seconds
++SESSION_TIMEOUT = 30 * 60
+ REQUEST_TIMEOUT = 10
+```
+
+## cross-file-sync-to-async
+
+**22. seeded-bug, complex, python, cross-file**
+
+- **major**: load_flags is now async, but web/views.py still calls it without await from a plain function, so flags is a coroutine and flags.get raises AttributeError: the home page breaks (`features/flags.py` lines 6-6)
+
+```diff
+diff --git a/features/flags.py b/features/flags.py
+--- a/features/flags.py
++++ b/features/flags.py
+@@ -1,10 +1,11 @@
+-import requests
++import httpx
+ 
+ FLAGS_URL = "https://flags.internal/api/flags"
+ 
+ 
+-def load_flags():
++async def load_flags():
+     """The feature flags for this deployment"""
+-    response = requests.get(FLAGS_URL, timeout=5)
++    async with httpx.AsyncClient(timeout=5) as client:
++        response = await client.get(FLAGS_URL)
+     response.raise_for_status()
+     return response.json()
+```
+
+## cross-file-renamed-key
+
+**23. seeded-bug, complex, python, cross-file**
+
+- **major**: The customer_id key is renamed to customerId, but jobs/receipts.py still reads data["customer_id"], so sending a receipt raises KeyError (`orders/serialize.py` lines 5-5)
+
+```diff
+diff --git a/orders/serialize.py b/orders/serialize.py
+--- a/orders/serialize.py
++++ b/orders/serialize.py
+@@ -1,8 +1,8 @@
+ def order_to_dict(order):
+-    """An order as JSON, for the API and the background jobs"""
++    """An order as JSON, for the API and the background jobs (camelCase, for the web app)"""
+     return {
+         "id": order.id,
+-        "customer_id": order.customer_id,
++        "customerId": order.customer_id,
+         "total": order.total,
+         "items": [{"sku": item.sku, "quantity": item.quantity} for item in order.items],
+     }
+```
+
 ## clean-rename-refactor
 
-**19. clean, simple, python**
+**24. clean, simple, python**
 
 Expected: nothing wrong.
 
@@ -1672,7 +1805,7 @@ diff --git a/billing/invoice.py b/billing/invoice.py
 
 ## clean-add-tests
 
-**20. clean, simple, python**
+**25. clean, simple, python**
 
 Expected: nothing wrong.
 
@@ -1703,7 +1836,7 @@ new file mode 100644
 
 ## clean-docs
 
-**21. clean, simple, docs**
+**26. clean, simple, docs**
 
 Expected: nothing wrong.
 
@@ -1724,7 +1857,7 @@ diff --git a/docs/deploying.md b/docs/deploying.md
 
 ## clean-small-feature
 
-**22. clean, simple, python**
+**27. clean, simple, python**
 
 Expected: nothing wrong.
 
@@ -1753,7 +1886,7 @@ diff --git a/geo/distance.py b/geo/distance.py
 
 ## clean-real-placement
 
-**23. clean, complex, python** · commit 495398d, src/codemop/review/placement.py
+**28. clean, complex, python** · commit 495398d, src/codemop/review/placement.py
 
 Expected: nothing wrong.
 
@@ -1812,7 +1945,7 @@ index 0000000..b159565
 
 ## clean-real-pricing
 
-**24. clean, simple, python** · commit a82f899, src/codemop/providers/pricing.py
+**29. clean, simple, python** · commit a82f899, src/codemop/providers/pricing.py
 
 Expected: nothing wrong.
 
@@ -1872,7 +2005,7 @@ index 0000000..9765e90
 
 ## clean-real-github-client
 
-**25. clean, complex, python** · commit 576d45f, src/codemop/github/client.py
+**30. clean, complex, python** · commit 576d45f, src/codemop/github/client.py
 
 Expected: nothing wrong.
 
@@ -1960,4 +2093,45 @@ index 0000000..4b9dcf6
 +    if response.status_code != 200:
 +        raise GitHubError(_error_message(response.status_code, response.text, pr, bool(token)))
 +    return response.text
+```
+
+## clean-cross-file-optional-argument
+
+**31. clean, complex, python, cross-file**
+
+Expected: nothing wrong.
+
+```diff
+diff --git a/notify/email.py b/notify/email.py
+--- a/notify/email.py
++++ b/notify/email.py
+@@ -1,4 +1,6 @@
+-def send_email(smtp, to, subject, body):
+-    """Send a plain-text email"""
+-    message = f"To: {to}\nSubject: {subject}\n\n{body}"
+-    smtp.sendmail("noreply@example.com", [to], message)
++def send_email(smtp, to, subject, body, reply_to=None):
++    """Send a plain-text email, with a Reply-To address if there's one"""
++    headers = f"To: {to}\nSubject: {subject}\n"
++    if reply_to:
++        headers += f"Reply-To: {reply_to}\n"
++    smtp.sendmail("noreply@example.com", [to], f"{headers}\n{body}")
+```
+
+## clean-cross-file-generator
+
+**32. clean, complex, python, cross-file**
+
+Expected: nothing wrong.
+
+```diff
+diff --git a/reports/users.py b/reports/users.py
+--- a/reports/users.py
++++ b/reports/users.py
+@@ -1,3 +1,3 @@
+ def active_users(db):
+-    """Every user who has logged in during the last 30 days"""
+-    return [row for row in db.query("SELECT * FROM users WHERE last_login > now() - interval '30 days'")]
++    """Every user who has logged in during the last 30 days, a row at a time (there are millions)"""
++    yield from db.stream("SELECT * FROM users WHERE last_login > now() - interval '30 days'")
 ```

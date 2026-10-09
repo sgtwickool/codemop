@@ -1,0 +1,15 @@
+diff --git a/payments/ledger.py b/payments/ledger.py
+--- a/payments/ledger.py
++++ b/payments/ledger.py
+@@ -5,8 +5,9 @@
+     pass
+ 
+ 
+-def transfer(amount, source: Account, target: Account):
+-    """Move `amount` (in cents) from one account to another"""
++def transfer(source: Account, target: Account, amount: int):
++    """Move `amount` (in cents) from one account to another (accounts first, like the rest of
++    the ledger)"""
+     if source.balance < amount:
+         raise InsufficientFunds(source.id)
+     source.balance -= amount

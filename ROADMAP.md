@@ -212,7 +212,7 @@ core package. This phase includes what makes it worth choosing over Claude's own
 
 - [x] Send the cheap review more than the diff: the whole of each changed function, and the definitions and callers of what it uses, found without a model (e.g. tree-sitter or ripgrep), within a token budget. Most of the eval's misses on complex changes needed this. (2026-10-09: whole functions, same-file definitions and Python imports, with the standard library's ast; `--context`, off by default: see below)
 - [x] Measure it with the eval before and after. (No measurable gain: 44/50 with it, 47/50 without, within the noise, for about 12% more cost. Most real cases created whole files, so the diff already shows what it adds, and what they lack is in callers in other files. Details in `evals/review/README.md`)
-- [ ] Callers: where the changed functions are used, from other files (the context the eval's misses needed), and eval cases whose bugs depend on other files; turn context on by default once it measurably helps
+- [x] Callers: where the changed functions are used, from other files (the context the eval's misses needed), and eval cases whose bugs depend on other files; turn context on by default once it measurably helps. (2026-10-09: where what the change defines is used, in files that import it; on GitHub, the repository comes in one download, kept in memory. Seven cross-file eval cases: those bugs went from 4/10 found to 10/10, for about 13% more per review, so context is on by default. Details in `evals/review/README.md`)
 
 ### Dogfooding
 
@@ -296,4 +296,5 @@ Not yet planned in detail; each needs a design pass before it becomes a phase.
 | 2026-10-08 | Claude Opus 5.5 at high effort stays the default model; complexity-based routing is parked | The review eval: Opus did best on complex changes (17/20 against 14–15 for the alternatives), and reviews cost about two cents, so routing to cheaper models would save little |
 | 2026-10-09 | Drop the Claude Code plugin | Claude Code has its own `/code-review`, and subscribers are reached the supported way by tiered review, which runs Anthropic's own `claude-code-action` as the deep tiers |
 | 2026-10-09 | Grouped fixes you can apply, a review that learns from you, a merge check and repository context move into Phase 3 | They're the reasons to choose CodeMop over Claude's own reviews, so the Action should launch with them |
+| 2026-10-09 | Repository context is on by default | With where the changed code is used, it found every cross-file bug in the eval (4/10 without), with no new false alarms, for about 13% more per review |
 | 2026-10-09 | Routing comes back as tiered review: skip, CodeMop's diff review, or Claude Code's `/code-review` at low or high effort | Repository context matters, and the cost gap between a 2¢ diff review and an agentic review of the whole repository is large enough for a pre-judge to pay for itself |

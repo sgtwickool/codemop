@@ -213,8 +213,8 @@ def test_a_pr_review_sends_the_code_around_the_change(capsys, monkeypatch, githu
             return await super().review(instructions, diff_text)
     monkeypatch.setattr(providers, "create_model", lambda *a, **k: Recording([]))
 
-    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--context"])
-    run(capsys, monkeypatch, ["review", "owner/repo#8"])  # off by default
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])  # on by default
+    run(capsys, monkeypatch, ["review", "owner/repo#8", "--no-context"])
 
     with_context, without = seen
     assert "#### app.py, lines 1-5 (def total)" in with_context  # the PR's file at its head commit

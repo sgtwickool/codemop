@@ -133,3 +133,126 @@ async def test_nothing_the_diff_already_shows_is_sent_again():
         "".join(f"+{line}\n" for line in DB.splitlines())
 
     assert await build_context(parse_diff(new_file), Files({"db.py": DB})) == ""
+
+
+ACCOUNTS = '''\
+RETRY_DELAY = 2000  # milliseconds
+
+
+def transfer(source, target, amount):
+    source.balance -= amount
+    target.balance += amount
+'''
+
+# Swaps transfer's arguments, and changes RETRY_DELAY's units: right in itself, wrong for the callers
+CALLERS_DIFF = """\
+diff --git a/bank/accounts.py b/bank/accounts.py
+--- a/bank/accounts.py
++++ b/bank/accounts.py
+@@ -1,6 +1,6 @@
+-RETRY_DELAY = 2  # seconds
++RETRY_DELAY = 2000  # milliseconds
+ 
+ 
+-def transfer(amount, source, target):
++def transfer(source, target, amount):
+     source.balance -= amount
+     target.balance += amount
+"""
+
+PAYMENTS = '''\
+import time
+
+from bank.accounts import RETRY_DELAY, transfer
+
+
+def pay(invoice, customer, shop):
+    """Pay an invoice"""
+    transfer(invoice.total, customer, shop)
+    invoice.paid = True
+
+
+def with_retries(action):
+    for _ in range(3):
+        try:
+            return action()
+        except ConnectionError:
+            time.sleep(RETRY_DELAY)
+'''
+
+TEST_PAYMENTS = '''\
+from bank.accounts import transfer
+
+
+def test_transfer(a, b):
+    transfer(a, b, 5)
+'''
+
+
+@pytest.mark.asyncio
+async def test_where_the_changed_definitions_are_used_in_other_files():
+    files = Files({"bank/accounts.py": ACCOUNTS, "shop/payments.py": PAYMENTS, "tests/test_payments.py": TEST_PAYMENTS,
+                   "shop/unrelated.py": "def other():\n    return 1\n"})
+
+    context = await build_context(parse_diff(CALLERS_DIFF), files)
+
+    uses = [part.split("\n")[0] for part in context.split("\n\n#### ")[1:]]
+    assert uses == [
+        "shop/payments.py, lines 6-9 (uses transfer)",
+        "shop/payments.py, lines 12-17 (uses RETRY_DELAY)",
+        "tests/test_payments.py, lines 4-5 (uses transfer)",  # tests after the code
+    ]
+    assert "transfer(invoice.total, customer, shop)" in context and "time.sleep(RETRY_DELAY)" in context
+    assert "def other" not in context
+
+
+@pytest.mark.asyncio
+async def test_a_changed_field_is_found_where_its_set_and_short_names_arent_searched_for():
+    model = "class PullRequest:\n    number = Column(Integer, unique=True)\n    id = Column(Integer)\n"
+    diff = ("diff --git a/db.py b/db.py\n--- a/db.py\n+++ b/db.py\n@@ -1,2 +1,3 @@\n class PullRequest:\n"
+            "+    number = Column(Integer, unique=True)\n     id = Column(Integer)\n")
+    store = "from db import PullRequest\n\n\ndef save(event):\n    return PullRequest(number=event['number'], id=event['id'])\n"
+
+    context = await build_context(parse_diff(diff), Files({"db.py": model, "store.py": store}))
+
+    # The field is directly in the class, so the class counts as changed too
+    assert "#### store.py, lines 4-5 (uses PullRequest)\ndef save(event):\n    return PullRequest(number=" in context
+    assert context.count("####") == 1 and "(uses id)" not in context
+
+
+@pytest.mark.asyncio
+async def test_uses_are_shown_once_and_at_most_a_few_per_name():
+    callers = "\n\n".join(f"def caller_{n}(a, b):\n    transfer(a, b, {n})\n    transfer(b, a, {n})" for n in range(6))
+    files = Files({"bank/accounts.py": ACCOUNTS, "shop/many.py": "from bank.accounts import transfer\n\n\n" + callers})
+
+    context = await build_context(parse_diff(CALLERS_DIFF), files)
+
+    assert context.count("(uses transfer)") == 3
+
+
+@pytest.mark.asyncio
+async def test_only_files_that_import_the_changed_code_count_as_using_it():
+    """A method or field name like `total` is used all over; only the class's users matter"""
+    cart = "class Cart:\n    def total(self):\n        return sum(self.prices)\n"
+    diff = ("diff --git a/shop/cart.py b/shop/cart.py\n--- a/shop/cart.py\n+++ b/shop/cart.py\n@@ -1,3 +1,3 @@\n"
+            " class Cart:\n     def total(self):\n-        return sum(self.prices)\n+        return round(sum(self.prices), 2)\n")
+    files = Files({
+        "shop/cart.py": cart.replace("sum(self.prices)", "round(sum(self.prices), 2)"),
+        "shop/checkout.py": "from shop.cart import Cart\n\n\ndef pay(cart: Cart):\n    return charge(cart.total())\n",
+        "shop/views.py": "from shop import cart\n\n\ndef show(c):\n    return c.total()\n",  # the module
+        "stats/sums.py": "def report(rows):\n    return rows.total()\n",  # some other total
+    })
+
+    context = await build_context(parse_diff(diff), files)
+
+    assert "shop/checkout.py, lines 4-5 (uses total)" in context and "shop/views.py, lines 4-5 (uses total)" in context
+    assert "stats/sums.py" not in context
+
+
+@pytest.mark.asyncio
+async def test_local_files_skip_hidden_and_installed_folders(tmp_path):
+    for path in ["app/main.py", "app/notes.txt", ".venv/lib/x.py", "node_modules/y.py", "venv/z.py", "tests/test_a.py"]:
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_text("x = 1\n")
+
+    assert await LocalFiles(tmp_path).paths() == ["app/main.py", "tests/test_a.py"]
