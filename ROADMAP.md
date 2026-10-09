@@ -7,6 +7,37 @@ This roadmap replaces the original scope documents in `docs/` (see [Decisions](#
 Phases are worked through in order. Each phase has a "done when" line, so it's clear when
 to move on.
 
+## Why CodeMop
+
+Claude already reviews PRs (its GitHub Action, on an API key or a Pro/Max subscription, and a
+managed Code Review for Team and Enterprise plans at about $15–25 and 20 minutes a review), so
+"use your subscription" isn't a reason to choose CodeMop. These are:
+
+- **Reviews fork PRs automatically and safely:** CodeMop reads only the diff, through the API,
+  never checks out or runs the PR's code, gives the model no tools, and takes its settings from
+  the default branch. So it can hold a key on fork PRs, where agents that run tools on the code
+  can't (Claude reviews forks only when a maintainer asks). Open-source maintainers get most of
+  their PRs from forks
+- **Fixes, not just findings:** one-click suggestion blocks, and a summary comment, edited in
+  place, with a checklist: tick the fixes you want and CodeMop commits them as one grouped commit
+- **Learns from you, visibly:** reply "intentional" or 👎 a comment and it's resolved and
+  remembered in a file in the repo that you can read and edit; it isn't raised again. Re-reviews
+  look at new commits only, report important findings only, and resolve threads once the code is
+  fixed (Claude's Action is swayed by old comments, and replies to Code Review do nothing)
+- **Cheap and fast enough for every push:** about 2¢ and 5 seconds a review (the
+  [eval](evals/review/README.md)), with deeper, costlier review only where a change needs it
+  (tiered review, Phase 6)
+- **For teams Anthropic's managed review doesn't serve:** any provider, your own key (including
+  zero data retention or Bedrock), only `pull-requests: write`, and a check that can fail on
+  major findings (Claude's is always neutral). Later GitLab and Gitea/Forgejo, which have
+  nothing like it
+- **Reviews a feature across repositories** (Phase 6): the frontend and backend PRs that ship
+  together, reviewed as one change
+
+Where Claude is ahead: it reads the whole repository, verifies findings with several agents,
+and needs no setup. Tiered review closes the first gap by using Claude Code's own review as the
+deep tier.
+
 ## How we work
 
 - **Commit straight to `master`** while it's a solo project; CI must be green after every push.
@@ -149,7 +180,7 @@ same review-posting code.
 - [ ] Check each `suggested_code` really replaces lines `line..end_line` before posting it as a suggestion block: small models often include the line above or below, which GitHub would then duplicate (seen with qwen2.5-coder:7b)
 - [ ] Update the existing review on re-runs instead of piling up new ones
 - [ ] Cost guardrails: maximum diff size and maximum number of comments
-- [ ] Document permissions (`pull-requests: write`) and the limits on fork PRs (secrets aren't available there)
+- [ ] Review fork PRs automatically: a `pull_request_target` workflow that reads the diff through the API and never checks out the PR's code, so the key is safe (see [Why CodeMop](#why-codemop)); document why it's safe, and the permissions (`pull-requests: write`)
 - [ ] Run it on CodeMop's own PRs for at least two weeks
 - [ ] Tag `v1`; list on the GitHub Marketplace
 
@@ -164,9 +195,7 @@ reviewing, CodeMop supplies the method and the tools. CodeMop never handles the 
 - [ ] Publish it to a plugin marketplace
 - [ ] Before promoting "works with your Claude subscription": check Anthropic's current terms (third-party products may not offer claude.ai login or rate limits unless approved), and ask Anthropic if in doubt
 
-**What it has to do better than Claude Code's own PR reviews:** suggestions placed on exactly the
-right lines, one-click "suggested change" blocks, grouped fixes, and a choice of models (via the
-Action).
+**What it has to do better than Claude Code's own PR reviews:** see [Why CodeMop](#why-codemop).
 
 **Done when:** someone else installs it from the README alone and it reviews their PR.
 
@@ -187,24 +216,48 @@ Action).
 
 **Done when:** the kempgt.com card links to a live site with a working quickstart.
 
-## Phase 6: Later, maybe
+## Phase 6: Design ideas
 
-- **Complexity-based routing** (needs the Phase 2 eval to tune and trust it). *Parked on
-  2026-10-08: the eval found it would save about a cent per review, for a little more risk on
-  changes that look simple and aren't; revisit if reviews get expensive.* Route each chunk,
-  not the whole PR, to the cheapest review that's good enough:
-  1. Free checks first, with no model: skip only what's certainly trivial (docs-only, lock
-     files, pure renames, whitespace); send obviously risky code (auth, crypto, SQL and
-     migrations, concurrency, payments, large logic changes) straight to the strong tier
-  2. A capable model at low effort (e.g. Claude Sonnet) triages the rest and picks the cheap or
-     the strong reviewer; small local models aren't reliable enough for this. It never skips a
-     review: a "trivial" call on a subtle bug is the failure to avoid
-  3. Compare against routing by effort level on one model (e.g. Claude Opus at low effort for
-     simple chunks), which is often as good and cheaper, with one model to keep consistent
-  4. The report says which model reviewed each part, and why anything was skipped. Success is
-     measured by the eval: issues missed against reviewing everything with the strong model,
-     and the cost saved
-  5. Tiers configurable in `.codemop.yml`
+Not yet planned in detail; each needs a design pass before it becomes a phase.
+
+- **Repository context for the cheap review:** the diff alone misses bugs that depend on code
+  around it (most of the eval's misses on complex changes were this). Add the whole of each
+  changed function, and the definitions and callers of what it uses, found without a model
+  (e.g. tree-sitter or ripgrep), within a token budget
+- **Tiered review with a pre-judge** (revived 2026-10-09: the eval measured models on the same
+  diff-only review, where routing saves about a cent; between a 2¢ diff review and an agentic
+  review of the whole repository the gap is dollars). A cheap triage step picks, per PR:
+  1. **Skip:** only what's certainly trivial (docs only, lock files, pure renames, whitespace),
+     decided by rules, not a model
+  2. **CodeMop's diff review** (about 2¢), with repository context once that exists
+  3. **Claude Code's `/code-review` at low effort**, which reads the whole repository
+  4. **`/code-review` at high effort, or ultrareview**, for risky or wide-reaching changes
+     (auth, payments, migrations, concurrency, public APIs, large logic changes)
+
+  The triage is a capable model at low effort (e.g. Claude Sonnet) given the diff, the files'
+  paths and the size of the change. It never downgrades code the rules mark as risky, and the
+  report says which tier reviewed the PR and why. Tiers 3 and 4 run as a conditional step using
+  Anthropic's own `claude-code-action`, so they can bill the user's Claude subscription the
+  supported way. They check out the PR's code, so on fork PRs only tiers 1 and 2 run
+  automatically and a maintainer opts in to more. Measured with the eval: add Claude Code's
+  `/code-review` (low and high) as configurations, which also answers how close CodeMop's diff
+  review gets to it. Tiers configurable in `.codemop.yml`
+- **Cross-repository feature review:** PRs in different repositories that ship together (a
+  frontend and the backend it calls) are reviewed as one change, looking for the bugs that come
+  from mismatches: request and response shapes, field names, types, error codes, feature flags,
+  the order they have to deploy in. Keep the orchestration simple:
+  - PRs are linked by **the same branch name** across repositories (the usual habit when working
+    in several worktrees), or explicitly with a line in the PR description such as
+    `Ships with: org/backend#42`
+  - The repositories that can be linked are listed once, in `.codemop.yml` on the default branch
+  - Each linked PR gets the same combined review, with each comment on the PR it belongs to; it
+    runs once, when the last linked PR is opened or updated
+  - Design challenge: reading the other repositories needs a token that can (a GitHub App or a
+    fine-grained token), since an Action's own `GITHUB_TOKEN` only covers its own repository
+- **Multi-repository workspaces** (like claude-squad, but for a folder holding one or many
+  repositories): start a task by creating a worktree with the same branch name in each
+  repository involved, run the agent sessions across them, and open the linked PRs, which then
+  get a cross-repository review
 - **Grouped fixes:** related issues bundled into one suggestion/commit (the main differentiator)
 - **Self-hosted GitHub App mode**, built on the Phase 1 server
 - GitLab support
@@ -223,3 +276,4 @@ Action).
 | 2026-10-07 | Model agnostic: provider adapters behind one interface, selected by config; the default model is chosen by the comparison eval | Users have their own provider preferences, and quality differed noticeably between Le Chat and Claude in practice, so measure it rather than guess |
 | 2026-10-07 | The original scope (`docs/codemop_project_scope.md`, `docs/epics.md`) is superseded | It was sized for a five-person team. Epic 1 → Phases 0–1; Epic 6 → Phases 2–3; Epic 3 → Phase 3 (suggestion blocks) and Phase 6 (grouped fixes); Epics 2, 4, 5, 7, 8 deferred |
 | 2026-10-08 | Claude Opus 5.5 at high effort stays the default model; complexity-based routing is parked | The review eval: Opus did best on complex changes (17/20 against 14–15 for the alternatives), and reviews cost about two cents, so routing to cheaper models would save little |
+| 2026-10-09 | Routing comes back as tiered review: skip, CodeMop's diff review, or Claude Code's `/code-review` at low or high effort | Repository context matters, and the cost gap between a 2¢ diff review and an agentic review of the whole repository is large enough for a pre-judge to pay for itself |
