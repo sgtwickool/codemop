@@ -67,7 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     review.add_argument("target", help="owner/repo#123, a pull request URL, or - to read a diff from stdin")
 
-    who = review.add_argument_group("model (chosen by you, never by the repository)")
+    who = review.add_argument_group("model and cost (chosen by you, never by the repository)")
     who.add_argument("--provider", choices=PROVIDERS, default=os.environ.get("CODEMOP_PROVIDER", "anthropic"),
                      help="model provider (default: $CODEMOP_PROVIDER, or anthropic)")
     who.add_argument("--model", default=os.environ.get("CODEMOP_MODEL"),
@@ -87,6 +87,8 @@ def build_parser() -> argparse.ArgumentParser:
                      help=f"drop suggestions the model is less sure of (0-1, default: {DEFAULT_MIN_CONFIDENCE})")
     how.add_argument("--chunk-tokens", type=int,
                      help=f"largest piece of diff sent in one request (default: {DEFAULT_CHUNK_TOKENS:,}; 8,000 for ollama)")
+    who.add_argument("--max-changed-lines", type=int, metavar="N",
+                     help="don't review a diff with more added and removed lines than this (a cost limit)")
     how.add_argument("--max-comments", type=int, metavar="N",
                      help="with --post, the most inline comments (default: 10); the rest go in the summary")
     how.add_argument("--ignore", action="append", metavar="PATTERN",
@@ -133,7 +135,9 @@ def format_cost(cost: Optional[float], usage: Usage) -> str:
 def report_text(report: ReviewReport, target: str, config_source: str) -> str:
     settings = "" if config_source == "defaults" else f" (settings from {config_source})"
     lines: List[str] = [f"CodeMop review of {target} with {report.model}{settings}", ""]
-    if not report.suggestions:
+    if report.too_large:
+        lines.append(f"Not reviewed: {report.too_large}.")
+    elif not report.suggestions:
         lines.append("No issues found." if report.complete else "No issues found in the parts that were reviewed.")
     for s in report.suggestions:
         location = f"{s.file_path}:{s.line}" + (f"-{s.end_line}" if s.end_line and s.end_line != s.line else "")
@@ -239,6 +243,7 @@ async def run_review(args) -> int:
         chunk_tokens=args.chunk_tokens or config.chunk_tokens,
         min_confidence=args.min_confidence if args.min_confidence is not None else config.min_confidence,
         ignored_paths=[*DEFAULT_IGNORED_PATHS, *config.ignore, *(args.ignore or [])],
+        max_changed_lines=args.max_changed_lines,
     )
     print(report_json(report, target, config_source) if args.json else report_text(report, target, config_source))
     if args.post:
@@ -251,7 +256,8 @@ async def run_review(args) -> int:
             print(f"codemop: {e}", file=sys.stderr)
             return 1
         print(f"Posted the review: {url}", file=sys.stderr if args.json else sys.stdout)
-    return 0 if report.complete else 1
+    # Too large to review is a deliberate limit, not a failure
+    return 0 if report.complete or report.too_large else 1
 
 
 async def post(pr: PullRequestRef, report: ReviewReport, head_sha: str, token: str, max_comments: int,

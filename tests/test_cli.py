@@ -378,3 +378,24 @@ def test_post_needs_a_pull_request_and_a_token(capsys, monkeypatch, fake_model, 
 
     assert code == 2
     assert expected in err
+
+
+def test_a_diff_over_the_limit_is_not_reviewed_and_exits_0(capsys, monkeypatch, fake_model):
+    fake_model(AssertionError("the model shouldn't be asked"))
+
+    code, out, _ = run(capsys, monkeypatch, ["review", "-", "--max-changed-lines", "1"], stdin=DIFF)
+
+    assert code == 0
+    assert "Not reviewed: 3 changed lines to review, more than the limit of 1." in out
+    assert "nothing spent" in out
+
+
+def test_post_says_when_a_pr_was_too_large_to_review(capsys, monkeypatch, fake_model, github):
+    fake_model(AssertionError("the model shouldn't be asked"))
+
+    code, _, _ = run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--max-changed-lines", "1"])
+
+    assert code == 0
+    [review] = github["posted"]
+    assert "Not reviewed: this PR has 3 changed lines to review, more than the limit of 1 set for CodeMop here." in review["body"]
+    assert review["comments"] == []

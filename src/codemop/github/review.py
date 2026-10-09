@@ -53,7 +53,9 @@ def inline_comment(s: ModelSuggestion) -> dict:
 def summary_body(report: ReviewReport, inline: Sequence[ModelSuggestion], not_inline: Sequence[ModelSuggestion],
                  cost: str, head_sha: str) -> str:
     lines = [MARKER, f"<!-- codemop-commit: {head_sha} -->", f"### CodeMop review of {head_sha[:7]}", ""]
-    if not report.suggestions:
+    if report.too_large:
+        lines.append(f"Not reviewed: this PR has {report.too_large} set for CodeMop here.")
+    elif not report.suggestions:
         lines.append("No issues found." if report.complete else "No issues found in the parts that were reviewed.")
     else:
         lines.append(f"Found {len(report.suggestions)} issue(s):")

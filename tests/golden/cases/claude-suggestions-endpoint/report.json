@@ -41,6 +41,7 @@
   "skipped": [],
   "failed": [],
   "stopped": null,
+  "too_large": null,
   "chunks": 1,
   "usage": {
     "input_tokens": 3810,

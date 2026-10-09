@@ -148,3 +148,25 @@ async def test_chunk_size_defaults_to_the_models_own(sample_diff):
     report = await review_diff(sample_diff, model)
 
     assert report.chunks == 2
+
+
+@pytest.mark.asyncio
+async def test_a_diff_over_the_changed_line_limit_isnt_sent_to_the_model(sample_diff):
+    model = FakeModel({})
+
+    report = await review_diff(sample_diff, model, max_changed_lines=5)
+
+    # app/service.py: 2 removed + 3 added; app/new_module.py: 3 added (the lock file is ignored)
+    assert report.too_large == "8 changed lines to review, more than the limit of 5"
+    assert model.calls == []
+    assert not report.complete
+
+
+@pytest.mark.asyncio
+async def test_a_diff_within_the_limit_is_reviewed(sample_diff):
+    model = FakeModel({})
+
+    report = await review_diff(sample_diff, model, max_changed_lines=8)
+
+    assert report.too_large is None
+    assert len(model.calls) == 1
