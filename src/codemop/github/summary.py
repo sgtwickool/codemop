@@ -343,6 +343,21 @@ def record_applied(body: str, commit: str, applied: Sequence[Fix], skipped: Sequ
     return _STATE.sub(lambda _: _state_data(state), body)
 
 
+def record_own_commit(body: str, parent: str, commit: str) -> Optional[str]:
+    """
+    The summary with CodeMop's own commit (ticked fixes, a learned note) recorded as reviewed,
+    if it was made on top of the commit last reviewed: it holds nothing CodeMop hasn't seen,
+    so the merge check can be set on it, and the next re-review skips it. None otherwise (if
+    someone pushed in between, that push gets its own review).
+    """
+    state = read_state(body)
+    if not state.kept or state.commit != parent:
+        return None
+    state.commit = commit
+    body = _COMMIT.sub(f"<!-- codemop-commit: {commit} -->", body)
+    return _STATE.sub(lambda _: _state_data(state), body)
+
+
 def stored_fixes(body: str) -> Dict[int, Fix]:
     """The fixes of the summary's open findings, by id"""
     return {f.id: f.fix for f in read_state(body).open if f.fix}
