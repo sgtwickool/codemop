@@ -58,3 +58,23 @@ Each configuration reviewed every case twice (50 reviews). List prices as of 202
   the margin of error. In `real-ai-analysis`, two known issues are on the same line and the judge
   credits a comment with only one, so no configuration can pass it even when a comment names both
   (it affects every configuration equally). Mistral and local models weren't compared
+
+## Grouping, 2026-10-09
+
+The instructions gained `group` (related problems marked so one checklist item fixes them
+all). The default, Opus 5.5 at high effort, again reviewed every case twice:
+
+| | Before | With grouping |
+|---|---|---|
+| Cases passed | 47/50 | 47/50 |
+| Major issues found | 37/40 | 37/40 |
+| False alarms | 1 | 1 |
+| Minor issues found | 7/16 | 4/16 |
+| Other real issues raised | 34 | 28 |
+| Review cost per case | $0.023 | $0.024 |
+
+What decides a pass held exactly. Fewer extras were raised (minor and other real issues),
+which may be noise at this size; worth watching. The model grouped sparingly and where it
+fits: the undefined `pr_data` used in two places, and the backup command injection, whose
+fix needs both the regex anchored and `shell=True` dropped.
+

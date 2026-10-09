@@ -25,7 +25,7 @@ from codemop.review.schema import ModelSuggestion, Severity
 MARKER = "<!-- codemop-summary -->"
 _COMMIT = re.compile(r"<!-- codemop-commit: ([0-9a-f]{7,40}) -->")
 _FIXES = re.compile(r"<!-- codemop-fixes: ([A-Za-z0-9+/=]+) -->")
-_ITEM = re.compile(r"^- \[([ xX])\] (.*) <!-- codemop-fix:(\d+) -->$", re.M)
+_ITEM = re.compile(r"^- \[([ xX])\] (.*) <!-- codemop-fix:([\d,]+) -->$", re.M)
 TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 DEFAULT_MAX_COMMENTS = RepoConfig().max_comments
 
@@ -47,8 +47,11 @@ def location(s: ModelSuggestion) -> str:
     return f"{s.file_path}:{s.line}" + (f"-{s.end_line}" if s.end_line and s.end_line != s.line else "")
 
 
-def comment_body(s: ModelSuggestion) -> str:
+def comment_body(s: ModelSuggestion, same_group: Sequence[ModelSuggestion] = ()) -> str:
     parts = [f"**{SEVERITY_LABELS[s.severity]}: {s.title}**", "", s.explanation]
+    if same_group:
+        places = ", ".join(f"`{location(other)}`" for other in same_group)
+        parts += ["", f"The same problem is also at {places}; the summary has one fix for them all."]
     if s.suggested_code is not None:
         # A fence longer than any run of backticks in the code, so the code can't end it
         fence = "`" * max(3, max(map(len, re.findall(r"`+", s.suggested_code)), default=0) + 1)
@@ -58,8 +61,14 @@ def comment_body(s: ModelSuggestion) -> str:
     return "\n".join(parts)
 
 
-def inline_comment(s: ModelSuggestion) -> dict:
-    comment = {"path": s.file_path, "line": s.end_line or s.line, "side": "RIGHT", "body": comment_body(s)}
+def group_of(s: ModelSuggestion, issues: Sequence[ModelSuggestion]) -> List[ModelSuggestion]:
+    """The other issues the model grouped with `s` (one problem in several places)"""
+    return [other for other in issues if s.group and other is not s and other.group == s.group]
+
+
+def inline_comment(s: ModelSuggestion, issues: Sequence[ModelSuggestion] = ()) -> dict:
+    comment = {"path": s.file_path, "line": s.end_line or s.line, "side": "RIGHT",
+               "body": comment_body(s, group_of(s, issues))}
     if s.end_line and s.end_line > s.line:
         comment.update(start_line=s.line, start_side="RIGHT")
     return comment
@@ -76,9 +85,29 @@ def offered_fixes(issues: Sequence[ModelSuggestion], shown: Dict[str, Dict[int, 
     return fixes
 
 
-def _item(s: ModelSuggestion, fix: Optional[Fix], checklist: bool) -> str:
-    text = f"{SEVERITY_LABELS[s.severity]} `{location(s)}`: {s.title}"
-    return f"- [ ] {text} <!-- codemop-fix:{fix.id} -->" if checklist and fix else f"- {text}"
+def _items(numbered: Sequence[Tuple[int, ModelSuggestion]], fixes: Dict[int, Fix],
+           checklist: bool) -> List[Tuple[int, str]]:
+    """
+    A line per issue, and its number, except that issues the model grouped share one line
+    (numbered as the first of them), with one checkbox for all their fixes
+    """
+    lines, listed = [], set()
+    for n, s in numbered:
+        if n in listed:
+            continue
+        members = [(m, t) for m, t in numbered if s.group and t.group == s.group] or [(n, s)]
+        listed.update(m for m, _ in members)
+        ids = [m for m, _ in members if m in fixes]
+        if len(members) == 1:
+            text = f"{SEVERITY_LABELS[s.severity]} `{location(s)}`: {s.title}"
+        else:
+            places = ", ".join(f"`{location(t)}`" for _, t in members)
+            text = f"{SEVERITY_LABELS[s.severity]} {s.title} ({len(members)} places: {places})"
+            if ids and len(ids) < len(members):
+                text += f" · fixes for {len(ids)} of them"
+        lines.append((n, f"- [ ] {text} <!-- codemop-fix:{','.join(map(str, ids))} -->" if checklist and ids
+                      else f"- {text}"))
+    return lines
 
 
 def summary_body(report: ReviewReport, inline: Sequence[ModelSuggestion], not_inline: Sequence[ModelSuggestion],
@@ -90,7 +119,8 @@ def summary_body(report: ReviewReport, inline: Sequence[ModelSuggestion], not_in
     """
     fixes = fixes or {}
     checklist = checklist and bool(fixes)
-    numbered = list(enumerate([*inline, *not_inline], 1))
+    # A group is listed once, in the section of its first (most important) issue
+    items = _items(list(enumerate([*inline, *not_inline], 1)), fixes, checklist)
     lines = [MARKER, f"<!-- codemop-commit: {head_sha} -->", f"### CodeMop review of {head_sha[:7]}", ""]
     if report.too_large:
         lines.append(f"Not reviewed: this PR has {report.too_large} set for CodeMop here.")
@@ -100,10 +130,11 @@ def summary_body(report: ReviewReport, inline: Sequence[ModelSuggestion], not_in
         where = f" ([comments on the code]({review_url}))" if review_url else ""
         tick = " Tick the fixes you want, and CodeMop commits them to this branch together." if checklist else ""
         lines += [f"Found {len(report.suggestions)} issue(s){where}.{tick}", ""]
-        lines += [_item(s, fixes.get(n), checklist) for n, s in numbered[:len(inline)]]
-    if not_inline:
+        lines += [line for n, line in items if n <= len(inline)]
+    rest = [line for n, line in items if n > len(inline)]
+    if rest:
         lines += ["", f"Not posted inline (over the limit of {len(inline)} comments; set `max_comments` in `.codemop.yml`):", ""]
-        lines += [_item(s, fixes.get(n), checklist) for n, s in numbered[len(inline):]]
+        lines += rest
     if inline_rejected:
         lines += ["", "⚠️ GitHub didn't accept the comments on the code (has the PR changed since it was "
                       "reviewed?), so the issues are only listed here."]
@@ -148,8 +179,8 @@ def _lf(body: str) -> str:
 
 
 def ticked(body: str) -> Set[int]:
-    """The ids of the fixes ticked in the summary's checklist"""
-    return {int(fix_id) for box, _, fix_id in _ITEM.findall(_lf(body)) if box.lower() == "x"}
+    """The ids of the fixes ticked in the summary's checklist (an item can hold several)"""
+    return {int(fix_id) for box, _, ids in _ITEM.findall(_lf(body)) if box.lower() == "x" for fix_id in ids.split(",")}
 
 
 def record_applied(body: str, commit: str, applied: Sequence[Fix], skipped: Sequence[Tuple[Fix, str]]) -> str:
@@ -158,12 +189,17 @@ def record_applied(body: str, commit: str, applied: Sequence[Fix], skipped: Sequ
     why = {f.id: reason for f, reason in skipped}
 
     def item(match: re.Match) -> str:
-        box, fix_id = match.group(1), int(match.group(3))
+        ids = [int(i) for i in match.group(3).split(",")]
+        marker = f"<!-- codemop-fix:{match.group(3)} -->"
         text = re.sub(r" · (✅|⚠️) .*$", "", match.group(2))  # an earlier result, replaced by this one
-        if fix_id in done:
-            return f"- [x] {text} · ✅ applied in {commit[:7]} <!-- codemop-fix:{fix_id} -->"
-        if fix_id in why:
-            return f"- [ ] {text} · ⚠️ not applied: {why[fix_id]} <!-- codemop-fix:{fix_id} -->"
+        applied_here = [i for i in ids if i in done]
+        reasons = [why[i] for i in ids if i in why]
+        if applied_here and reasons:
+            return f"- [x] {text} · ✅ applied in {commit[:7]}, except {len(reasons)}: {reasons[0]} {marker}"
+        if applied_here:
+            return f"- [x] {text} · ✅ applied in {commit[:7]} {marker}"
+        if reasons:
+            return f"- [ ] {text} · ⚠️ not applied: {reasons[0]} {marker}"
         return match.group(0)
 
     body = _ITEM.sub(item, _lf(body))
@@ -177,13 +213,13 @@ def split_inline(report: ReviewReport, max_comments: int = DEFAULT_MAX_COMMENTS)
     return issues[:max_comments], issues[max_comments:]
 
 
-def review_payload(inline: Sequence[ModelSuggestion], head_sha: str) -> dict:
-    """The body for POST /repos/{owner}/{repo}/pulls/{number}/reviews: the inline comments"""
+def review_payload(inline: Sequence[ModelSuggestion], head_sha: str, issues: Sequence[ModelSuggestion] = ()) -> dict:
+    """The body for POST /repos/{owner}/{repo}/pulls/{number}/reviews: the inline comments (`issues`: all of them)"""
     return {
         "commit_id": head_sha,
         "event": "COMMENT",  # never approves or requests changes
         "body": f"CodeMop's comments on {head_sha[:7]}; the summary is in the PR's conversation.",
-        "comments": [inline_comment(s) for s in inline],
+        "comments": [inline_comment(s, issues) for s in inline],
     }
 
 

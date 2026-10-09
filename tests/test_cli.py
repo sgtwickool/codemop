@@ -587,3 +587,25 @@ def test_apply_leaves_a_summary_that_a_newer_review_replaced_meanwhile(capsys, m
 
     assert summary_of(github) == newer
     assert "The summary now belongs to a newer review, so it isn't marked" in out
+
+
+def test_one_tick_commits_a_whole_group_across_files(capsys, monkeypatch, fake_model, github):
+    """The same mistake in two files: one checklist item, one commit with both fixes"""
+    github["files"]["lib.py"] = "def total(items):\n    result = sum(items)\n    return result + 1\n"
+    two_files = DIFF + DIFF.replace("app.py", "lib.py")
+    monkeypatch.setattr(cli, "fetch_pr_diff", lambda *a, **k: _async(two_files))
+    fake_model([SUGGESTION.model_copy(update={"group": "off-by-one"}),
+                SUGGESTION.model_copy(update={"file_path": "lib.py", "group": "off-by-one"})])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+    assert "Adds one to the total (2 places: `app.py:3`, `lib.py:3`) <!-- codemop-fix:1,2 -->" in summary_of(github)
+    tick_all(github)
+
+    run(capsys, monkeypatch, ["apply", "owner/repo#7", "--by", "maintainer"])
+
+    assert len(github["commits"]) == 1
+    assert github["files"]["app.py"].endswith("    return result\n") and github["files"]["lib.py"].endswith("    return result\n")
+    assert "· ✅ applied in c0ffee0 <!-- codemop-fix:1,2 -->" in summary_of(github)
+
+
+async def _async(value):
+    return value

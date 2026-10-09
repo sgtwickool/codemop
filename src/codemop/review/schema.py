@@ -32,6 +32,10 @@ class ModelSuggestion(BaseModel):
         description="Replacement for lines line..end_line (exact code, no diff markers), or null",
     )
     confidence: float = Field(ge=0, le=1, description="How sure you are this is a real issue")
+    group: Optional[str] = Field(
+        default=None,
+        description="A short label shared by suggestions that fix one problem in several places, or null",
+    )
 
 
 class ModelReview(BaseModel):

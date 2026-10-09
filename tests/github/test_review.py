@@ -186,3 +186,61 @@ def test_records_which_fixes_were_applied_and_which_skipped():
     # Ticked again and skipped again: one note, not two
     body = record_applied(body.replace("- [ ] 🐛 Bug `app.py:6`", "- [x] 🐛 Bug `app.py:6`"), "a" * 40, [], [(fixes[2], "still changed")])
     assert "- [ ] 🐛 Bug `app.py:6`: Other · ⚠️ not applied: still changed <!-- codemop-fix:2 -->" in body
+
+
+def grouped(line, path="app.py", code="fixed()", title="Unclosed session", group="unclosed-sessions", confidence=0.9):
+    return ModelSuggestion(file_path=path, line=line, severity="bug", title=title, explanation="Leaks.",
+                           suggested_code=code, confidence=confidence, group=group)
+
+
+GROUP_SHOWN = {"app.py": {3: "a", 5: "b"}, "db.py": {9: "c"}}
+
+
+def test_a_group_is_one_item_with_one_checkbox_for_all_its_fixes():
+    issues = [grouped(3), grouped(9, path="db.py", confidence=0.8), suggestion(line=5, title="Separate")]
+    fixes = offered_fixes(issues, GROUP_SHOWN)
+
+    body = summary_body(report(*issues), issues, [], "c", SHA, fixes=fixes, checklist=True)
+
+    assert "- [ ] 🐛 Bug Unclosed session (2 places: `app.py:3`, `db.py:9`) <!-- codemop-fix:1,2 -->" in body
+    assert "- [ ] 🐛 Bug `app.py:5`: Separate <!-- codemop-fix:3 -->" in body
+    assert ticked(body.replace("- [ ] 🐛 Bug Unclosed", "- [x] 🐛 Bug Unclosed")) == {1, 2}
+
+
+def test_a_group_split_by_the_comment_limit_is_listed_once():
+    issues = [grouped(3), suggestion(line=5, title="Separate", confidence=0.85), grouped(9, path="db.py", confidence=0.5)]
+    r = report(*issues)
+    inline, rest = split_inline(r, max_comments=2)
+
+    body = summary_body(r, inline, rest, "c", SHA, fixes=offered_fixes([*inline, *rest], GROUP_SHOWN), checklist=True)
+
+    assert body.count("Unclosed session") == 1
+    assert "Not posted inline" not in body  # the only one over the limit is listed with its group
+
+
+def test_a_group_member_without_a_fix_is_listed_but_not_ticked():
+    issues = [grouped(3), grouped(9, path="db.py", code=None)]
+
+    body = summary_body(report(*issues), issues, [], "c", SHA, fixes=offered_fixes(issues, GROUP_SHOWN), checklist=True)
+
+    assert "(2 places: `app.py:3`, `db.py:9`) · fixes for 1 of them <!-- codemop-fix:1 -->" in body
+
+
+def test_inline_comments_in_a_group_say_where_else_the_problem_is():
+    issues = [grouped(3), grouped(9, path="db.py")]
+
+    first, second = review_payload(issues, SHA, issues)["comments"]
+
+    assert "The same problem is also at `db.py:9`; the summary has one fix for them all." in first["body"]
+    assert "also at `app.py:3`" in second["body"]
+    assert "also at" not in review_payload([suggestion()], SHA, [suggestion()])["comments"][0]["body"]
+
+
+def test_a_group_partly_applied_says_so():
+    issues = [grouped(3), grouped(9, path="db.py")]
+    fixes = offered_fixes(issues, GROUP_SHOWN)
+    body = summary_body(report(*issues), issues, [], "c", SHA, fixes=fixes, checklist=True).replace("- [ ]", "- [x]")
+
+    body = record_applied(body, "abc9999" + "0" * 33, [fixes[1]], [(fixes[2], "the code it replaces has changed")])
+
+    assert "· ✅ applied in abc9999, except 1: the code it replaces has changed <!-- codemop-fix:1,2 -->" in body
