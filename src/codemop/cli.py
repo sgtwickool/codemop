@@ -42,6 +42,8 @@ from codemop.github.summary import (
     OPEN, SummaryState, find_summary, read_state, record_applied, record_own_commit, stored_fixes, summary_body,
     sync_threads, ticked, trusted, update_earlier,
 )
+from codemop.github.files import GitHubFiles
+from codemop.review.context import LocalFiles
 from codemop.review.placement import place_suggestions
 from codemop.review.schema import Severity
 from codemop.review.learned import (
@@ -107,6 +109,9 @@ def build_parser() -> argparse.ArgumentParser:
                      help=f"largest piece of diff sent in one request (default: {DEFAULT_CHUNK_TOKENS:,}; 8,000 for ollama)")
     who.add_argument("--max-changed-lines", type=int, metavar="N",
                      help="don't review a diff with more added and removed lines than this (a cost limit)")
+    how.add_argument("--context", action="store_true",
+                     help="send the code around each change too: whole functions, and definitions it uses "
+                          "(costs a little more; it hasn't measurably helped in CodeMop's eval yet)")
     how.add_argument("--max-comments", type=int, metavar="N",
                      help="with --post, the most inline comments (default: 10); the rest go in the summary")
     how.add_argument("--ignore", action="append", metavar="PATTERN",
@@ -283,6 +288,8 @@ async def run_review(args) -> int:
                     print(f"CodeMop has already reviewed {target} at {head_sha[:7]}; nothing to do")
                     return 0
             diff = full_diff = await fetch_pr_diff(pr, token=token, api_url=args.github_api_url)
+            if pull is None and args.context:  # its files, for context
+                pull = await fetch_pull_request(pr, token=token, api_url=args.github_api_url)
             if args.post and state.kept and state.commit:
                 # A re-review: just the commits since the last review, if it's an ancestor (not after a
                 # force-push), and only in files the PR changes (not ones a merge of the base brought in)
@@ -312,6 +319,10 @@ async def run_review(args) -> int:
         ignored_paths=[*DEFAULT_IGNORED_PATHS, *config.ignore, *(args.ignore or [])],
         max_changed_lines=args.max_changed_lines,
         settled=settled,
+        context=None if not args.context else (
+            LocalFiles(Path.cwd()) if pr is None
+            else GitHubFiles(pull.head_repo or pr.repo, pull.head_sha, token=token, api_url=args.github_api_url)
+        ),
     )
     less_important = 0
     if args.post:

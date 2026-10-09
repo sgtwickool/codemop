@@ -148,7 +148,11 @@ aren't reviewed, because GitHub doesn't give their workflows your secrets.)
 
 Drafts are skipped until they're ready for review (`review-drafts: true` to review them),
 and the job fails only when the review couldn't be done (a rejected key, say). The other
-inputs: `base-url`, `effort` (Claude: `low` is cheaper), `max-comments` and `github-token`.
+inputs: `base-url`, `effort` (Claude: `low` is cheaper), `max-comments`, `github-token`, and
+`context: true` to send the code around each change as well as the diff (the whole of each
+changed function, and the definitions it uses; it costs a little more and hasn't measurably
+helped in [CodeMop's eval](https://github.com/sgtwickool/codemop/blob/master/evals/review/README.md)
+yet, so it's off by default).
 
 The rest of this README covers configuring reviews, choosing a model, and running the
 webhook server.

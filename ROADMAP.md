@@ -208,8 +208,9 @@ core package. This phase includes what makes it worth choosing over Claude's own
 
 ### Repository context
 
-- [ ] Send the cheap review more than the diff: the whole of each changed function, and the definitions and callers of what it uses, found without a model (e.g. tree-sitter or ripgrep), within a token budget. Most of the eval's misses on complex changes needed this
-- [ ] Measure it with the eval before and after
+- [x] Send the cheap review more than the diff: the whole of each changed function, and the definitions and callers of what it uses, found without a model (e.g. tree-sitter or ripgrep), within a token budget. Most of the eval's misses on complex changes needed this. (2026-10-09: whole functions, same-file definitions and Python imports, with the standard library's ast; `--context`, off by default: see below)
+- [x] Measure it with the eval before and after. (No measurable gain: 44/50 with it, 47/50 without, within the noise, for about 12% more cost. Most real cases created whole files, so the diff already shows what it adds, and what they lack is in callers in other files. Details in `evals/review/README.md`)
+- [ ] Callers: where the changed functions are used, from other files (the context the eval's misses needed), and eval cases whose bugs depend on other files; turn context on by default once it measurably helps
 
 ### Dogfooding
 

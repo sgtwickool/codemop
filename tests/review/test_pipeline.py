@@ -170,3 +170,39 @@ async def test_a_diff_within_the_limit_is_reviewed(sample_diff):
 
     assert report.too_large is None
     assert len(model.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_context_comes_before_the_change(sample_diff):
+    # service.py as of the change: the diff shows lines 10-16 of a class that runs from 9 to 40
+    service = "\n" * 8 + "class Service:\n" + "".join(f"    x{n} = {n}\n" for n in range(10, 41))
+
+    class Files:
+        async def read(self, path):
+            return service if path == "app/service.py" else None
+
+        async def paths(self):
+            return []
+    model = FakeModel({})
+
+    await review_diff(sample_diff, model, context=Files())
+
+    sent = model.calls[0][1]
+    assert sent.startswith("### Context: unchanged code from the repository")
+    assert "#### app/service.py, lines 9-40 (class Service)" in sent
+    assert "\n\n### The change\n\n### app/service.py (modified)" in sent
+
+
+@pytest.mark.asyncio
+async def test_no_context_section_when_theres_none(sample_diff):
+    class Nothing:
+        async def read(self, path):
+            return None
+
+        async def paths(self):
+            return []
+    model = FakeModel({})
+
+    await review_diff(sample_diff, model, context=Nothing())
+
+    assert model.calls[0][1].startswith("### app/service.py (modified)")

@@ -19,6 +19,7 @@ import argparse
 import asyncio
 import json
 import re
+import subprocess
 import time
 from pathlib import Path
 from typing import List, Literal, Optional
@@ -35,6 +36,7 @@ from codemop.review.pipeline import review_diff
 from codemop.review.prompt import SYSTEM_PROMPT, render_file
 
 HERE = Path(__file__).parent
+ROOT = HERE.parents[1]
 FLOW = HERE.parents[1] / ".claude" / "hillclimb" / "review"
 
 # The configurations compared. baseline is CodeMop's current default.
@@ -46,6 +48,9 @@ VARIANTS = {
     "v4": {"model": "claude-haiku-4-5", "effort": None, "label": "Haiku 4.5"},
     # The default again, after the instructions gained grouping (2026-10-09): did quality hold?
     "v5": {"model": "claude-opus-5-5", "effort": "high", "label": "Opus 5.5, high effort, with grouping"},
+    # And with repository context (2026-10-09): the code around each change, for the cases from
+    # this repository's history (the others are self-contained, so there's none to add)
+    "v6": {"model": "claude-opus-5-5", "effort": "high", "label": "Opus 5.5, high effort, with context", "context": True},
 }
 
 JUDGE_MODEL = "claude-opus-4-8"  # not one of the models being compared
@@ -106,6 +111,28 @@ def load_cases(only: Optional[List[str]] = None) -> list:
         for n, issue in enumerate(minors, 1):
             issue["id"] = f"minor-{n}"
     return cases
+
+
+class GitFiles:
+    """This repository's files as of a commit, read with git: the context for a case from its history"""
+
+    def __init__(self, commit: str):
+        self.commit = commit
+
+    async def read(self, path: str) -> Optional[str]:
+        result = subprocess.run(["git", "show", f"{self.commit}:{path}"], cwd=ROOT, capture_output=True, text=True)
+        return result.stdout if result.returncode == 0 else None
+
+    async def paths(self) -> List[str]:
+        result = subprocess.run(["git", "ls-tree", "-r", "--name-only", self.commit], cwd=ROOT,
+                                capture_output=True, text=True, check=True)
+        return result.stdout.splitlines()
+
+
+def case_files(case: dict) -> Optional[GitFiles]:
+    """The repository at the case's commit, for cases from this repository's history"""
+    match = re.match(r"commit ([0-9a-f]{7,40})", case.get("source", ""))
+    return GitFiles(match.group(1)) if match else None
 
 
 def rendered_diff(diff: str) -> str:
@@ -261,7 +288,9 @@ class Runner:
             started = time.monotonic()
             try:
                 report = await asyncio.wait_for(
-                    review_diff(case["diff"], model, min_confidence=0.0), CASE_TIMEOUT_S
+                    review_diff(case["diff"], model, min_confidence=0.0,
+                                context=case_files(case) if self.config.get("context") else None),
+                    CASE_TIMEOUT_S
                 )
             except asyncio.TimeoutError:
                 return self.error(case, rep, "timeout", f"review took over {CASE_TIMEOUT_S}s")

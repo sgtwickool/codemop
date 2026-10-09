@@ -19,6 +19,10 @@ For each problem:
   suggested_code) and give them all the same short group label, like "unclosed-sessions".
   Otherwise null
 
+Some requests start with context: unchanged code from the repository (whole functions, and
+definitions the change uses), to help you understand the change. It isn't part of the change:
+use it, but only report problems in the change, and only point at lines of the diff.
+
 Only report problems you are confident about. If the changes look fine, return no suggestions.
 
 ===== chunk
