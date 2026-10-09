@@ -140,7 +140,7 @@ async def post(pr: PullRequestRef, pull: PullRequest, report: ReviewReport, stat
         url = await api.post_issue_comment(pr, body, **auth)  # it was deleted meanwhile
 
     by_finding = {c.finding_id: t for c, t in conversations(threads) if c.finding_id is not None}
-    by_title = {(t.path, c.title): t for c, t in conversations(threads)}
+    by_title = {(t.path, c.title): t for c, t in conversations(threads) if c.finding_id is None}
     to_resolve = [by_finding.get(f.id) or by_title.get((f.path, f.title)) for f in addressed]
     await asyncio.gather(*(api.resolve_thread(t.id, **auth) for t in to_resolve if t and not t.resolved))
     return url
