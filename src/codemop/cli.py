@@ -37,7 +37,7 @@ from codemop.github.client import (
 )
 from codemop.github.review import parse_comment, ranked, review_payload
 from codemop.github.summary import (
-    SummaryState, find_summary, read_state, record_applied, stored_fixes, summary_body, ticked, trusted,
+    OPEN, SummaryState, find_summary, read_state, record_applied, stored_fixes, summary_body, ticked, trusted,
     update_earlier,
 )
 from codemop.review.placement import place_suggestions
@@ -368,10 +368,17 @@ async def post(pr: PullRequestRef, pull: PullRequest, report: ReviewReport, stat
     options = dict(review_url=review_url, inline_rejected=rejected, checklist=checklist, teachable=teachable,
                    since=since, less_important=less_important, not_commented=len(new) - len(inline))
     cost = format_cost(report.cost, report.usage)
-    body = summary_body(state, report, cost, **options)
-    if len(body) > MAX_COMMENT_CHARS:  # the fixes kept in it made it too long for GitHub
-        for finding in state.findings:
+    for finding in state.findings:
+        if finding.status != OPEN:  # done: its fix and lines aren't needed any more
             finding.code = finding.original = None
+    body = summary_body(state, report, cost, **options)
+    # Too long for GitHub? Give up the open findings' fixes (their checkboxes), and only then
+    # their lines (which tell later reviews whether they've been addressed)
+    for drop in ("code", "original"):
+        if len(body) <= MAX_COMMENT_CHARS:
+            break
+        for finding in state.open:
+            setattr(finding, drop, None)
         body = summary_body(state, report, cost, **options)
     try:
         url = await post_issue_comment(pr, body, comment_id=summary_id, **api)
