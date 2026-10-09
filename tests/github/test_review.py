@@ -1,4 +1,7 @@
-from codemop.github.review import MARKER, already_reviewed, comment_body, review_payload
+from codemop.github.client import IssueComment
+from codemop.github.review import (
+    MARKER, comment_body, find_summary, review_payload, reviewed_commit, split_inline, summary_body,
+)
 from codemop.providers.base import Usage
 from codemop.review.chunks import Skipped
 from codemop.review.pipeline import DroppedFix, FailedChunk, ReviewReport
@@ -33,8 +36,13 @@ def test_backticks_in_the_fix_get_a_longer_fence():
     assert "````suggestion\n" in body and body.count("````") == 2
 
 
+def summary(r, max_comments=10, **kwargs):
+    inline, rest = split_inline(r, max_comments)
+    return summary_body(r, inline, rest, "about $0.02", SHA, **kwargs)
+
+
 def test_inline_comments_point_at_the_lines_on_the_new_side():
-    payload = review_payload(report(suggestion(line=3), suggestion(line=5, end_line=7)), SHA, "about $0.02")
+    payload = review_payload([suggestion(line=3), suggestion(line=5, end_line=7)], SHA)
 
     single, multi = payload["comments"]
     assert (single["path"], single["line"], single["side"]) == ("app.py", 3, "RIGHT")
@@ -45,47 +53,65 @@ def test_inline_comments_point_at_the_lines_on_the_new_side():
 
 
 def test_the_most_important_issues_go_inline_and_the_rest_in_the_summary():
-    issues = [
+    r = report(
         suggestion(line=1, severity="maintainability", title="Tidy"),
         suggestion(line=2, severity="bug", confidence=0.6, title="Unsure bug"),
         suggestion(line=3, severity="security", title="Injection"),
         suggestion(line=4, severity="bug", confidence=0.95, title="Sure bug"),
-    ]
+    )
 
-    payload = review_payload(report(*issues), SHA, "about $0.02", max_comments=2)
+    inline, rest = split_inline(r, max_comments=2)
 
-    assert [c["line"] for c in payload["comments"]] == [3, 4]  # security, then the surer bug
-    assert "Not posted inline (over the limit of 2 comments" in payload["body"]
-    assert "`app.py:2`: Unsure bug" in payload["body"] and "`app.py:1`: Tidy" in payload["body"]
+    assert [s.line for s in inline] == [3, 4]  # security, then the surer bug
+    body = summary(r, max_comments=2)
+    assert "Not posted inline (over the limit of 2 comments" in body
+    assert "`app.py:2`: Unsure bug" in body and "`app.py:1`: Tidy" in body
 
 
 def test_the_summary_says_what_was_reviewed_and_what_wasnt():
-    body = review_payload(report(
+    body = summary(report(
         suggestion(),
         failed=[FailedChunk(["big.py"], "declined to review this part of the diff", "refused")],
         skipped=[Skipped("uv.lock", "matches an ignored path pattern")],
         dropped_fixes=[DroppedFix("app.py", 3, "it repeats a nearby line")],
-    ), SHA, "about $0.02")["body"]
+    ), review_url="https://github.com/o/r/pull/7#pullrequestreview-1")
 
     assert body.startswith(MARKER)
     assert "### CodeMop review of abc1234" in body
-    assert "Found 1 issue(s):" in body
+    assert "Found 1 issue(s) ([comments on the code](https://github.com/o/r/pull/7#pullrequestreview-1)):" in body
     assert "⚠️ Some of this PR wasn't reviewed:\n\n- `big.py`: declined to review this part of the diff" in body
     assert "Skipped `uv.lock`: matches an ignored path pattern" in body
     assert "Left out the suggested fix for `app.py:3`: it repeats a nearby line" in body
     assert "anthropic/claude-opus-5-5 · 2,000 input / 300 output tokens · about $0.02" in body
 
 
+def test_the_summary_says_when_github_rejected_the_inline_comments():
+    assert "GitHub didn't accept the comments on the code" in summary(report(suggestion()), inline_rejected=True)
+
+
 def test_no_issues():
-    payload = review_payload(report(), SHA, "about $0.01")
+    r = report()
 
-    assert "No issues found." in payload["body"]
-    assert payload["comments"] == []
+    assert "No issues found." in summary(r)
+    assert split_inline(r) == ([], [])
 
 
-def test_a_commit_already_reviewed_by_codemop_is_recognised():
-    body = review_payload(report(), SHA, "about $0.01")["body"]
+def comment(body, association="NONE", bot=False):
+    return IssueComment(id=1, body=body, author="someone", author_is_bot=bot, author_association=association)
 
-    assert already_reviewed([("other", "LGTM"), (SHA, body)], SHA)
-    assert not already_reviewed([("0" * 40, body)], SHA)  # an earlier commit
-    assert not already_reviewed([(SHA, "A person's review")], SHA)
+
+def test_the_summary_comment_records_the_commit_it_describes():
+    found = find_summary([comment("Nice PR!"), comment(summary(report()), bot=True)])
+
+    assert reviewed_commit(found) == SHA
+
+
+def test_only_a_summary_by_a_bot_or_someone_with_write_access_counts():
+    """Anyone can comment on a public PR; a forged summary mustn't stop the PR being reviewed"""
+    forged = summary(report())
+
+    assert find_summary([comment(forged, association="CONTRIBUTOR")]) is None
+    assert find_summary([comment(forged, association="NONE")]) is None
+    assert find_summary([comment(forged, association="OWNER")]) is not None
+    assert find_summary([comment(forged, bot=True)]) is not None
+    assert reviewed_commit(None) is None

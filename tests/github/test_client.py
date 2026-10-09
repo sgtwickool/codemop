@@ -5,8 +5,8 @@ import httpx
 import pytest
 
 from codemop.github.client import (
-    GitHubError, PullRequestRef, fetch_pr_diff, fetch_pull_request, fetch_repo_file, fetch_review_bodies,
-    parse_pr_reference, post_review,
+    GitHubError, PullRequestRef, fetch_pr_diff, fetch_pull_request, fetch_repo_file, list_issue_comments,
+    parse_pr_reference, post_issue_comment, post_review,
 )
 
 PR = PullRequestRef("owner/repo", 7)
@@ -128,11 +128,31 @@ async def test_fetches_the_pull_requests_head_commit():
 
 
 @pytest.mark.asyncio
-async def test_lists_review_commits_and_bodies():
-    transport, requests = json_api((200, [{"commit_id": "abc", "body": "hi"}, {"commit_id": None, "body": None}]))
+async def test_lists_the_prs_comments_with_their_authors():
+    transport, requests = json_api((200, [
+        {"id": 1, "body": "hi", "user": {"login": "github-actions[bot]", "type": "Bot"}, "author_association": "NONE"},
+        {"id": 2, "body": None, "user": {"login": "sam", "type": "User"}, "author_association": "OWNER"},
+    ]))
 
-    assert await fetch_review_bodies(PR, transport=transport) == [("abc", "hi"), ("", "")]
-    assert str(requests[0].url) == "https://api.github.com/repos/owner/repo/pulls/7/reviews?per_page=100"
+    comments = await list_issue_comments(PR, transport=transport)
+
+    assert [(c.id, c.body, c.author_is_bot, c.author_association) for c in comments] == [
+        (1, "hi", True, "NONE"), (2, "", False, "OWNER"),
+    ]
+    assert str(requests[0].url) == "https://api.github.com/repos/owner/repo/issues/7/comments?per_page=100"
+
+
+@pytest.mark.asyncio
+async def test_posts_a_new_comment_or_edits_an_existing_one():
+    transport, requests = json_api((201, {"html_url": "https://github.com/c/1"}), (200, {"html_url": "https://github.com/c/1"}))
+
+    await post_issue_comment(PR, "first", token="ghp_x", transport=transport)
+    await post_issue_comment(PR, "second", comment_id=99, token="ghp_x", transport=transport)
+
+    new, edit = requests
+    assert (new.method, str(new.url)) == ("POST", "https://api.github.com/repos/owner/repo/issues/7/comments")
+    assert (edit.method, str(edit.url)) == ("PATCH", "https://api.github.com/repos/owner/repo/issues/comments/99")
+    assert json.loads(edit.content) == {"body": "second"}
 
 
 @pytest.mark.asyncio

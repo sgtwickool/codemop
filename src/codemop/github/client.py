@@ -141,19 +141,70 @@ async def fetch_pull_request(
     return PullRequest(head_sha=data["head"]["sha"], state=data["state"], draft=bool(data.get("draft")))
 
 
-async def fetch_review_bodies(
+@dataclass(frozen=True)
+class IssueComment:
+    id: int
+    body: str
+    author: str
+    author_is_bot: bool
+    author_association: str  # OWNER, MEMBER, COLLABORATOR, CONTRIBUTOR, NONE...
+
+
+async def list_issue_comments(
     pr: PullRequestRef,
     *,
     token: Optional[str] = None,
     api_url: str = DEFAULT_API_URL,
     transport: Optional[httpx.AsyncBaseTransport] = None,
-) -> List[tuple[str, str]]:
-    """(commit_id, body) of the PR's reviews, oldest first (the first 100)"""
-    url = f"{api_url.rstrip('/')}/repos/{pr.repo}/pulls/{pr.number}/reviews?per_page=100"
+) -> List[IssueComment]:
+    """The PR's conversation comments, oldest first (the first 100)"""
+    url = f"{api_url.rstrip('/')}/repos/{pr.repo}/issues/{pr.number}/comments?per_page=100"
     response = await _request("GET", url, JSON, token, transport)
     if response.status_code != 200:
         raise GitHubError(_error_message(response.status_code, response.text, pr, bool(token)), response.status_code)
-    return [(review.get("commit_id") or "", review.get("body") or "") for review in response.json()]
+    return [
+        IssueComment(
+            id=comment["id"],
+            body=comment.get("body") or "",
+            author=(comment.get("user") or {}).get("login", ""),
+            author_is_bot=(comment.get("user") or {}).get("type") == "Bot",
+            author_association=comment.get("author_association", "NONE"),
+        )
+        for comment in response.json()
+    ]
+
+
+def _write_error(response: httpx.Response, pr: PullRequestRef, token: Optional[str], doing: str) -> GitHubError:
+    status = response.status_code
+    if status in (401, 403, 404):
+        hint = ("the token needs write access to pull requests (pull-requests: write)" if token
+                else "posting needs a token: set GITHUB_TOKEN (or log in with `gh auth login`)")
+        return GitHubError(f"GitHub returned {status} {doing} on {pr}: {hint}", status)
+    if status == 422:
+        return GitHubError(f"GitHub rejected {doing.removeprefix('posting ')} for {pr}: {response.text[:300]}", status)
+    return GitHubError(f"GitHub returned {status} {doing} on {pr}", status)
+
+
+async def post_issue_comment(
+    pr: PullRequestRef,
+    body: str,
+    *,
+    comment_id: Optional[int] = None,
+    token: Optional[str] = None,
+    api_url: str = DEFAULT_API_URL,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> str:
+    """A new conversation comment on the PR, or with comment_id an edit of that one; its URL"""
+    base = f"{api_url.rstrip('/')}/repos/{pr.repo}/issues"
+    if comment_id is None:
+        response = await _request("POST", f"{base}/{pr.number}/comments", JSON, token, transport, json={"body": body})
+        ok = 201
+    else:
+        response = await _request("PATCH", f"{base}/comments/{comment_id}", JSON, token, transport, json={"body": body})
+        ok = 200
+    if response.status_code != ok:
+        raise _write_error(response, pr, token, "posting the summary comment")
+    return response.json().get("html_url", "")
 
 
 async def post_review(
@@ -169,11 +220,4 @@ async def post_review(
     response = await _request("POST", url, JSON, token, transport, json=review)
     if response.status_code == 200:
         return response.json().get("html_url", "")
-    if response.status_code in (401, 403, 404):
-        hint = ("the token needs write access to pull requests (pull-requests: write)" if token
-                else "posting needs a token: set GITHUB_TOKEN (or log in with `gh auth login`)")
-        raise GitHubError(f"GitHub returned {response.status_code} posting the review on {pr}: {hint}",
-                          response.status_code)
-    if response.status_code == 422:
-        raise GitHubError(f"GitHub rejected the review for {pr}: {response.text[:300]}", 422)
-    raise GitHubError(f"GitHub returned {response.status_code} posting the review on {pr}", response.status_code)
+    raise _write_error(response, pr, token, "posting the review")

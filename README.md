@@ -24,10 +24,11 @@ It prints each suggestion with the file and line, the reason, and a fix where it
 then the tokens used and an estimated cost (about two cents a review with the default
 model). `--json` prints the report for scripts.
 
-`--post` posts it as a pull request review: a comment on each issue, with a one-click
-"Commit suggestion" when there's a fix, and a summary. It never approves or blocks the PR,
-and a commit it has already reviewed isn't reviewed (or paid for) again. Posting needs a
-token that can write to pull requests.
+`--post` posts it on the pull request: a comment on each issue, with a one-click "Commit
+suggestion" when there's a fix, and one summary comment in the PR's conversation that later
+reviews update in place. It never approves or blocks the PR, and a commit it has already
+reviewed isn't reviewed (or paid for) again. Posting needs a token that can write to pull
+requests.
 
 ## GitHub Action
 

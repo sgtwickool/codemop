@@ -1,18 +1,23 @@
 """
-Turning a review report into a GitHub pull request review: an inline comment on each issue,
-with a one-click ```suggestion block when there's a fix, and a summary.
+Turning a review report into what CodeMop posts on a pull request: a review with an inline
+comment on each issue (with a one-click ```suggestion block when there's a fix), and one
+summary comment in the PR's conversation that each later review edits in place.
 
-Every review CodeMop posts carries a hidden marker with the commit it reviewed, so a re-run
-on the same commit can tell it has already been reviewed.
+The summary records the commit it describes, so a re-run on the same commit can tell it has
+already been reviewed. Only a summary by a bot or someone with write access counts: anyone
+can comment on a public PR, and a fake summary mustn't be able to stop a review.
 """
 import re
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
 from codemop.config import RepoConfig
+from codemop.github.client import IssueComment
 from codemop.review.pipeline import ReviewReport
 from codemop.review.schema import ModelSuggestion, Severity
 
-MARKER = "<!-- codemop-review -->"
+MARKER = "<!-- codemop-summary -->"
+_COMMIT = re.compile(r"<!-- codemop-commit: ([0-9a-f]{7,40}) -->")
+TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 DEFAULT_MAX_COMMENTS = RepoConfig().max_comments
 
 # Most important first: what goes inline when there are more issues than max_comments
@@ -51,19 +56,22 @@ def inline_comment(s: ModelSuggestion) -> dict:
 
 
 def summary_body(report: ReviewReport, inline: Sequence[ModelSuggestion], not_inline: Sequence[ModelSuggestion],
-                 cost: str, head_sha: str) -> str:
+                 cost: str, head_sha: str, review_url: Optional[str] = None, inline_rejected: bool = False) -> str:
     lines = [MARKER, f"<!-- codemop-commit: {head_sha} -->", f"### CodeMop review of {head_sha[:7]}", ""]
     if report.too_large:
         lines.append(f"Not reviewed: this PR has {report.too_large} set for CodeMop here.")
     elif not report.suggestions:
         lines.append("No issues found." if report.complete else "No issues found in the parts that were reviewed.")
     else:
-        lines.append(f"Found {len(report.suggestions)} issue(s):")
-        lines.append("")
+        where = f" ([comments on the code]({review_url}))" if review_url else ""
+        lines += [f"Found {len(report.suggestions)} issue(s){where}:", ""]
         lines += [f"- {SEVERITY_LABELS[s.severity]} `{location(s)}`: {s.title}" for s in inline]
     if not_inline:
         lines += ["", f"Not posted inline (over the limit of {len(inline)} comments; set `max_comments` in `.codemop.yml`):", ""]
         lines += [f"- {SEVERITY_LABELS[s.severity]} `{location(s)}`: {s.title}" for s in not_inline]
+    if inline_rejected:
+        lines += ["", "⚠️ GitHub didn't accept the comments on the code (has the PR changed since it was "
+                      "reviewed?), so the issues are only listed here."]
 
     if report.failed:
         lines += ["", "⚠️ Some of this PR wasn't reviewed:", ""]
@@ -77,22 +85,36 @@ def summary_body(report: ReviewReport, inline: Sequence[ModelSuggestion], not_in
         lines += ["", "<details><summary>Notes</summary>", ""] + [f"- {note}" for note in notes] + ["", "</details>"]
 
     lines += ["", f"<sub>{report.model} · {report.usage.input_tokens:,} input / "
-                  f"{report.usage.output_tokens:,} output tokens · {cost}</sub>"]
+                  f"{report.usage.output_tokens:,} output tokens · {cost} · this comment is updated "
+                  f"when CodeMop reviews new commits</sub>"]
     return "\n".join(lines)
 
 
-def review_payload(report: ReviewReport, head_sha: str, cost: str, max_comments: int = DEFAULT_MAX_COMMENTS) -> dict:
-    """The body for POST /repos/{owner}/{repo}/pulls/{number}/reviews"""
+def split_inline(report: ReviewReport, max_comments: int = DEFAULT_MAX_COMMENTS) -> tuple[list, list]:
+    """The issues to comment on inline (the most important, up to max_comments), and the rest"""
     issues = ranked(report.suggestions)
-    inline, not_inline = issues[:max_comments], issues[max_comments:]
+    return issues[:max_comments], issues[max_comments:]
+
+
+def review_payload(inline: Sequence[ModelSuggestion], head_sha: str) -> dict:
+    """The body for POST /repos/{owner}/{repo}/pulls/{number}/reviews: the inline comments"""
     return {
         "commit_id": head_sha,
         "event": "COMMENT",  # never approves or requests changes
-        "body": summary_body(report, inline, not_inline, cost, head_sha),
+        "body": f"CodeMop's comments on {head_sha[:7]}; the summary is in the PR's conversation.",
         "comments": [inline_comment(s) for s in inline],
     }
 
 
-def already_reviewed(review_bodies: Sequence[tuple[str, str]], head_sha: str) -> bool:
-    """Whether CodeMop has already posted a review of this commit"""
-    return any(MARKER in body and commit_id == head_sha for commit_id, body in review_bodies)
+def find_summary(comments: Sequence[IssueComment]) -> Optional[IssueComment]:
+    """CodeMop's summary comment on the PR, if there is one by a bot or someone with write access"""
+    return next((
+        c for c in reversed(comments)
+        if MARKER in c.body and (c.author_is_bot or c.author_association in TRUSTED_ASSOCIATIONS)
+    ), None)
+
+
+def reviewed_commit(summary: Optional[IssueComment]) -> Optional[str]:
+    """The commit a summary describes"""
+    match = _COMMIT.search(summary.body) if summary else None
+    return match.group(1) if match else None
