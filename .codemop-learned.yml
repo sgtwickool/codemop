@@ -1,0 +1,8 @@
+# What this repository's reviewers have told CodeMop isn't a problem here. CodeMop reads this
+# file from the default branch and won't raise these again. Edit or delete entries freely:
+# replying `/codemop learn <why>` to a CodeMop comment adds one.
+
+- path: scratch/prices.py
+  issue: 'Off-by-one: total is inflated by 1 pence'
+  reason: The +1 is the per-order card fee, in pence; it's added on purpose
+  from: '#11, @sgtwickool'
