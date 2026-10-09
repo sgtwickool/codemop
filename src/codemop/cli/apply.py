@@ -40,7 +40,8 @@ async def run_apply(args) -> int:
         wanted = [fixes[i] for i in sorted(ticked(summary.body)) if i in fixes]
         if not wanted:
             print(f"No ticked fixes to apply on {pr}")
-            await api.post_issue_comment(pr, untick_commit(summary.body), comment_id=summary.id, **auth)
+            latest = find_summary(await api.list_issue_comments(pr, **auth)) or summary
+            await api.post_issue_comment(pr, untick_commit(latest.body), comment_id=latest.id, **auth)
             return 0
 
         for attempt in range(2):  # again if the branch moves on while this runs
