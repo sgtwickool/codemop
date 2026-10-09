@@ -191,7 +191,7 @@ core package. This phase includes what makes it worth choosing over Claude's own
 
 - [x] One summary comment, edited in place on every run, listing the findings as a checklist
 - [ ] Grouped fixes: related findings (the same mistake in several places, or one fix that spans files) become one item with one fix
-- [x] Tick items and CodeMop commits those fixes to the PR branch as one commit (an `issue_comment` edited trigger; only from people with write access). Fork branches can't be pushed to, so there it falls back to suggestion blocks. (`codemop apply`; committed through the API, so nothing is checked out. Commits made with the workflow's own token don't start CI: documented, with a personal access token as the fix)
+- [x] Tick items and CodeMop commits those fixes to the PR branch as one commit (an `issue_comment` edited trigger; only from people with write access). Fork branches can't be pushed to, so there it falls back to suggestion blocks. (`codemop apply`; committed through the API, so nothing is checked out. Commits made with the workflow's own token don't start CI (their checks show as failed to start): documented, with a personal access token as the fix. Tested end to end on 2026-10-09 with a throwaway PR, #7: ticked with browser-style line endings, committed in one commit and marked applied)
 - [x] Check every fix still applies to the current code before committing it, and say so when one doesn't (where the code has moved, the original lines are found again if they're there exactly once)
 
 ### Learns from you
