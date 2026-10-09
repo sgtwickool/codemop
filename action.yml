@@ -1,0 +1,87 @@
+name: CodeMop review
+description: AI code review for pull requests, with the model of your choice. Posts one review with one-click suggested fixes.
+author: Gregory Kemp
+branding:
+  icon: check-circle
+  color: blue
+
+inputs:
+  api-key:
+    description: The model provider's API key. Store it as a repository secret.
+    required: true
+  provider:
+    description: anthropic, mistral, openai, openrouter, ollama or openai-compatible
+    default: anthropic
+  model:
+    description: The model (default for anthropic, claude-opus-5-5; mistral, codestral-latest)
+    default: ""
+  base-url:
+    description: API base URL, for openai-compatible or a self-hosted endpoint
+    default: ""
+  effort:
+    description: Claude's effort level (low, medium, high, xhigh, max); lower is cheaper and faster
+    default: ""
+  max-changed-lines:
+    description: Don't review a PR with more added and removed lines than this (a cost limit)
+    default: "3000"
+  max-comments:
+    description: Most inline comments in a review; the rest go in its summary (default, the repository's .codemop.yml or 10)
+    default: ""
+  review-drafts:
+    description: Review draft pull requests too
+    default: "false"
+  pull-request:
+    description: The pull request to review, as owner/repo#123 (default, the one that triggered the workflow)
+    default: ""
+  github-token:
+    description: Token for reading the PR and posting the review; needs pull-requests write
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install CodeMop
+      shell: bash
+      run: |
+        python3 -m venv "$RUNNER_TEMP/codemop"
+        "$RUNNER_TEMP/codemop/bin/pip" install --quiet --disable-pip-version-check "$GITHUB_ACTION_PATH"
+
+    # Inputs reach the script as environment variables, never spliced into it
+    - name: Review the pull request
+      shell: bash
+      env:
+        CODEMOP_API_KEY: ${{ inputs.api-key }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PROVIDER: ${{ inputs.provider }}
+        MODEL: ${{ inputs.model }}
+        BASE_URL: ${{ inputs.base-url }}
+        EFFORT: ${{ inputs.effort }}
+        MAX_CHANGED_LINES: ${{ inputs.max-changed-lines }}
+        MAX_COMMENTS: ${{ inputs.max-comments }}
+        REVIEW_DRAFTS: ${{ inputs.review-drafts }}
+        PULL_REQUEST: ${{ inputs.pull-request }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        EVENT_PR_DRAFT: ${{ github.event.pull_request.draft }}
+        REPOSITORY: ${{ github.repository }}
+        GITHUB_API: ${{ github.api_url }}
+      run: |
+        target="$PULL_REQUEST"
+        if [ -z "$target" ]; then
+          if [ -z "$EVENT_PR_NUMBER" ]; then
+            echo "::error::No pull request to review: run on pull_request or pull_request_target events, or set pull-request"
+            exit 1
+          fi
+          target="$REPOSITORY#$EVENT_PR_NUMBER"
+          if [ "$EVENT_PR_DRAFT" = "true" ] && [ "$REVIEW_DRAFTS" != "true" ]; then
+            echo "Skipping $target: it's a draft (set review-drafts: true to review drafts)"
+            exit 0
+          fi
+        fi
+
+        args=(review "$target" --post --provider "$PROVIDER" --api-key-env CODEMOP_API_KEY --github-api-url "$GITHUB_API")
+        [ -n "$MODEL" ] && args+=(--model "$MODEL")
+        [ -n "$BASE_URL" ] && args+=(--base-url "$BASE_URL")
+        [ -n "$EFFORT" ] && args+=(--effort "$EFFORT")
+        [ -n "$MAX_CHANGED_LINES" ] && args+=(--max-changed-lines "$MAX_CHANGED_LINES")
+        [ -n "$MAX_COMMENTS" ] && args+=(--max-comments "$MAX_COMMENTS")
+        "$RUNNER_TEMP/codemop/bin/codemop" "${args[@]}"

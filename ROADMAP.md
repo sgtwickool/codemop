@@ -180,10 +180,10 @@ core package. This phase includes what makes it worth choosing over Claude's own
 
 ### GitHub Action
 
-- [ ] `action.yml` wrapping the CLI (`uses: sgtwickool/codemop@v1`), with `provider`, `model` and `api-key` inputs
-- [ ] Post a single PR review with inline ```` ```suggestion ```` blocks (one-click apply) plus a summary
-- [ ] Check each `suggested_code` really replaces lines `line..end_line` before posting it as a suggestion block: small models often include the line above or below, which GitHub would then duplicate (seen with qwen2.5-coder:7b)
-- [ ] Cost guardrails: maximum diff size and maximum number of comments
+- [x] `action.yml` wrapping the CLI (`uses: sgtwickool/codemop@v1`), with `provider`, `model` and `api-key` inputs (a composite action: installs CodeMop from its own source into a separate environment, inputs reach the script only as environment variables, drafts skipped)
+- [x] Post a single PR review with inline ```` ```suggestion ```` blocks (one-click apply) plus a summary (`codemop review owner/repo#N --post`; a commit already reviewed isn't reviewed again)
+- [x] Check each `suggested_code` really replaces lines `line..end_line` before posting it as a suggestion block: small models often include the line above or below, which GitHub would then duplicate (seen with qwen2.5-coder:7b). (Repeated lines at the edges are trimmed; a fix that still repeats nearby code is left out, and the comment kept)
+- [x] Cost guardrails: maximum diff size and maximum number of comments (`--max-changed-lines`, set by whoever runs it, 3000 in the Action; `max_comments` in `.codemop.yml`, default 10)
 - [ ] Review fork PRs automatically: a `pull_request_target` workflow that reads the diff through the API and never checks out the PR's code, so the key is safe (see [Why CodeMop](#why-codemop)); document why it's safe, and the permissions (`pull-requests: write`)
 
 ### Fixes you can apply

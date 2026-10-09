@@ -27,8 +27,51 @@ model). `--json` prints the report for scripts.
 `--post` posts it as a pull request review: a comment on each issue, with a one-click
 "Commit suggestion" when there's a fix, and a summary. It never approves or blocks the PR,
 and a commit it has already reviewed isn't reviewed (or paid for) again. Posting needs a
-token that can write to pull requests. A GitHub Action that does this on every PR is next
-(see the [roadmap](https://github.com/sgtwickool/codemop/blob/master/ROADMAP.md)).
+token that can write to pull requests.
+
+## GitHub Action
+
+Reviews every pull request. Add your provider's API key as a repository secret
+(Settings → Secrets and variables → Actions, e.g. `ANTHROPIC_API_KEY`), then add
+`.github/workflows/codemop.yml`:
+
+```yaml
+name: CodeMop
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:  # a new push replaces a review still running for the old one
+  group: codemop-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: sgtwickool/codemop@v1
+        with:
+          api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # provider: mistral        # or openai, openrouter, openai-compatible
+          # model: codestral-latest
+          # max-changed-lines: 3000  # don't review (or pay for) PRs bigger than this
+```
+
+**Pull requests from forks are reviewed too, safely.** `pull_request_target` gives the
+workflow your secret even for a fork's PR, which is only safe because CodeMop never checks
+out or runs the PR's code: it reads the diff through the API, the model has no tools, and
+the review settings come from your default branch's `.codemop.yml`, so a PR can't change
+how it's reviewed. The worst a malicious PR can do is get a bad comment posted. Don't add
+`actions/checkout` of the PR to this job. (With `on: pull_request` instead, forks' PRs
+aren't reviewed, because GitHub doesn't give their workflows your secrets.)
+
+Drafts are skipped until they're ready for review (`review-drafts: true` to review them),
+and the job fails only when the review couldn't be done (a rejected key, say). The other
+inputs: `base-url`, `effort` (Claude: `low` is cheaper), `max-comments` and `github-token`.
 
 The rest of this README covers configuring reviews, choosing a model, and running the
 webhook server.
