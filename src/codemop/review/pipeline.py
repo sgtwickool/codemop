@@ -43,6 +43,7 @@ class ReviewReport:
     skipped: List[Skipped] = field(default_factory=list)  # parts of the diff not reviewed
     failed: List[FailedChunk] = field(default_factory=list)  # chunks the model gave no review for
     stopped: Optional[str] = None  # why the review stopped early, if it did
+    too_large: Optional[str] = None  # why nothing was reviewed: more changed lines than max_changed_lines
     chunks: int = 0
     usage: Usage = Usage()
     cost: Optional[float] = None  # estimated US dollars at list prices; None if unknown
@@ -50,7 +51,7 @@ class ReviewReport:
     @property
     def complete(self) -> bool:
         """Every reviewable part of the diff got a review"""
-        return not self.failed and self.stopped is None
+        return not self.failed and self.stopped is None and self.too_large is None
 
 
 async def review_diff(
@@ -61,10 +62,23 @@ async def review_diff(
     concurrency: int = DEFAULT_CONCURRENCY,
     ignored_paths: Sequence[str] = DEFAULT_IGNORED_PATHS,
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
+    max_changed_lines: Optional[int] = None,
 ) -> ReviewReport:
-    """Review a unified diff with `model` (chunk_tokens defaults to the model's own chunk size)"""
+    """
+    Review a unified diff with `model` (chunk_tokens defaults to the model's own chunk size).
+    With max_changed_lines, a diff with more added and removed lines to review than that
+    isn't sent to the model at all (a cost limit).
+    """
     plan = plan_chunks(parse_diff(diff), chunk_tokens or model.chunk_tokens, ignored_paths=ignored_paths)
     report = ReviewReport(model=model.name, skipped=list(plan.skipped), chunks=len(plan.chunks))
+    changed = sum(
+        line.kind != "context"
+        for chunk in plan.chunks for file in chunk.files for hunk in file.hunks for line in hunk.lines
+    )
+    if max_changed_lines is not None and changed > max_changed_lines:
+        report.too_large = f"{changed:,} changed lines to review, more than the limit of {max_changed_lines:,}"
+        report.cost = model.cost(report.usage)
+        return report
     limit = asyncio.Semaphore(concurrency)
 
     async def review_chunk(chunk):
