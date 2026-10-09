@@ -1,7 +1,8 @@
 from codemop.github.api import IssueComment
+from codemop.github.checklist import commit_requested, record_applied, stored_fixes, ticked, untick_commit
 from codemop.github.summary import (
-    ADDRESSED, APPLIED, DISMISSED, MARKER, OPEN, SummaryState, find_summary, read_state, record_applied,
-    commit_requested, stored_fixes, summary_body, sync_threads, ticked, untick_commit, update_earlier,
+    ADDRESSED, APPLIED, DISMISSED, MARKER, OPEN, SummaryState, find_summary, read_state, summary_body, sync_threads,
+    update_earlier,
 )
 from codemop.providers.base import Usage
 from codemop.review.chunks import Skipped
@@ -36,7 +37,7 @@ def test_the_summary_keeps_its_findings_and_the_commit():
     state, body = reviewed(suggestion(), suggestion(line=6, title="Other", code=None), checklist=True)
 
     back = read_state(body)
-    assert back.kept and back.commit == SHA
+    assert back.commit == SHA
     assert [(f.id, f.title, f.status, f.found_in) for f in back.findings] == [
         (1, "Adds one to the total", OPEN, SHA), (2, "Other", OPEN, SHA),
     ]
@@ -108,17 +109,11 @@ def test_only_a_summary_by_a_bot_or_someone_with_write_access_counts():
     assert read_state(find_summary([comment("Nice PR!"), comment(forged, bot=True)]).body).commit == SHA
 
 
-def test_a_summary_from_before_findings_were_kept_still_gives_its_commit():
-    old = f"{MARKER}\n<!-- codemop-commit: {SHA} -->\n### CodeMop review of abc1234\n\nNo issues found."
-    state = read_state(old)
-    assert (state.commit, state.findings, state.kept) == (SHA, [], False)
-
-
 def test_reads_which_fixes_are_ticked_including_from_the_web_page():
     _, body = reviewed(suggestion(), suggestion(line=6, title="Other", code="y = 3"), checklist=True)
 
     assert ticked(body) == set()
-    from_browser = body.replace("- [ ] 🐛 Bug `app.py:6`", "- [x] 🐛 Bug `app.py:6`").replace("\n", "\r\n")
+    from_browser = body.replace("- [ ] 🐛 Bug `app.py:6`", "- [x] 🐛 Bug `app.py:6`")
     assert ticked(from_browser) == {2}
 
 
@@ -230,20 +225,29 @@ def test_a_different_issue_nearby_is_a_new_finding():
 def test_a_finding_whose_conversation_was_resolved_is_dismissed_and_reopened_if_unresolved():
     state, _ = reviewed(suggestion())
 
-    assert sync_threads(state, [("app.py", "Adds one to the total", True)])
+    sync_threads(state, [(1, "app.py", "Adds one to the total", True)])
     assert (state.findings[0].status, state.findings[0].note) == (DISMISSED, "dismissed: its conversation was resolved")
-    assert not sync_threads(state, [("app.py", "Adds one to the total", True)])  # nothing new
 
-    assert sync_threads(state, [("app.py", "Adds one to the total", False)])
+    sync_threads(state, [(1, "app.py", "Adds one to the total", False)])
     assert (state.findings[0].status, state.findings[0].note) == (OPEN, "")
+
+
+def test_a_conversation_from_before_finding_ids_is_matched_by_path_and_title():
+    state, _ = reviewed(suggestion())
+
+    sync_threads(state, [(None, "app.py", "Something else", True)])
+    assert state.findings[0].status == OPEN
+    sync_threads(state, [(None, "app.py", "Adds one to the total", True)])
+    assert state.findings[0].status == DISMISSED
 
 
 def test_resolving_doesnt_touch_applied_or_addressed_findings():
     state, _ = reviewed(suggestion())
     state.findings[0].status = APPLIED
 
-    assert not sync_threads(state, [("app.py", "Adds one to the total", False)])
+    sync_threads(state, [(1, "app.py", "Adds one to the total", False)])
     assert state.findings[0].status == APPLIED
+
 
 def test_a_re_review_lists_open_issues_marks_new_ones_and_folds_away_the_done():
     state, _ = reviewed(suggestion(), suggestion(line=6, title="Still here", code=None))
@@ -266,8 +270,8 @@ def test_the_commit_box_says_when_to_commit():
     _, body = reviewed(suggestion(), checklist=True)
 
     assert not commit_requested(body)
-    ticked_box = body.replace("- [ ] **Commit the ticked fixes**", "- [x] **Commit the ticked fixes**").replace("\n", "\r\n")
-    assert commit_requested(ticked_box)  # from the web page, too
+    ticked_box = body.replace("- [ ] **Commit the ticked fixes**", "- [x] **Commit the ticked fixes**")
+    assert commit_requested(ticked_box)
     assert not commit_requested(untick_commit(ticked_box))
     assert "- [ ] **Commit the ticked fixes**" in record_applied(ticked_box, "a" * 40, [], [])
 

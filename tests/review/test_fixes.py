@@ -1,5 +1,5 @@
 from codemop.review.diff import parse_diff
-from codemop.review.fixes import Fix, apply_fixes, file_lines, fit_fix
+from codemop.review.fixes import Fix, apply_fixes, fit_fix
 from codemop.review.schema import ModelSuggestion
 
 # The start of PR #2's test_code.py, as an added file (new-file lines 1-15)
@@ -20,10 +20,10 @@ def calculate_average(numbers):
     average = total / len(numbers)  # Potential division by zero if not checked properly
     return average
 '''
-LINES = file_lines(parse_diff(
+LINES = (parse_diff(
     "diff --git a/test_code.py b/test_code.py\nnew file mode 100644\n--- /dev/null\n+++ b/test_code.py\n"
     f"@@ -0,0 +1,{len(SOURCE.splitlines())} @@\n" + "".join(f"+{line}\n" for line in SOURCE.splitlines())
-)[0])
+)[0]).new_lines()
 
 
 def fix(code, line=8, end_line=None):

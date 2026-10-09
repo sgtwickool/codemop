@@ -11,7 +11,7 @@ from codemop.providers.base import NoReview, NoReviewKind, ReviewModel, Usage
 from codemop.review.chunks import DEFAULT_IGNORED_PATHS, Skipped, plan_chunks
 from codemop.review.context import DEFAULT_CONTEXT_TOKENS, FileSource, build_context
 from codemop.review.diff import parse_diff
-from codemop.review.fixes import file_lines, fit_fix
+from codemop.review.fixes import fit_fix
 from codemop.review.learned import Settled
 from codemop.review.placement import Unplaced, place_suggestions
 from codemop.review.prompt import SYSTEM_PROMPT
@@ -50,6 +50,19 @@ class ReviewReport:
     chunks: int = 0
     usage: Usage = Usage()
     cost: Optional[float] = None  # estimated US dollars at list prices; None if unknown
+
+    def notes(self, code=lambda text: text) -> List[str]:
+        """What was skipped, set aside or left out, and why (`code` formats paths, e.g. in backticks)"""
+        notes = [f"Skipped {code(s.path)}: {s.reason}" for s in self.skipped]
+        if self.unplaced:
+            notes.append(f"Set aside {len(self.unplaced)} suggestion(s) that pointed at lines outside the diff")
+        if self.below_confidence:
+            notes.append(f"Dropped {self.below_confidence} suggestion(s) below the confidence threshold")
+        if self.already_dismissed:
+            notes.append(f"Left out {self.already_dismissed} suggestion(s) dismissed earlier on this pull request")
+        notes += [f"Left out the suggested fix for {code(f'{d.file_path}:{d.line}')}: {d.reason}"
+                  for d in self.dropped_fixes]
+        return notes
 
     @property
     def complete(self) -> bool:
@@ -113,7 +126,7 @@ async def review_diff(
             report.usage += usage
             placement = place_suggestions(review.suggestions, chunk.files)
             report.unplaced.extend(placement.unplaced)
-            shown = {file.path: file_lines(file) for file in chunk.files}
+            shown = {file.path: file.new_lines() for file in chunk.files}
             for suggestion in placement.placed:
                 if suggestion.confidence < min_confidence:
                     report.below_confidence += 1

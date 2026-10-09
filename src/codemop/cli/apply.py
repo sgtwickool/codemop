@@ -1,87 +1,67 @@
 """codemop apply: commit the fixes ticked in CodeMop's summary on a pull request."""
-import sys
+from typing import List, Tuple
 
-from codemop.cli.common import WRITE_PERMISSIONS, github_token, record_commit
+from codemop.cli.common import can_write, commit_to_branch, record_commit, start, update_summary
 from codemop.github import api
-from codemop.github.api import GitHubError, PullRequest, parse_pr_reference
-from codemop.github.summary import (
-    commit_requested,
-    find_summary,
-    record_applied,
-    stored_fixes,
-    ticked,
-    untick_commit,
-)
-from codemop.review.fixes import apply_fixes
+from codemop.github.api import PullRequest
+from codemop.github.checklist import commit_requested, record_applied, stored_fixes, ticked, untick_commit
+from codemop.github.summary import find_summary
+from codemop.review.fixes import Fix, apply_fixes
 
 
 async def run_apply(args) -> int:
     """Commit the fixes ticked in CodeMop's summary on a PR, as one commit, and mark them in the summary"""
-    try:
-        pr = parse_pr_reference(args.target)
-    except ValueError as e:
-        print(f"codemop: {e}", file=sys.stderr)
-        return 2
-    token = github_token()
-    if not token:
-        print("codemop: apply needs a GitHub token: set GITHUB_TOKEN (or `gh auth login`)", file=sys.stderr)
-        return 2
-    auth = dict(token=token, api_url=args.github_api_url)
-    try:
-        summary = find_summary(await api.list_issue_comments(pr, **auth))
-        if not summary or not commit_requested(summary.body):
-            # Ticking a fix only selects it; nothing happens until "Commit the ticked fixes" is ticked
-            print(f"\"Commit the ticked fixes\" isn't ticked on {pr}; nothing to do")
-            return 0
-        if args.by and await api.user_permission(pr.repo, args.by, **auth) not in WRITE_PERMISSIONS:
-            print(f"Not applying fixes for {args.by}: only people with write access to {pr.repo} can")
-            return 0
-        fixes = stored_fixes(summary.body)
-        wanted = [fixes[i] for i in sorted(ticked(summary.body)) if i in fixes]
-        if not wanted:
-            print(f"No ticked fixes to apply on {pr}")
-            latest = find_summary(await api.list_issue_comments(pr, **auth)) or summary
-            await api.post_issue_comment(pr, untick_commit(latest.body), comment_id=latest.id, **auth)
-            return 0
+    pr, auth = start(args, "apply")
+    summary = find_summary(await api.list_issue_comments(pr, **auth))
+    if not summary or not commit_requested(summary.body):
+        # Ticking a fix only selects it; nothing happens until "Commit the ticked fixes" is ticked
+        print(f"\"Commit the ticked fixes\" isn't ticked on {pr}; nothing to do")
+        return 0
+    if args.by and not await can_write(pr, args.by, auth):
+        print(f"Not applying fixes for {args.by}: only people with write access to {pr.repo} can")
+        return 0
+    fixes = stored_fixes(summary.body)
+    wanted = [fixes[i] for i in sorted(ticked(summary.body)) if i in fixes]
+    if not wanted:
+        print(f"No ticked fixes to apply on {pr}")
+        await update_summary(pr, auth, untick_commit)
+        return 0
 
-        for attempt in range(2):  # again if the branch moves on while this runs
-            pull = await api.fetch_pull_request(pr, **auth)
-            if pull.head_repo != pr.repo:
-                print(f"Can't commit to {pr}'s branch: it's in a fork ({pull.head_repo})")
-                return 0
-            files, applied, skipped = await _apply_to_files(pull, wanted, auth)
-            commit = pull.head_sha
-            if not files:
-                break
-            message = "Apply CodeMop's suggested fixes\n\n" + "\n".join(f"- {f.path}:{f.line}: {f.title}" for f in applied)
-            if args.by:
-                message += f"\n\nTicked by @{args.by} in CodeMop's summary on #{pr.number}."
-            try:
-                commit = await api.commit_files(pull.head_repo, pull.head_ref, pull.head_sha, files, message, **auth)
-                break
-            except GitHubError as e:
-                if e.status != 422 or attempt:
-                    raise
+    applied: List[Fix] = []
+    skipped: List[Tuple[Fix, str]] = []
 
-        # Mark the summary as it is now, not as it was read: more boxes may have been ticked meanwhile
-        # (they stay ticked, for the next run), or a newer review may have updated it (findings keep
-        # their ids, so the marks still go on the right ones)
-        latest = find_summary(await api.list_issue_comments(pr, **auth)) or summary
-        await api.post_issue_comment(pr, record_applied(latest.body, commit, applied, skipped), comment_id=latest.id, **auth)
-        if applied:
-            await record_commit(pr, pull.head_sha, commit, auth)  # no review runs on CodeMop's own commit
-    except GitHubError as e:
-        print(f"codemop: {e}", file=sys.stderr)
-        return 1
+    async def build(pull: PullRequest):
+        nonlocal applied, skipped
+        files, applied, skipped = await _apply_to_files(pull, wanted, auth)
+        message = "Apply CodeMop's suggested fixes\n\n" + "\n".join(f"- {f.path}:{f.line}: {f.title}" for f in applied)
+        if args.by:
+            message += f"\n\nTicked by @{args.by} in CodeMop's summary on #{pr.number}."
+        return files, message
+
+    pull, commit = await commit_to_branch(pr, auth, build)
+    if pull.head_repo != pr.repo:
+        print(f"Can't commit to {pr}'s branch: it's in a fork ({pull.head_repo})")
+        return 0
+    # Marked on the summary as it is now, not as it was read: more boxes may have been ticked
+    # meanwhile (they stay ticked, for the next run), or a newer review may have updated it
+    # (findings keep their ids, so the marks still go on the right ones)
+    def mark(body: str) -> str:
+        return record_applied(body, commit or pull.head_sha, applied, skipped)
+
+    if commit:
+        await record_commit(pr, auth, pull.head_sha, commit, mark)  # no review runs on CodeMop's own commit
+    else:
+        await update_summary(pr, auth, mark)
     for fix in applied:
         print(f"Applied {fix.path}:{fix.line}: {fix.title}")
     for fix, reason in skipped:
         print(f"Not applied {fix.path}:{fix.line}: {reason}")
-    if applied:
+    if commit:
         print(f"Committed {commit[:7]} to {pull.head_ref}")
     return 0
 
-async def _apply_to_files(pull: PullRequest, wanted, auth: dict):
+
+async def _apply_to_files(pull: PullRequest, wanted: List[Fix], auth: dict):
     """The new text of each file the fixes change, and which fixes were applied and skipped"""
     files, applied, skipped = {}, [], []
     for path in dict.fromkeys(f.path for f in wanted):

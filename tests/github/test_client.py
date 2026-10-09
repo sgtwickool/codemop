@@ -137,14 +137,14 @@ async def test_fetches_the_pull_requests_head_commit():
 @pytest.mark.asyncio
 async def test_lists_the_prs_comments_with_their_authors():
     transport, requests = json_api((200, [
-        {"id": 1, "body": "hi", "user": {"login": "github-actions[bot]", "type": "Bot"}, "author_association": "NONE"},
+        {"id": 1, "body": "- [x] hi\r\n", "user": {"login": "github-actions[bot]", "type": "Bot"}, "author_association": "NONE"},
         {"id": 2, "body": None, "user": {"login": "sam", "type": "User"}, "author_association": "OWNER"},
     ]))
 
     comments = await list_issue_comments(PR, transport=transport)
 
     assert [(c.id, c.body, c.author_is_bot, c.author_association) for c in comments] == [
-        (1, "hi", True, "NONE"), (2, "", False, "OWNER"),
+        (1, "- [x] hi\n", True, "NONE"), (2, "", False, "OWNER"),  # a box ticked on the web page comes back with \r\n
     ]
     assert str(requests[0].url) == "https://api.github.com/repos/owner/repo/issues/7/comments?per_page=100"
 
@@ -239,7 +239,7 @@ async def test_commits_files_as_one_commit_and_moves_the_branch():
 
     assert sha == "commit1"
     get_commit, get_tree, post_tree, post_commit, patch_ref = requests
-    assert str(get_tree.url).endswith("/git/trees/tree0?recursive=1")
+    assert str(get_tree.url).endswith("/git/trees/tree0")  # just the directory the files are in
     assert json.loads(post_tree.content) == {"base_tree": "tree0", "tree": [
         {"path": "run.sh", "mode": "100755", "type": "blob", "content": "echo hi\n"},  # stays executable
         {"path": "new.py", "mode": "100644", "type": "blob", "content": "x\n"},
@@ -247,6 +247,23 @@ async def test_commits_files_as_one_commit_and_moves_the_branch():
     assert json.loads(post_commit.content) == {"message": "msg", "tree": "tree1", "parents": ["parent0"]}
     assert (patch_ref.method, str(patch_ref.url)) == ("PATCH", "https://api.github.com/repos/owner/repo/git/refs/heads/feature")
     assert json.loads(patch_ref.content) == {"sha": "commit1", "force": False}
+
+
+@pytest.mark.asyncio
+async def test_commit_modes_come_from_just_the_directories_changed():
+    """Not the whole repository's tree, which can be huge (and is cut short past 100,000 entries)"""
+    transport, requests = json_api(
+        (200, {"tree": {"sha": "tree0"}}),
+        (200, {"tree": [{"path": "run.sh", "mode": "100755"}]}),
+        (404, {"message": "Not Found"}),  # a directory the commit creates
+        (201, {"sha": "tree1"}), (201, {"sha": "commit1"}), (200, {}),
+    )
+
+    await commit_files("owner/repo", "feature", "parent0", {"bin/run.sh": "echo hi\n", "new/a.py": "x\n"}, "msg",
+                       transport=transport)
+
+    assert [str(r.url).split("/git/")[1] for r in requests[1:3]] == ["trees/parent0:bin", "trees/parent0:new"]
+    assert [entry["mode"] for entry in json.loads(requests[3].content)["tree"]] == ["100755", "100644"]
 
 
 @pytest.mark.asyncio

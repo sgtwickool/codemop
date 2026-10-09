@@ -1,5 +1,8 @@
 """Changing a repository on GitHub: committing files, commit statuses, and who may write."""
-from typing import Dict, Optional
+import asyncio
+import posixpath
+from typing import Dict, List, Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -51,9 +54,19 @@ async def commit_files(
             raise GitHubError(f"GitHub returned {response.status_code} committing to {repo}{hint}", response.status_code)
         return response.json()
 
+    async def entries(directory: str) -> List[dict]:
+        try:
+            return (await call("GET", f"trees/{f'{parent_sha}:{quote(directory)}' if directory else tree_sha}"))["tree"]
+        except GitHubError as e:
+            if e.status != 404:
+                raise
+            return []  # a new directory
+
     tree_sha = (await call("GET", f"commits/{parent_sha}"))["tree"]["sha"]
-    # Keep each file's mode (an executable script stays executable)
-    modes = {entry["path"]: entry["mode"] for entry in (await call("GET", f"trees/{tree_sha}?recursive=1"))["tree"]}
+    # Keep each file's mode (an executable script stays executable), from just the directories they're in
+    directories = sorted({posixpath.dirname(path) for path in files})
+    listings = await asyncio.gather(*(entries(d) for d in directories))
+    modes = {posixpath.join(d, e["path"]): e["mode"] for d, listing in zip(directories, listings) for e in listing}
     tree = await call("POST", "trees", {
         "base_tree": tree_sha,
         "tree": [{"path": path, "mode": modes.get(path, "100644"), "type": "blob", "content": text}

@@ -6,7 +6,7 @@ accepts review comments on lines that appear in the diff.
 """
 import re
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Set
+from typing import Dict, List, Literal, Optional, Set
 
 HUNK_HEADER = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
@@ -40,14 +40,18 @@ class FileDiff:
     def path(self) -> str:
         return self.new_path or self.old_path or ""
 
-    def commentable_lines(self) -> Set[int]:
-        """New-file line numbers a review comment can go on: added or unchanged lines shown in the diff"""
+    def new_lines(self) -> Dict[int, str]:
+        """The new-file lines the diff shows (added or unchanged), by number"""
         return {
-            line.new_number
+            line.new_number: line.text
             for hunk in self.hunks
             for line in hunk.lines
             if line.new_number is not None
         }
+
+    def commentable_lines(self) -> Set[int]:
+        """New-file line numbers a review comment can go on: added or unchanged lines shown in the diff"""
+        return set(self.new_lines())
 
 
 def _strip_prefix(path: str, prefix: str) -> Optional[str]:

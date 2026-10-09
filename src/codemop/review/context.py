@@ -14,7 +14,9 @@ an imported helper behaves. For each changed file, in this order until the budge
 The model is told this is reference code, not part of the change.
 """
 import ast
+import asyncio
 import builtins
+import functools
 import keyword
 import re
 from dataclasses import dataclass
@@ -48,6 +50,7 @@ class LocalFiles:
 
     def __init__(self, root: Path):
         self.root = root
+        self._paths: Optional[List[str]] = None
 
     async def read(self, path: str) -> Optional[str]:
         target = (self.root / path).resolve()
@@ -59,8 +62,10 @@ class LocalFiles:
             return None
 
     async def paths(self) -> Sequence[str]:
-        return [str(p.relative_to(self.root)) for p in self.root.rglob("*.py")
-                if p.is_file() and not any(part.startswith(".") for part in p.relative_to(self.root).parts)]
+        if self._paths is None:  # listed once a review, not once a chunk
+            relative = (p.relative_to(self.root) for p in self.root.rglob("*.py") if p.is_file())
+            self._paths = [str(p) for p in relative if not any(part.startswith(".") for part in p.parts)]
+        return self._paths
 
 
 @dataclass(frozen=True)
@@ -74,20 +79,20 @@ class Snippet:
     def render(self) -> str:
         return f"#### {self.path}, lines {self.start}-{self.end} ({self.what})\n{self.code}"
 
+    def in_diff(self, shown: Set[int]) -> bool:
+        """Whether the diff already shows all of it (so it needn't be sent again)"""
+        return set(range(self.start, self.end + 1)) <= shown
+
 
 def changed_lines(file: FileDiff) -> Set[int]:
     return {line.new_number for hunk in file.hunks for line in hunk.lines if line.kind == "added"}
-
-
-def shown_lines(file: FileDiff) -> Set[int]:
-    """The new-file lines the diff already shows (added or unchanged)"""
-    return {line.new_number for hunk in file.hunks for line in hunk.lines if line.new_number is not None}
 
 
 def _lines(text: str, start: int, end: int) -> str:
     return "\n".join(text.splitlines()[start - 1:end])
 
 
+@functools.lru_cache(maxsize=64)  # an imported module is often read by several chunks, for several names
 def _python_tree(text: str) -> Optional[ast.Module]:
     try:
         return ast.parse(text)
@@ -179,19 +184,18 @@ async def build_context(files: Iterable[FileDiff], source: FileSource,
     snippets: List[Snippet] = []
     later: List[Snippet] = []  # same-file definitions, after every file's changed blocks
     imported: List[Tuple[str, str, str, int]] = []  # (importer, name, module, level), for step 3
-    for file in files:
-        changed = changed_lines(file)
-        text = await source.read(file.path) if changed else None
+    files = [file for file in files if changed_lines(file)]
+    texts_now = await asyncio.gather(*(source.read(file.path) for file in files))
+    for file, text in zip(files, texts_now):
         if text is None:
             continue
+        changed, shown = changed_lines(file), file.commentable_lines()
         tree = _python_tree(text) if file.path.endswith(".py") else None
         if tree is None:
-            snippets += [s for s in _around(text, file.path, changed)
-                         if not set(range(s.start, s.end + 1)) <= shown_lines(file)]
+            snippets += [s for s in _around(text, file.path, changed) if not s.in_diff(shown)]
             continue
         blocks = _enclosing(tree, text, file.path, changed)
-        shown = shown_lines(file)
-        snippets += [b for b in blocks if not set(range(b.start, b.end + 1)) <= shown]  # not already in the diff
+        snippets += [b for b in blocks if not b.in_diff(shown)]
         used = _names_used(file, blocks)
         definitions = _top_level_definitions(tree)
         imports = {alias.asname or alias.name: (alias.name, node.module or "", node.level)
@@ -200,7 +204,7 @@ async def build_context(files: Iterable[FileDiff], source: FileSource,
             node = definitions.get(name)
             if node and not any(b.start <= node.lineno <= b.end for b in blocks):
                 definition = _definition(node, name, text, file.path)
-                if not set(range(definition.start, definition.end + 1)) <= shown:
+                if not definition.in_diff(shown):
                     later.append(definition)
             elif name in imports:
                 imported.append((file.path, *imports[name]))

@@ -1,5 +1,5 @@
-from codemop.github.review import comment_body, parse_comment, ranked, review_payload
-from codemop.review.schema import ModelSuggestion
+from codemop.github.review import CodemopComment, codemop_comment, comment_body, ranked, review_payload
+from codemop.review.schema import ModelSuggestion, Severity
 
 SHA = "abc1234" + "0" * 33
 
@@ -60,8 +60,14 @@ def test_inline_comments_in_a_group_say_where_else_the_problem_is():
 
 
 def test_reads_its_own_comments_back():
-    assert parse_comment(comment_body(suggestion())) == ("bug", "Adds one to the total")
-    assert parse_comment("**🐛 Bug: Looks like ours** but has no footer") is None
+    assert codemop_comment(comment_body(suggestion(), finding_id=4), True, "NONE") == CodemopComment(
+        Severity.bug, "Adds one to the total", 4)
+    assert codemop_comment(comment_body(suggestion()), False, "MEMBER").finding_id is None  # from before ids
+    assert codemop_comment("**🐛 Bug: Looks like ours** but has no footer", True, "NONE") is None
+
+
+def test_a_copy_of_its_comment_by_someone_without_write_access_isnt_its_own():
+    assert codemop_comment(comment_body(suggestion()), False, "CONTRIBUTOR") is None
 
 
 def test_most_important_first():
