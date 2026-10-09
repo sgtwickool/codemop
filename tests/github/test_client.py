@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from codemop.github.client import (
-    GitHubError, PullRequestRef, commit_files, fetch_pr_diff, fetch_pull_request, fetch_repo_file,
+    GitHubError, PullRequestRef, commit_files, compare_commits, fetch_pr_diff, fetch_pull_request, fetch_repo_file,
     list_issue_comments, list_review_threads, parse_pr_reference, post_issue_comment, post_review,
     reply_to_review_comment, resolve_thread, user_permission,
 )
@@ -347,3 +347,28 @@ async def test_replies_in_a_comments_thread():
 
     assert str(requests[0].url) == "https://api.github.com/repos/owner/repo/pulls/7/comments/55/replies"
     assert json.loads(requests[0].content) == {"body": "Learned"}
+
+
+@pytest.mark.asyncio
+async def test_compares_commits_when_the_head_is_ahead():
+    transport, requests = json_api((200, {"status": "ahead"}))
+    diffs = []
+
+    def handler(request):
+        if request.headers["Accept"] == "application/vnd.github.diff":
+            diffs.append(request)
+            return httpx.Response(200, text="diff --git a/x b/x\n")
+        return httpx.Response(200, json={"status": "ahead"})
+
+    assert await compare_commits("owner/repo", "aaa", "bbb", transport=httpx.MockTransport(handler)) == "diff --git a/x b/x\n"
+    assert str(diffs[0].url) == "https://api.github.com/repos/owner/repo/compare/aaa...bbb"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["diverged", "behind", "identical"])
+async def test_no_diff_unless_the_head_is_ahead(status):
+    """After a force-push the last reviewed commit isn't an ancestor: review the whole PR instead"""
+    transport, requests = json_api((200, {"status": status}))
+
+    assert await compare_commits("owner/repo", "aaa", "bbb", transport=transport) is None
+    assert len(requests) == 1

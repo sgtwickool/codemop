@@ -444,3 +444,24 @@ async def fetch_review_comment(
         in_reply_to=data.get("in_reply_to_id"), author=user.get("login", ""), author_is_bot=user.get("type") == "Bot",
         author_association=data.get("author_association", "NONE"),
     )
+
+
+async def compare_commits(
+    repo: str,
+    base: str,
+    head: str,
+    *,
+    token: Optional[str] = None,
+    api_url: str = DEFAULT_API_URL,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> Optional[str]:
+    """
+    The diff from `base` to `head` if head is ahead of base (base is one of its ancestors), as
+    after an ordinary push; None otherwise (a force-push or rebase), or if GitHub can't say
+    """
+    url = f"{api_url.rstrip('/')}/repos/{repo}/compare/{base}...{head}"
+    status = await _request("GET", url + "?per_page=1", JSON, token, transport)
+    if status.status_code != 200 or status.json().get("status") != "ahead":
+        return None
+    response = await _request("GET", url, "application/vnd.github.diff", token, transport)
+    return response.text if response.status_code == 200 else None

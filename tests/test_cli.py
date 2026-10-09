@@ -294,6 +294,7 @@ def github(monkeypatch):
         "while_committing": None,  # something to happen to the PR while fixes are being committed
         "default_branch": {},  # files on the default branch (the PR's are in "files")
         "threads": [], "review_comments": {}, "replies": [], "resolved": [],
+        "newer_diff": None,  # what's changed since the last review, if it's an ancestor of the head
     }
 
     async def fetch_pull_request(pr, token=None, api_url=None):
@@ -305,6 +306,9 @@ def github(monkeypatch):
 
     async def list_review_threads(pr, token=None, api_url=None):
         return list(state["threads"])
+
+    async def compare_commits(repo, base, head, token=None, api_url=None):
+        return state["newer_diff"]
 
     async def fetch_review_comment(repo, comment_id, token=None, api_url=None):
         return state["review_comments"].get(comment_id)
@@ -356,7 +360,8 @@ def github(monkeypatch):
                        ("post_issue_comment", post_issue_comment), ("fetch_repo_file", fetch_repo_file),
                        ("user_permission", user_permission), ("commit_files", commit_files),
                        ("list_review_threads", list_review_threads), ("fetch_review_comment", fetch_review_comment),
-                       ("reply_to_review_comment", reply_to_review_comment), ("resolve_thread", resolve_thread)]:
+                       ("reply_to_review_comment", reply_to_review_comment), ("resolve_thread", resolve_thread),
+                       ("compare_commits", compare_commits)]:
         monkeypatch.setattr(cli, name, fake)
     monkeypatch.setenv("GITHUB_TOKEN", "ghp_test")
     return state
@@ -377,7 +382,7 @@ def test_post_posts_the_comments_as_a_review_and_a_summary(capsys, monkeypatch, 
     assert review["commit_id"] == github["head"]
     assert [(c["path"], c["line"]) for c in review["comments"]] == [("app.py", 3)]
     assert "```suggestion\n    return result\n```" in review["comments"][0]["body"]
-    assert "Found 1 issue(s) ([comments on the code](https://github.com/owner/repo/pull/7#pullrequestreview-1))" in summary_of(github)
+    assert "1 open issue(s) ([comments on the code](https://github.com/owner/repo/pull/7#pullrequestreview-1))" in summary_of(github)
     assert "Posted the review: https://github.com/owner/repo/pull/7#issuecomment-100" in out
 
 
@@ -403,8 +408,8 @@ def test_a_new_commit_updates_the_summary_in_place(capsys, monkeypatch, fake_mod
 
     assert list(github["comments"]) == [100]  # the same comment, edited
     assert "### CodeMop review of def5678" in summary_of(github)
-    assert "No issues found." in summary_of(github)
-    assert len(github["reviews"]) == 1  # no inline comments, so no second review
+    assert "1 open issue(s)" in summary_of(github)  # its code hasn't changed, so it's still open
+    assert len(github["reviews"]) == 1  # no new issues, so no second review
 
 
 def test_a_forged_summary_doesnt_stop_the_review(capsys, monkeypatch, fake_model, github):
@@ -496,7 +501,7 @@ def test_post_checklist_offers_each_fix_to_tick(capsys, monkeypatch, fake_model,
     run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
 
     assert "- [ ] 🐛 Bug `app.py:3`: Adds one to the total <!-- codemop-fix:1 -->" in summary_of(github)
-    assert "<!-- codemop-fixes: " in summary_of(github)
+    assert "<!-- codemop-state: " in summary_of(github)
 
 
 def test_no_checklist_on_a_pr_from_a_fork(capsys, monkeypatch, fake_model, github):
@@ -595,20 +600,6 @@ def test_apply_keeps_boxes_ticked_while_it_ran(capsys, monkeypatch, fake_model, 
 
     assert "- [x] 🐛 Bug `app.py:3`: Adds one to the total · ✅ applied in" in summary_of(github)
     assert "- [x] 🐛 Bug `app.py:2`: Second <!-- codemop-fix:" in summary_of(github)  # still ticked, for the next run
-
-
-def test_apply_leaves_a_summary_that_a_newer_review_replaced_meanwhile(capsys, monkeypatch, fake_model, github):
-    fake_model([SUGGESTION])
-    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
-    tick_all(github)
-    [cid] = list(github["comments"])
-    newer = "<!-- codemop-summary -->\n<!-- codemop-commit: " + "f" * 40 + " -->\n### CodeMop review of fffffff\n\nNo issues found."
-    github["while_committing"] = lambda: github["comments"].update({cid: (newer, "github-actions[bot]", "NONE")})
-
-    _, out, _ = run(capsys, monkeypatch, ["apply", "owner/repo#7", "--by", "maintainer"])
-
-    assert summary_of(github) == newer
-    assert "The summary now belongs to a newer review, so it isn't marked" in out
 
 
 def test_one_tick_commits_a_whole_group_across_files(capsys, monkeypatch, fake_model, github):
@@ -809,3 +800,101 @@ def test_a_copy_of_codemops_comment_by_an_outsider_isnt_trusted(capsys, monkeypa
     _, out, _ = run(capsys, monkeypatch, ["learn", "owner/repo#7", "--comment", str(learn_reply(github, "/codemop learn x"))])
 
     assert "Not a `/codemop learn` reply to one of CodeMop's comments" in out
+
+
+def new_commit(github, files=None, newer_diff=None):
+    github["head"] = "def5678" + "0" * 33
+    github["files"].update(files or {})
+    github["newer_diff"] = newer_diff
+
+
+NEWER = """\
+diff --git a/app.py b/app.py
+--- a/app.py
++++ b/app.py
+@@ -1,3 +1,4 @@
+ def total(items):
+     result = sum(items)
++    # comment
+     return result + 1
+"""
+
+
+def test_a_re_review_looks_only_at_whats_new(capsys, monkeypatch, fake_model, github):
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+    new_commit(github, newer_diff=NEWER + "diff --git a/vendored.py b/vendored.py\n--- a/vendored.py\n+++ b/vendored.py\n@@ -1 +1 @@\n-a\n+b\n")
+    seen = []
+
+    class Recording(FakeModel):
+        async def review(self, instructions, diff_text):
+            seen.append(diff_text)
+            return await super().review(instructions, diff_text)
+    monkeypatch.setattr(cli, "create_model", lambda *a, **k: Recording([]))
+
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+
+    [reviewed] = seen
+    assert "+ 3 |     # comment" in reviewed  # just the new commit's change
+    assert "vendored.py" not in reviewed  # not a file the PR changes (a merge of the base, say)
+    assert "Reviewed the changes since abc1234." in summary_of(github)
+
+
+def test_after_a_force_push_the_whole_pr_is_reviewed(capsys, monkeypatch, fake_model, github):
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+    new_commit(github, newer_diff=None)  # the last reviewed commit isn't an ancestor any more
+
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+
+    assert "Reviewed the changes since" not in summary_of(github)
+    assert "1 open issue(s)" in summary_of(github)  # raised again: still one finding, not two
+
+
+def test_a_re_review_only_raises_bugs_and_security_issues(capsys, monkeypatch, fake_model, github):
+    fake_model([])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+    new_commit(github, newer_diff=NEWER)
+    fake_model([SUGGESTION.model_copy(update={"severity": "maintainability", "line": 2, "title": "Tidy"}),
+                SUGGESTION.model_copy(update={"title": "A real bug"})])
+
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+
+    assert "A real bug" in summary_of(github) and "Tidy" not in summary_of(github)
+    assert "Left out 1 less important suggestion(s): re-reviews only raise bugs and security issues" in summary_of(github)
+
+
+def test_a_fixed_issue_is_marked_addressed_and_its_conversation_resolved(capsys, monkeypatch, fake_model, github):
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+    codemop_comment(github)  # the thread its comment started
+    new_commit(github, files={"app.py": "def total(items):\n    result = sum(items)\n    return result\n"},
+               newer_diff=NEWER)
+    fake_model([])
+
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+
+    assert "No issues found in these changes." in summary_of(github)
+    assert "- ✅ 🐛 Bug `app.py:3`: Adds one to the total · addressed in def5678" in summary_of(github)
+    assert github["resolved"] == ["thread-500"]
+
+
+def test_an_applied_fix_is_listed_as_done_after_the_next_review(capsys, monkeypatch, fake_model, github):
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+    tick_all(github)
+    run(capsys, monkeypatch, ["apply", "owner/repo#7", "--by", "maintainer"])
+    new_commit(github, newer_diff=NEWER)
+    fake_model([])
+
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+
+    assert "- ✅ 🐛 Bug `app.py:3`: Adds one to the total · applied in c0ffee0" in summary_of(github)
+    assert "- [ ]" not in summary_of(github)
+
+
+def test_only_files_in_keeps_the_prs_files():
+    pr_diff = DIFF
+    other = "diff --git a/other.py b/other.py\n--- a/other.py\n+++ b/other.py\n@@ -1 +1 @@\n-a\n+b\n"
+
+    assert cli.only_files_in(NEWER + other, pr_diff) == NEWER

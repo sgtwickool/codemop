@@ -83,6 +83,13 @@ conversation. For each issue, you can:
 | Say it isn't a problem here | Resolve the comment's conversation | CodeMop won't raise it again on this pull request |
 | Say it isn't a problem anywhere in the repository | Reply `/codemop learn <why it's fine>` to the comment | CodeMop adds a note to `.codemop-learned.yml` on the PR's branch, resolves the conversation, and replies to confirm. Once the PR is merged, it won't raise it again in the repository |
 
+When you push more commits, CodeMop reviews just the new changes, and only raises bugs and
+security issues from then on, so a one-line fix doesn't bring a new round of small points.
+The summary keeps every issue from every review: open ones at the top, and under "Done"
+the ones fixed by a ticked fix, addressed (their code changed and they weren't raised again;
+CodeMop resolves their conversation), or dismissed (you resolved it). After a force-push or
+rebase, it reviews the whole pull request again.
+
 Ticking fixes and `/codemop learn` work for people with write access to the repository
 (CodeMop replies to anyone else saying so). A fix is only applied where the code it replaces
 hasn't changed since the review; the summary says which were applied, and why any weren't.
