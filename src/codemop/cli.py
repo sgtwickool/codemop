@@ -16,27 +16,32 @@ import asyncio
 import dataclasses
 import json
 import os
+import re
 import shutil
 import subprocess  # nosec B404
 import sys
 import textwrap
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from codemop import __version__
 from codemop.config import (
     CONFIG_FILE, DEFAULT_MIN_CONFIDENCE, ConfigError, RepoConfig, load_config_file, parse_config,
 )
 from codemop.github.client import (
-    DEFAULT_API_URL, GitHubError, PullRequest, PullRequestRef, commit_files, fetch_pr_diff, fetch_pull_request,
-    fetch_repo_file, fetch_review_comment, list_issue_comments, list_review_threads, parse_pr_reference,
-    post_issue_comment, post_review, reply_to_review_comment, resolve_thread, user_permission,
+    DEFAULT_API_URL, GitHubError, PullRequest, PullRequestRef, ReviewThread, commit_files, compare_commits,
+    fetch_pr_diff, fetch_pull_request, fetch_repo_file, fetch_review_comment, list_issue_comments,
+    list_review_threads, parse_pr_reference, post_issue_comment, post_review, reply_to_review_comment,
+    resolve_thread, user_permission,
 )
-from codemop.github.review import (
-    find_summary, offered_fixes, parse_comment, record_applied, review_payload, reviewed_commit, split_inline,
-    stored_fixes, summary_body, ticked, trusted,
+from codemop.github.review import parse_comment, ranked, review_payload
+from codemop.github.summary import (
+    SummaryState, find_summary, read_state, record_applied, stored_fixes, summary_body, ticked, trusted,
+    update_earlier,
 )
+from codemop.review.placement import place_suggestions
+from codemop.review.schema import Severity
 from codemop.review.learned import (
     LEARNED_FILE, Dismissed, Learned, Settled, add_learned, learned_yaml, parse_learned,
 )
@@ -248,7 +253,8 @@ async def run_review(args) -> int:
         print(f"codemop: {e}", file=sys.stderr)
         return 2 if isinstance(e, ConfigError) else 1
 
-    head_sha = summary = pull = None
+    head_sha = summary = pull = full_diff = since = None
+    state = SummaryState()
     if pr is None:
         diff, target = sys.stdin.read(), "stdin"
     else:
@@ -259,14 +265,21 @@ async def run_review(args) -> int:
                 pull = await fetch_pull_request(pr, token=token, api_url=args.github_api_url)
                 head_sha = pull.head_sha
                 summary = find_summary(await list_issue_comments(pr, token=token, api_url=args.github_api_url))
-                if reviewed_commit(summary) == head_sha:
+                state = read_state(summary.body if summary else None)
+                if state.commit == head_sha:
                     print(f"CodeMop has already reviewed {target} at {head_sha[:7]}; nothing to do")
                     return 0
-            diff = await fetch_pr_diff(pr, token=token, api_url=args.github_api_url)
+            diff = full_diff = await fetch_pr_diff(pr, token=token, api_url=args.github_api_url)
+            if args.post and state.kept and state.commit:
+                # A re-review: just the commits since the last review, if it's an ancestor (not after a
+                # force-push), and only in files the PR changes (not ones a merge of the base brought in)
+                newer = await compare_commits(pr.repo, state.commit, head_sha, token=token, api_url=args.github_api_url)
+                if newer is not None:
+                    diff, since = only_files_in(newer, full_diff), state.commit
         except GitHubError as e:
             print(f"codemop: {e}", file=sys.stderr)
             return 1
-    settled = await load_settled(pr, token, args.github_api_url, dismissed=args.post)
+    settled, threads = await load_settled(pr, token, args.github_api_url, dismissed=args.post)
 
     try:
         model = create_model(
@@ -284,6 +297,16 @@ async def run_review(args) -> int:
         max_changed_lines=args.max_changed_lines,
         settled=settled,
     )
+    less_important = 0
+    if args.post:
+        # Comments can only go on lines in the PR's own diff (a re-review's diff may show others)
+        placement = place_suggestions(report.suggestions, parse_diff(full_diff))
+        report.unplaced += placement.unplaced
+        report.suggestions = placement.placed
+        if since:  # after the first review, only what matters
+            important = [s for s in report.suggestions if s.severity in (Severity.bug, Severity.security)]
+            less_important = len(report.suggestions) - len(important)
+            report.suggestions = important
     print(report_json(report, target, config_source) if args.json else report_text(report, target, config_source))
     if args.post:
         if report.stopped:
@@ -292,9 +315,11 @@ async def run_review(args) -> int:
         try:
             # A fork's branch can't be committed to: no checklist, and no `/codemop learn` there
             same_repo = pull.head_repo == pr.repo
-            url = await post(pr, report, head_sha, summary.id if summary else None, token,
-                             args.max_comments or config.max_comments, args.github_api_url,
-                             diff=diff, checklist=args.checklist and same_repo, teachable=same_repo)
+            url = await post(pr, pull, report, state, summary.id if summary else None, threads, full_diff,
+                             token=token, api_url=args.github_api_url,
+                             max_comments=args.max_comments or config.max_comments,
+                             checklist=args.checklist and same_repo, teachable=same_repo,
+                             since=since, less_important=less_important)
         except GitHubError as e:
             print(f"codemop: {e}", file=sys.stderr)
             return 1
@@ -303,58 +328,90 @@ async def run_review(args) -> int:
     return 0 if report.complete or report.too_large else 1
 
 
-async def post(pr: PullRequestRef, report: ReviewReport, head_sha: str, summary_id: Optional[int], token: str,
-               max_comments: int, api_url: str, diff: str = "", checklist: bool = False,
-               teachable: bool = True) -> str:
+def only_files_in(diff: str, pr_diff: str) -> str:
+    """The parts of `diff` for files the pull request changes"""
+    changed = {f.path for f in parse_diff(pr_diff)}
+    parts = re.split(r"(?m)^(?=diff --git )", diff)
+    return "".join(part for part in parts if part and any(f.path in changed for f in parse_diff(part)))
+
+
+async def post(pr: PullRequestRef, pull: PullRequest, report: ReviewReport, state: SummaryState,
+               summary_id: Optional[int], threads: List[ReviewThread], pr_diff: str, *, token: str, api_url: str,
+               max_comments: int, checklist: bool, teachable: bool, since: Optional[str], less_important: int) -> str:
     """
-    Post the inline comments as a review, then create or update the summary comment, last, so
-    it only says a commit was reviewed once everything is posted. Returns the summary's URL.
+    Bring the summary's findings up to date, post the new issues as a review, then create or
+    update the summary comment, last, so it only says a commit was reviewed once everything is
+    posted; then resolve the conversations of findings whose code has been fixed. Returns the
+    summary's URL.
     """
-    inline, not_inline = split_inline(report, max_comments)
+    api = dict(token=token, api_url=api_url)
+    head = pull.head_sha
+    shown = {f.path: file_lines(f) for f in parse_diff(pr_diff)}
+    ours = [t for t in threads if trusted(t.first_comment_by_bot, t.first_comment_association)
+            and parse_comment(t.first_comment_body)]
+    resolved = {(t.path, parse_comment(t.first_comment_body)[1]) for t in ours if t.resolved}
+    paths = {f.path for f in state.open if f.found_in != head and f.original}
+    head_files = {path: await fetch_repo_file(pull.head_repo, path, ref=head, **api) for path in paths}
+    new, addressed = update_earlier(state, report.suggestions, resolved, head_files, shown, head)
+    state.add(new, shown, head)
+    state.commit = head
+
+    inline = ranked(new)[:max_comments]
     review_url, rejected = None, False
     if inline:
         try:
-            review_url = await post_review(pr, review_payload(inline, head_sha, report.suggestions), token=token,
-                                           api_url=api_url)
+            review_url = await post_review(pr, review_payload(inline, head, new), **api)
         except GitHubError as e:
             if e.status != 422:
                 raise
             rejected = True  # the summary lists them all anyway
+    options = dict(review_url=review_url, inline_rejected=rejected, checklist=checklist, teachable=teachable,
+                   since=since, less_important=less_important, not_commented=len(new) - len(inline))
     cost = format_cost(report.cost, report.usage)
-    fixes = offered_fixes([*inline, *not_inline], {f.path: file_lines(f) for f in parse_diff(diff)}) if checklist else {}
-    body = summary_body(report, inline, not_inline, cost, head_sha, review_url, rejected, fixes, checklist, teachable)
+    body = summary_body(state, report, cost, **options)
     if len(body) > MAX_COMMENT_CHARS:  # the fixes kept in it made it too long for GitHub
-        body = summary_body(report, inline, not_inline, cost, head_sha, review_url, rejected, teachable=teachable)
+        for finding in state.findings:
+            finding.code = finding.original = None
+        body = summary_body(state, report, cost, **options)
     try:
-        return await post_issue_comment(pr, body, comment_id=summary_id, token=token, api_url=api_url)
+        url = await post_issue_comment(pr, body, comment_id=summary_id, **api)
     except GitHubError as e:
         if summary_id is None or e.status != 404:
             raise
-        return await post_issue_comment(pr, body, token=token, api_url=api_url)  # it was deleted meanwhile
+        url = await post_issue_comment(pr, body, **api)  # it was deleted meanwhile
+
+    for finding in addressed:
+        thread = next((t for t in ours if not t.resolved and t.path == finding.path
+                       and parse_comment(t.first_comment_body)[1] == finding.title), None)
+        if thread:
+            await resolve_thread(thread.id, **api)
+    return url
 
 
-async def load_settled(pr: Optional[PullRequestRef], token: Optional[str], api_url: str, dismissed: bool) -> Settled:
+async def load_settled(pr: Optional[PullRequestRef], token: Optional[str], api_url: str,
+                       dismissed: bool) -> Tuple[Settled, List[ReviewThread]]:
     """
     What not to raise again: the repository's learned notes (from its default branch, or for a
-    local diff the current directory), and with `dismissed` the CodeMop comments resolved on the PR
+    local diff the current directory), and with `dismissed` the CodeMop comments resolved on the
+    PR. Also the PR's review threads (with `dismissed`), for the summary to bring up to date.
     """
     if pr is None:
         path = Path(LEARNED_FILE)
-        return Settled(learned=parse_learned(path.read_text() if path.is_file() else None))
+        return Settled(learned=parse_learned(path.read_text() if path.is_file() else None)), []
     try:
         learned = parse_learned(await fetch_repo_file(pr.repo, LEARNED_FILE, token=token, api_url=api_url))
         threads = await list_review_threads(pr, token=token, api_url=api_url) if dismissed else []
     except GitHubError as e:
         # Not worth failing the review over: it may just raise something again
         print(f"codemop: couldn't read what's been dismissed or learned ({e}); reviewing without it", file=sys.stderr)
-        return Settled()
+        return Settled(), []
     resolved = []
     for thread in threads:
         is_codemops = trusted(thread.first_comment_by_bot, thread.first_comment_association)
         parsed = parse_comment(thread.first_comment_body) if thread.resolved and is_codemops else None
         if parsed:
             resolved.append(Dismissed(thread.path, thread.line, parsed[0], parsed[1]))
-    return Settled(learned=learned, dismissed=resolved)
+    return Settled(learned=learned, dismissed=resolved), threads
 
 
 LEARN_COMMAND = "/codemop learn"
@@ -451,8 +508,8 @@ async def run_apply(args) -> int:
             print(f"Not applying fixes for {args.by}: only people with write access to {pr.repo} can")
             return 0
         summary = find_summary(await list_issue_comments(pr, **api))
-        _, fixes, done = stored_fixes(summary.body) if summary else (None, {}, set())
-        wanted = [fixes[i] for i in sorted(ticked(summary.body) - done) if i in fixes] if summary else []
+        fixes = stored_fixes(summary.body) if summary else {}
+        wanted = [fixes[i] for i in sorted(ticked(summary.body)) if i in fixes] if summary else []
         if not wanted:
             print(f"No ticked fixes to apply on {pr}")
             return 0
@@ -476,14 +533,11 @@ async def run_apply(args) -> int:
                 if e.status != 422 or attempt:
                     raise
 
-        # Mark the summary as it is now, not as it was read: more boxes may have been ticked
-        # meanwhile (they stay ticked, for the next run), or a newer review may have replaced it
-        latest = find_summary(await list_issue_comments(pr, **api))
-        if latest and stored_fixes(latest.body)[0] == stored_fixes(summary.body)[0]:
-            await post_issue_comment(pr, record_applied(latest.body, commit, applied, skipped),
-                                     comment_id=latest.id, **api)
-        else:
-            print("The summary now belongs to a newer review, so it isn't marked")
+        # Mark the summary as it is now, not as it was read: more boxes may have been ticked meanwhile
+        # (they stay ticked, for the next run), or a newer review may have updated it (findings keep
+        # their ids, so the marks still go on the right ones)
+        latest = find_summary(await list_issue_comments(pr, **api)) or summary
+        await post_issue_comment(pr, record_applied(latest.body, commit, applied, skipped), comment_id=latest.id, **api)
     except GitHubError as e:
         print(f"codemop: {e}", file=sys.stderr)
         return 1

@@ -96,6 +96,12 @@ def _find(lines: List[str], block: List[str]) -> List[int]:
     return [i for i in range(len(lines) - width + 1) if lines[i:i + width] == block]
 
 
+def still_there(text: str, line: int, original: Sequence[str]) -> bool:
+    """Whether the lines a finding was about are still in the file: where they were, or anywhere else"""
+    lines = text.replace("\r\n", "\n").split("\n")
+    return lines[line - 1:line - 1 + len(original)] == list(original) or bool(_find(lines, list(original)))
+
+
 def apply_fixes(text: str, fixes: Sequence[Fix]) -> AppliedFixes:
     """
     Apply fixes to one file's text. Each replaces its original lines where they still are;
