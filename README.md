@@ -1,4 +1,6 @@
-# codemop - AI-Augmented Code Review & Debugging Hub
+# CodeMop
+
+AI code review for pull requests, with the model of your choice.
 
 ## 🚀 CI/CD Status
 
@@ -6,6 +8,24 @@
 [![Docker Build](https://github.com/sgtwickool/codemop/actions/workflows/docker.yml/badge.svg)](https://github.com/sgtwickool/codemop/actions/workflows/docker.yml)
 [![Security Scan](https://github.com/sgtwickool/codemop/actions/workflows/security.yml/badge.svg)](https://github.com/sgtwickool/codemop/actions/workflows/security.yml)
 [![Codecov](https://codecov.io/gh/sgtwickool/codemop/branch/master/graph/badge.svg)](https://codecov.io/gh/sgtwickool/codemop)
+
+## Quick start
+
+```bash
+pipx install codemop                  # or: uv tool install codemop
+export ANTHROPIC_API_KEY=sk-ant-...   # or use another provider (see "Choosing a model")
+
+codemop review owner/repo#123         # a pull request (GITHUB_TOKEN or `gh auth login` for private repos)
+git diff main | codemop review -      # your local changes
+```
+
+It prints each suggestion with the file and line, the reason, and a fix where it has one,
+then the tokens used and an estimated cost (about two cents a review with the default
+model). `--json` prints the report for scripts. Posting reviews on pull requests comes
+with the GitHub Action (see the [roadmap](https://github.com/sgtwickool/codemop/blob/master/ROADMAP.md)).
+
+The rest of this README covers configuring reviews, choosing a model, and running the
+webhook server.
 
 ## 🏗️ Development Setup
 

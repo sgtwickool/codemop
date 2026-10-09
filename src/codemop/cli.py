@@ -29,7 +29,7 @@ from codemop.github.client import (
     DEFAULT_API_URL, GitHubError, PullRequestRef, fetch_pr_diff, fetch_repo_file, parse_pr_reference,
 )
 from codemop.providers import DEFAULT_MODELS, PROVIDERS, create_model
-from codemop.providers.base import DEFAULT_CHUNK_TOKENS
+from codemop.providers.base import DEFAULT_CHUNK_TOKENS, Usage
 from codemop.providers.pricing import PRICES_AS_OF
 from codemop.review.chunks import DEFAULT_IGNORED_PATHS
 from codemop.review.pipeline import ReviewReport, review_diff
@@ -112,7 +112,9 @@ def report_json(report: ReviewReport, target: str, config_source: str) -> str:
     )
 
 
-def format_cost(cost: Optional[float]) -> str:
+def format_cost(cost: Optional[float], usage: Usage) -> str:
+    if not usage.input_tokens and not usage.output_tokens:
+        return "nothing spent"
     if cost is None:
         return "cost unknown for this model"
     if cost == 0:
@@ -155,7 +157,7 @@ def report_text(report: ReviewReport, target: str, config_source: str) -> str:
     u = report.usage
     lines.append(f"{len(report.suggestions)} suggestion(s) · {report.chunks} chunk(s) · "
                  f"{u.input_tokens:,} input / {u.output_tokens:,} output tokens · "
-                 f"{format_cost(report.cost)}" + ("" if not report.cost else f" (list prices as of {PRICES_AS_OF})"))
+                 f"{format_cost(report.cost, u)}" + ("" if not report.cost else f" (list prices as of {PRICES_AS_OF})"))
     return "\n".join(lines)
 
 
