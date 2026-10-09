@@ -29,6 +29,10 @@ def test_a_comment_with_a_fix_has_a_suggestion_block():
     )
 
 
+def test_an_empty_fix_is_an_empty_suggestion_block_which_deletes_the_lines():
+    assert "```suggestion\n```" in comment_body(suggestion(code=""))
+
+
 def test_a_comment_without_a_fix_has_no_suggestion_block():
     assert "suggestion" not in comment_body(suggestion(code=None)).split("<sub>")[0]
 

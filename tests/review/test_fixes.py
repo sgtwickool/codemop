@@ -170,3 +170,14 @@ def test_a_fix_can_replace_one_line_with_several():
     result = apply_fixes(SAMPLE, [stored(code="    if not items:\n        return 0\n    return result")])
 
     assert result.text.endswith("    if not items:\n        return 0\n    return result\n")
+
+
+def test_an_empty_fix_deletes_the_lines():
+    """As an empty suggestion does on GitHub (found by CodeMop on PR #5: it left a blank line)"""
+    result = apply_fixes(SAMPLE, [stored(code="", line=2, original=("    result = sum(items)",))])
+
+    assert result.text == "def total(items):\n    return result + 1\n"
+
+
+def test_a_trailing_newline_on_a_fix_adds_no_blank_line():
+    assert apply_fixes(SAMPLE, [stored(code="    return result\n")]).text == apply_fixes(SAMPLE, [stored()]).text
