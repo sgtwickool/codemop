@@ -358,8 +358,14 @@ async def run_apply(args) -> int:
                 if e.status != 422 or attempt:
                     raise
 
-        await post_issue_comment(pr, record_applied(summary.body, commit, applied, skipped),
-                                 comment_id=summary.id, **api)
+        # Mark the summary as it is now, not as it was read: more boxes may have been ticked
+        # meanwhile (they stay ticked, for the next run), or a newer review may have replaced it
+        latest = find_summary(await list_issue_comments(pr, **api))
+        if latest and stored_fixes(latest.body)[0] == stored_fixes(summary.body)[0]:
+            await post_issue_comment(pr, record_applied(latest.body, commit, applied, skipped),
+                                     comment_id=latest.id, **api)
+        else:
+            print("The summary now belongs to a newer review, so it isn't marked")
     except GitHubError as e:
         print(f"codemop: {e}", file=sys.stderr)
         return 1

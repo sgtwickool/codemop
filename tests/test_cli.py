@@ -286,6 +286,7 @@ def github(monkeypatch):
         "head": "abc1234" + "0" * 33, "head_repo": "owner/repo", "reviews": [], "comments": {}, "reject_inline": False,
         "files": {"app.py": "def total(items):\n    result = sum(items)\n    return result + 1\n"},
         "commits": [], "permissions": {"maintainer": "write", "visitor": "read"}, "branch_moves": 0,
+        "while_committing": None,  # something to happen to the PR while fixes are being committed
     }
 
     async def fetch_pull_request(pr, token=None, api_url=None):
@@ -304,6 +305,8 @@ def github(monkeypatch):
             state["head"] = "moved00" + "0" * 33
             raise GitHubError("the branch moved", 422)
         assert (repo, branch, parent_sha) == (state["head_repo"], "feature", state["head"])
+        if state["while_committing"]:
+            state["while_committing"]()
         state["files"].update(files)
         state["commits"].append(message)
         state["head"] = "c0ffee0" + "0" * 33
@@ -551,3 +554,36 @@ def test_apply_with_no_summary_or_nothing_ticked(capsys, monkeypatch, fake_model
     run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
     _, out, _ = run(capsys, monkeypatch, ["apply", "owner/repo#7"])
     assert "No ticked fixes to apply on owner/repo#7" in out
+
+
+def test_apply_keeps_boxes_ticked_while_it_ran(capsys, monkeypatch, fake_model, github):
+    """Found by CodeMop on PR #5: the summary was rewritten from the copy read at the start"""
+    fake_model([SUGGESTION, SUGGESTION.model_copy(update={"line": 2, "title": "Second",
+                                                          "suggested_code": "    result = sum(items or [])"})])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+    [(cid, (body, author, association))] = list(github["comments"].items())
+    github["comments"][cid] = (body.replace("- [ ] 🐛 Bug `app.py:3`", "- [x] 🐛 Bug `app.py:3`"), author, association)
+
+    def tick_the_other():
+        current = github["comments"][cid][0]
+        github["comments"][cid] = (current.replace("- [ ] 🐛 Bug `app.py:2`", "- [x] 🐛 Bug `app.py:2`"), author, association)
+    github["while_committing"] = tick_the_other
+
+    run(capsys, monkeypatch, ["apply", "owner/repo#7", "--by", "maintainer"])
+
+    assert "- [x] 🐛 Bug `app.py:3`: Adds one to the total · ✅ applied in" in summary_of(github)
+    assert "- [x] 🐛 Bug `app.py:2`: Second <!-- codemop-fix:" in summary_of(github)  # still ticked, for the next run
+
+
+def test_apply_leaves_a_summary_that_a_newer_review_replaced_meanwhile(capsys, monkeypatch, fake_model, github):
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+    tick_all(github)
+    [cid] = list(github["comments"])
+    newer = "<!-- codemop-summary -->\n<!-- codemop-commit: " + "f" * 40 + " -->\n### CodeMop review of fffffff\n\nNo issues found."
+    github["while_committing"] = lambda: github["comments"].update({cid: (newer, "github-actions[bot]", "NONE")})
+
+    _, out, _ = run(capsys, monkeypatch, ["apply", "owner/repo#7", "--by", "maintainer"])
+
+    assert summary_of(github) == newer
+    assert "The summary now belongs to a newer review, so it isn't marked" in out
