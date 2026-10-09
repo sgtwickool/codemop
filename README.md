@@ -16,13 +16,19 @@ pipx install codemop                  # or: uv tool install codemop
 export ANTHROPIC_API_KEY=sk-ant-...   # or use another provider (see "Choosing a model")
 
 codemop review owner/repo#123         # a pull request (GITHUB_TOKEN or `gh auth login` for private repos)
+codemop review owner/repo#123 --post  # ...and post the review on it
 git diff main | codemop review -      # your local changes
 ```
 
 It prints each suggestion with the file and line, the reason, and a fix where it has one,
 then the tokens used and an estimated cost (about two cents a review with the default
-model). `--json` prints the report for scripts. Posting reviews on pull requests comes
-with the GitHub Action (see the [roadmap](https://github.com/sgtwickool/codemop/blob/master/ROADMAP.md)).
+model). `--json` prints the report for scripts.
+
+`--post` posts it as a pull request review: a comment on each issue, with a one-click
+"Commit suggestion" when there's a fix, and a summary. It never approves or blocks the PR,
+and a commit it has already reviewed isn't reviewed (or paid for) again. Posting needs a
+token that can write to pull requests. A GitHub Action that does this on every PR is next
+(see the [roadmap](https://github.com/sgtwickool/codemop/blob/master/ROADMAP.md)).
 
 The rest of this README covers configuring reviews, choosing a model, and running the
 webhook server.
@@ -117,6 +123,7 @@ ignore:              # paths not to review, added to the defaults (lock files, m
   - "*.snap"
 min_confidence: 0.6  # drop suggestions the model is less sure of (default: 0.5)
 chunk_tokens: 20000  # largest piece of diff sent in one request (default: the model's own)
+max_comments: 5      # most inline comments in a posted review; the rest go in its summary (default: 10)
 ```
 CodeMop reads it from the repository's **default branch**, so a pull request can't change how it's
 reviewed (for `codemop review -`, from the current directory; `--config PATH` uses another file).
