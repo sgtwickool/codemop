@@ -7,7 +7,7 @@ import pytest
 from codemop.github.client import (
     GitHubError, PullRequestRef, commit_files, compare_commits, fetch_pr_diff, fetch_pull_request, fetch_repo_file,
     list_issue_comments, list_review_threads, parse_pr_reference, post_issue_comment, post_review,
-    reply_to_review_comment, resolve_thread, user_permission,
+    reply_to_review_comment, resolve_thread, set_commit_status, user_permission,
 )
 
 PR = PullRequestRef("owner/repo", 7)
@@ -372,3 +372,24 @@ async def test_no_diff_unless_the_head_is_ahead(status):
 
     assert await compare_commits("owner/repo", "aaa", "bbb", transport=transport) is None
     assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_sets_codemops_commit_status():
+    transport, requests = json_api((201, {}))
+
+    await set_commit_status("owner/repo", "abc", "failure", "x" * 200, target_url="https://github.com/s", token="t",
+                            transport=transport)
+
+    assert str(requests[0].url) == "https://api.github.com/repos/owner/repo/statuses/abc"
+    body = json.loads(requests[0].content)
+    assert (body["state"], body["context"], body["target_url"], len(body["description"])) == (
+        "failure", "CodeMop", "https://github.com/s", 140)
+
+
+@pytest.mark.asyncio
+async def test_setting_a_status_without_permission_says_what_the_token_needs():
+    transport, _ = json_api((403, {}))
+
+    with pytest.raises(GitHubError, match="the token needs statuses: write"):
+        await set_commit_status("owner/repo", "abc", "success", "ok", transport=transport)

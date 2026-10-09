@@ -204,7 +204,7 @@ core package. This phase includes what makes it worth choosing over Claude's own
 
 ### Merge check
 
-- [ ] A check run that can fail on major findings above a confidence threshold (off by default; set in `.codemop.yml`), so branch protection can block a merge
+- [x] A check run that can fail on major findings above a confidence threshold (off by default; set in `.codemop.yml`), so branch protection can block a merge. (A "CodeMop" commit status, not the workflow's own result: pull_request_target runs report against the base branch's commit. Pending during reviews, an error when a review fails, and updated on CodeMop's own commits and by commenting `/codemop check`, since GitHub runs no workflow when a conversation is resolved)
 
 ### Repository context
 

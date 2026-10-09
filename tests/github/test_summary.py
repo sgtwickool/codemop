@@ -1,7 +1,7 @@
 from codemop.github.client import IssueComment
 from codemop.github.summary import (
     ADDRESSED, APPLIED, DISMISSED, MARKER, OPEN, SummaryState, find_summary, read_state, record_applied,
-    stored_fixes, summary_body, ticked, update_earlier,
+    stored_fixes, summary_body, sync_threads, ticked, update_earlier,
 )
 from codemop.providers.base import Usage
 from codemop.review.chunks import Skipped
@@ -172,7 +172,7 @@ HEAD_TEXT = "def total(items):\n    result = sum(items)\n    return result + 1\n
 def test_a_finding_whose_lines_are_gone_and_isnt_raised_again_is_addressed():
     state, _ = reviewed(suggestion())
 
-    new, addressed = update_earlier(state, [], set(), {"app.py": HEAD_TEXT.replace("result + 1", "result")}, SHOWN, LATER)
+    new, addressed = update_earlier(state, [], {"app.py": HEAD_TEXT.replace("result + 1", "result")}, SHOWN, LATER)
 
     assert new == [] and [f.id for f in addressed] == [1]
     assert (state.findings[0].status, state.findings[0].note) == (ADDRESSED, "addressed in def5678")
@@ -181,7 +181,7 @@ def test_a_finding_whose_lines_are_gone_and_isnt_raised_again_is_addressed():
 def test_a_finding_whose_lines_are_still_there_stays_open():
     state, _ = reviewed(suggestion())
 
-    _, addressed = update_earlier(state, [], set(), {"app.py": "# moved down\n" + HEAD_TEXT}, SHOWN, LATER)
+    _, addressed = update_earlier(state, [], {"app.py": "# moved down\n" + HEAD_TEXT}, SHOWN, LATER)
 
     assert addressed == [] and state.findings[0].status == OPEN
 
@@ -189,7 +189,7 @@ def test_a_finding_whose_lines_are_still_there_stays_open():
 def test_a_finding_in_a_deleted_file_is_addressed():
     state, _ = reviewed(suggestion())
 
-    update_earlier(state, [], set(), {"app.py": None}, SHOWN, LATER)
+    update_earlier(state, [], {"app.py": None}, SHOWN, LATER)
 
     assert state.findings[0].status == ADDRESSED
 
@@ -197,7 +197,7 @@ def test_a_finding_in_a_deleted_file_is_addressed():
 def test_a_finding_raised_again_stays_one_finding_with_the_new_location():
     state, _ = reviewed(suggestion())
 
-    new, addressed = update_earlier(state, [suggestion(line=5, code="x = 2")], set(),
+    new, addressed = update_earlier(state, [suggestion(line=5, code="x = 2")],
                                     {"app.py": "changed\n"}, SHOWN, LATER)  # same title, two lines on
 
     assert new == [] and addressed == []
@@ -208,7 +208,7 @@ def test_a_finding_raised_again_stays_one_finding_with_the_new_location():
 def test_a_finding_raised_again_with_a_reworded_title_is_still_the_same_finding():
     state, _ = reviewed(suggestion())
 
-    new, _ = update_earlier(state, [suggestion(line=5, title="The total adds one", code="x = 2")], set(),
+    new, _ = update_earlier(state, [suggestion(line=5, title="The total adds one", code="x = 2")],
                             {"app.py": "changed\n"}, SHOWN, LATER)
 
     assert new == [] and len(state.findings) == 1
@@ -219,23 +219,33 @@ def test_a_different_issue_nearby_is_a_new_finding():
     state, _ = reviewed(suggestion())
     other = suggestion(line=5, title="Unvalidated input reaches the query", code="x = 2")
 
-    new, _ = update_earlier(state, [other], set(), {"app.py": HEAD_TEXT}, SHOWN, LATER)
+    new, _ = update_earlier(state, [other], {"app.py": HEAD_TEXT}, SHOWN, LATER)
 
     assert new == [other]
     assert (state.findings[0].line, state.findings[0].code) == (3, "    return result")  # untouched
 
 
-def test_a_finding_whose_conversation_was_resolved_is_dismissed():
+def test_a_finding_whose_conversation_was_resolved_is_dismissed_and_reopened_if_unresolved():
     state, _ = reviewed(suggestion())
 
-    update_earlier(state, [], {("app.py", "Adds one to the total")}, {"app.py": HEAD_TEXT}, SHOWN, LATER)
-
+    assert sync_threads(state, [("app.py", "Adds one to the total", True)])
     assert (state.findings[0].status, state.findings[0].note) == (DISMISSED, "dismissed: its conversation was resolved")
+    assert not sync_threads(state, [("app.py", "Adds one to the total", True)])  # nothing new
 
+    assert sync_threads(state, [("app.py", "Adds one to the total", False)])
+    assert (state.findings[0].status, state.findings[0].note) == (OPEN, "")
+
+
+def test_resolving_doesnt_touch_applied_or_addressed_findings():
+    state, _ = reviewed(suggestion())
+    state.findings[0].status = APPLIED
+
+    assert not sync_threads(state, [("app.py", "Adds one to the total", False)])
+    assert state.findings[0].status == APPLIED
 
 def test_a_re_review_lists_open_issues_marks_new_ones_and_folds_away_the_done():
     state, _ = reviewed(suggestion(), suggestion(line=6, title="Still here", code=None))
-    update_earlier(state, [], set(), {"app.py": "y = 2\n"}, SHOWN, LATER)
+    update_earlier(state, [], {"app.py": "y = 2\n"}, SHOWN, LATER)
     state.add([suggestion(line=7, title="Brand new", code=None)], SHOWN, LATER)
     state.commit = LATER
 

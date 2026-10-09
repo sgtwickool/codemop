@@ -9,6 +9,7 @@ import pytest
 from codemop import cli
 from codemop.github.client import GitHubError, IssueComment, PullRequest, ReviewComment, ReviewThread
 from codemop.review.learned import parse_learned
+from codemop.review.schema import Severity
 from codemop.providers.base import NoReview, Usage
 from codemop.review.schema import ModelReview, ModelSuggestion
 
@@ -295,6 +296,8 @@ def github(monkeypatch):
         "default_branch": {},  # files on the default branch (the PR's are in "files")
         "threads": [], "review_comments": {}, "replies": [], "resolved": [],
         "newer_diff": None,  # what's changed since the last review, if it's an ancestor of the head
+        "statuses": [],  # (sha, state, description, target_url) for each merge check status set
+        "reactions": [],
     }
 
     async def fetch_pull_request(pr, token=None, api_url=None):
@@ -309,6 +312,12 @@ def github(monkeypatch):
 
     async def compare_commits(repo, base, head, token=None, api_url=None):
         return state["newer_diff"]
+
+    async def set_commit_status(repo, sha, status, description, target_url=None, token=None, api_url=None):
+        state["statuses"].append((sha, status, description, target_url))
+
+    async def react_to_issue_comment(repo, comment_id, reaction, token=None, api_url=None):
+        state["reactions"].append((comment_id, reaction))
 
     async def fetch_review_comment(repo, comment_id, token=None, api_url=None):
         return state["review_comments"].get(comment_id)
@@ -361,7 +370,8 @@ def github(monkeypatch):
                        ("user_permission", user_permission), ("commit_files", commit_files),
                        ("list_review_threads", list_review_threads), ("fetch_review_comment", fetch_review_comment),
                        ("reply_to_review_comment", reply_to_review_comment), ("resolve_thread", resolve_thread),
-                       ("compare_commits", compare_commits)]:
+                       ("compare_commits", compare_commits), ("set_commit_status", set_commit_status),
+                       ("react_to_issue_comment", react_to_issue_comment)]:
         monkeypatch.setattr(cli, name, fake)
     monkeypatch.setenv("GITHUB_TOKEN", "ghp_test")
     return state
@@ -855,7 +865,7 @@ def test_a_re_review_only_raises_bugs_and_security_issues(capsys, monkeypatch, f
     fake_model([])
     run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
     new_commit(github, newer_diff=NEWER)
-    fake_model([SUGGESTION.model_copy(update={"severity": "maintainability", "line": 2, "title": "Tidy"}),
+    fake_model([SUGGESTION.model_copy(update={"severity": Severity.maintainability, "line": 2, "title": "Tidy"}),
                 SUGGESTION.model_copy(update={"title": "A real bug"})])
 
     run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
@@ -910,3 +920,92 @@ def test_a_summary_too_long_for_github_gives_up_fixes_before_lines(capsys, monke
     assert finding.code is None  # no checkbox: the fix was too big to keep
     assert finding.original == ["    return result + 1"]  # but a later review can still tell if it's addressed
     assert len(summary_of(github)) <= cli.MAX_COMMENT_CHARS
+
+
+def merge_check_on(github):
+    github["default_branch"][".codemop.yml"] = "merge_check: true\n"
+
+
+def test_no_merge_check_unless_the_repository_turns_it_on(capsys, monkeypatch, fake_model, github):
+    fake_model([SUGGESTION])
+
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+
+    assert github["statuses"] == []
+
+
+def test_the_merge_check_is_pending_during_a_review_then_fails_on_a_bug(capsys, monkeypatch, fake_model, github):
+    merge_check_on(github)
+    fake_model([SUGGESTION])
+
+    code, _, _ = run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+
+    assert code == 0  # the review worked: the check is what fails
+    head = github["head"]
+    assert github["statuses"] == [
+        (head, "pending", "Reviewing the latest changes", None),
+        (head, "failure", "1 bug or security issue open: fix, or resolve the conversation and comment /codemop check",
+         "https://github.com/owner/repo/pull/7#issuecomment-100"),
+    ]
+    assert "**The merge check** (the \"CodeMop\" status) fails while bugs or security issues are open" in summary_of(github)
+
+
+def test_the_merge_check_passes_without_blocking_issues(capsys, monkeypatch, fake_model, github):
+    merge_check_on(github)
+    fake_model([SUGGESTION.model_copy(update={"severity": Severity.maintainability})])
+
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+
+    assert github["statuses"][-1][1:3] == ("success", "No blocking issues")
+
+
+def test_the_merge_check_confidence_is_the_repositorys(capsys, monkeypatch, fake_model, github):
+    github["default_branch"][".codemop.yml"] = "merge_check: true\nmerge_check_confidence: 0.95\n"
+    fake_model([SUGGESTION])  # 0.9 sure
+
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+
+    assert github["statuses"][-1][1] == "success"
+
+
+def test_the_merge_check_is_an_error_when_the_review_couldnt_be_done(capsys, monkeypatch, fake_model, github):
+    merge_check_on(github)
+    fake_model(NoReview("Anthropic rejected the API key: check ANTHROPIC_API_KEY", fatal=True))
+
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+
+    assert github["statuses"][-1][1:3] == ("error", "Couldn't review: Anthropic rejected the API key: check ANTHROPIC_API_KEY")
+
+
+def test_resolving_the_conversation_passes_the_check(capsys, monkeypatch, fake_model, github):
+    merge_check_on(github)
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+    codemop_comment(github)
+    github["threads"][0] = ReviewThread(**{**github["threads"][0].__dict__, "resolved": True})
+
+    code, _, _ = run(capsys, monkeypatch, ["check", "owner/repo#7", "--comment", "321"])
+
+    assert code == 0
+    assert github["statuses"][-1][:3] == (github["head"], "success", "No blocking issues")
+    assert github["reactions"] == [(321, "+1")]  # so whoever asked knows it ran
+
+
+def test_a_ticked_fix_commit_gets_the_check_too(capsys, monkeypatch, fake_model, github):
+    """No review runs on CodeMop's own commit, so without this a required check would wait forever"""
+    merge_check_on(github)
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+    tick_all(github)
+
+    run(capsys, monkeypatch, ["apply", "owner/repo#7", "--by", "maintainer"])
+
+    assert github["statuses"][-1][:3] == ("c0ffee0" + "0" * 33, "success", "No blocking issues")
+
+
+def test_check_does_nothing_before_the_first_review_or_when_its_off(capsys, monkeypatch, github):
+    merge_check_on(github)
+    assert run(capsys, monkeypatch, ["check", "owner/repo#7"])[0] == 0
+    github["default_branch"].clear()
+    assert run(capsys, monkeypatch, ["check", "owner/repo#7"])[0] == 0
+    assert github["statuses"] == []

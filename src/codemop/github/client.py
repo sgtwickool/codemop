@@ -465,3 +465,43 @@ async def compare_commits(
         return None
     response = await _request("GET", url, "application/vnd.github.diff", token, transport)
     return response.text if response.status_code == 200 else None
+
+
+STATUS_CONTEXT = "CodeMop"
+
+
+async def set_commit_status(
+    repo: str,
+    sha: str,
+    state: str,
+    description: str,
+    *,
+    target_url: Optional[str] = None,
+    token: Optional[str] = None,
+    api_url: str = DEFAULT_API_URL,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> None:
+    """Set CodeMop's commit status (pending, success, failure or error), which branch protection can require"""
+    url = f"{api_url.rstrip('/')}/repos/{repo}/statuses/{sha}"
+    body = {"state": state, "context": STATUS_CONTEXT, "description": description[:140]}
+    if target_url:
+        body["target_url"] = target_url
+    response = await _request("POST", url, JSON, token, transport, json=body)
+    if response.status_code != 201:
+        hint = ": the token needs statuses: write" if response.status_code in (403, 404) else ""
+        raise GitHubError(f"GitHub returned {response.status_code} setting the CodeMop status on {sha[:7]}{hint}",
+                          response.status_code)
+
+
+async def react_to_issue_comment(
+    repo: str,
+    comment_id: int,
+    reaction: str,
+    *,
+    token: Optional[str] = None,
+    api_url: str = DEFAULT_API_URL,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> None:
+    """Add a reaction (+1, eyes, ...) to a comment in a PR's conversation; best effort"""
+    url = f"{api_url.rstrip('/')}/repos/{repo}/issues/comments/{comment_id}/reactions"
+    await _request("POST", url, JSON, token, transport, json={"content": reaction})

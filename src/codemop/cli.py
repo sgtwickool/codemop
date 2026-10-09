@@ -7,6 +7,7 @@ The codemop command.
     git diff main | codemop review -       review a local diff
     codemop apply owner/repo#123           commit the fixes ticked in CodeMop's summary on it
     codemop learn owner/repo#123 --comment ID   act on a `/codemop learn <why>` reply on it
+    codemop check owner/repo#123           update its merge check (after a conversation is resolved, say)
 
 Exit status: 0 when every part of the diff was reviewed, 1 when some of it couldn't be
 (see the report), 2 for usage errors.
@@ -33,12 +34,13 @@ from codemop.github.client import (
     DEFAULT_API_URL, GitHubError, PullRequest, PullRequestRef, ReviewThread, commit_files, compare_commits,
     fetch_pr_diff, fetch_pull_request, fetch_repo_file, fetch_review_comment, list_issue_comments,
     list_review_threads, parse_pr_reference, post_issue_comment, post_review, reply_to_review_comment,
-    resolve_thread, user_permission,
+    react_to_issue_comment, resolve_thread, set_commit_status, user_permission,
 )
+from codemop.github.check import merge_status
 from codemop.github.review import parse_comment, ranked, review_payload
 from codemop.github.summary import (
-    OPEN, SummaryState, find_summary, read_state, record_applied, stored_fixes, summary_body, ticked, trusted,
-    update_earlier,
+    OPEN, SummaryState, find_summary, read_state, record_applied, stored_fixes, summary_body, sync_threads, ticked,
+    trusted, update_earlier,
 )
 from codemop.review.placement import place_suggestions
 from codemop.review.schema import Severity
@@ -139,6 +141,17 @@ def build_parser() -> argparse.ArgumentParser:
     learn.add_argument("target", help="owner/repo#123 or a pull request URL")
     learn.add_argument("--comment", type=int, required=True, metavar="ID", help="the reply's id")
     learn.add_argument("--github-api-url", default=DEFAULT_API_URL, help="for GitHub Enterprise Server")
+
+    check = commands.add_parser(
+        "check", help="update CodeMop's merge check on a pull request",
+        description="Set CodeMop's merge check (a commit status, for repositories with `merge_check: true` in "
+                    f"{CONFIG_FILE}) on a pull request's latest commit, from its summary and which of CodeMop's "
+                    "conversations are resolved. Needs a token with statuses: write.",
+    )
+    check.add_argument("target", help="owner/repo#123 or a pull request URL")
+    check.add_argument("--comment", type=int, metavar="ID",
+                       help="the `/codemop check` comment that asked for it, to react to so its author knows it ran")
+    check.add_argument("--github-api-url", default=DEFAULT_API_URL, help="for GitHub Enterprise Server")
     return parser
 
 
@@ -289,6 +302,9 @@ async def run_review(args) -> int:
         print(f"codemop: {e}", file=sys.stderr)
         return 2
 
+    gate = args.post and config.merge_check
+    if gate:  # so the PR can't be merged while it's being reviewed
+        await set_status(pr, head_sha, "pending", "Reviewing the latest changes", token, args.github_api_url)
     report = await review_diff(
         diff, model,
         chunk_tokens=args.chunk_tokens or config.chunk_tokens,
@@ -311,6 +327,8 @@ async def run_review(args) -> int:
     if args.post:
         if report.stopped:
             print(f"codemop: not posting a review: {report.stopped}", file=sys.stderr)
+            if gate:
+                await set_status(pr, head_sha, "error", f"Couldn't review: {report.stopped}", token, args.github_api_url)
             return 1
         try:
             # A fork's branch can't be committed to: no checklist, and no `/codemop learn` there
@@ -319,11 +337,17 @@ async def run_review(args) -> int:
                              token=token, api_url=args.github_api_url,
                              max_comments=args.max_comments or config.max_comments,
                              checklist=args.checklist and same_repo, teachable=same_repo,
-                             since=since, less_important=less_important)
+                             since=since, less_important=less_important, merge_check=gate)
         except GitHubError as e:
             print(f"codemop: {e}", file=sys.stderr)
+            if gate:
+                await set_status(pr, head_sha, "error", f"Couldn't post the review: {e}", token, args.github_api_url)
             return 1
         print(f"Posted the review: {url}", file=sys.stderr if args.json else sys.stdout)
+        if gate:
+            result, description = merge_status(state, config.merge_check_confidence, report.too_large)
+            if not await set_status(pr, head_sha, result, description, token, args.github_api_url, url):
+                return 1
     # Too large to review is a deliberate limit, not a failure
     return 0 if report.complete or report.too_large else 1
 
@@ -337,7 +361,8 @@ def only_files_in(diff: str, pr_diff: str) -> str:
 
 async def post(pr: PullRequestRef, pull: PullRequest, report: ReviewReport, state: SummaryState,
                summary_id: Optional[int], threads: List[ReviewThread], pr_diff: str, *, token: str, api_url: str,
-               max_comments: int, checklist: bool, teachable: bool, since: Optional[str], less_important: int) -> str:
+               max_comments: int, checklist: bool, teachable: bool, since: Optional[str], less_important: int,
+               merge_check: bool = False) -> str:
     """
     Bring the summary's findings up to date, post the new issues as a review, then create or
     update the summary comment, last, so it only says a commit was reviewed once everything is
@@ -349,10 +374,10 @@ async def post(pr: PullRequestRef, pull: PullRequest, report: ReviewReport, stat
     shown = {f.path: file_lines(f) for f in parse_diff(pr_diff)}
     ours = [t for t in threads if trusted(t.first_comment_by_bot, t.first_comment_association)
             and parse_comment(t.first_comment_body)]
-    resolved = {(t.path, parse_comment(t.first_comment_body)[1]) for t in ours if t.resolved}
+    sync_threads(state, conversations(threads))
     paths = {f.path for f in state.open if f.found_in != head and f.original}
     head_files = {path: await fetch_repo_file(pull.head_repo, path, ref=head, **api) for path in paths}
-    new, addressed = update_earlier(state, report.suggestions, resolved, head_files, shown, head)
+    new, addressed = update_earlier(state, report.suggestions, head_files, shown, head)
     state.add(new, shown, head)
     state.commit = head
 
@@ -366,7 +391,8 @@ async def post(pr: PullRequestRef, pull: PullRequest, report: ReviewReport, stat
                 raise
             rejected = True  # the summary lists them all anyway
     options = dict(review_url=review_url, inline_rejected=rejected, checklist=checklist, teachable=teachable,
-                   since=since, less_important=less_important, not_commented=len(new) - len(inline))
+                   since=since, less_important=less_important, not_commented=len(new) - len(inline),
+                   merge_check=merge_check)
     cost = format_cost(report.cost, report.usage)
     for finding in state.findings:
         if finding.status != OPEN:  # done: its fix and lines aren't needed any more
@@ -393,6 +419,77 @@ async def post(pr: PullRequestRef, pull: PullRequest, report: ReviewReport, stat
         if thread:
             await resolve_thread(thread.id, **api)
     return url
+
+
+def conversations(threads: List[ReviewThread]) -> List[Tuple[str, str, bool]]:
+    """(path, title, resolved) for each of the threads CodeMop started"""
+    found = []
+    for t in threads:
+        parsed = parse_comment(t.first_comment_body) if trusted(t.first_comment_by_bot, t.first_comment_association) else None
+        if parsed:
+            found.append((t.path, parsed[1], t.resolved))
+    return found
+
+
+async def set_status(pr: PullRequestRef, sha: str, state: str, description: str, token: str, api_url: str,
+                     target_url: Optional[str] = None) -> bool:
+    """Set the merge check's status; whether that worked (it's said why, if not)"""
+    try:
+        await set_commit_status(pr.repo, sha, state, description, target_url=target_url, token=token, api_url=api_url)
+        return True
+    except GitHubError as e:
+        print(f"codemop: couldn't set the merge check: {e}", file=sys.stderr)
+        return False
+
+
+async def repo_settings(pr: PullRequestRef, token: str, api_url: str) -> RepoConfig:
+    """The repository's .codemop.yml from its default branch (the defaults if it's missing or broken)"""
+    text = await fetch_repo_file(pr.repo, CONFIG_FILE, token=token, api_url=api_url)
+    try:
+        return parse_config(text, source=f"{pr.repo}/{CONFIG_FILE}") if text else RepoConfig()
+    except ConfigError as e:
+        print(f"codemop: using the default settings: {e}", file=sys.stderr)
+        return RepoConfig()
+
+
+async def check_after_change(pr: PullRequestRef, sha: str, api: dict) -> bool:
+    """
+    After a change that doesn't get a review (CodeMop's own commit, or a conversation resolved),
+    set the merge check on `sha` from the summary and the conversations as they are now
+    """
+    config = await repo_settings(pr, **api)
+    if not config.merge_check:
+        return True
+    summary = find_summary(await list_issue_comments(pr, **api))
+    state = read_state(summary.body if summary else None)
+    if not state.kept:
+        return True  # not reviewed yet: the review will set it
+    sync_threads(state, conversations(await list_review_threads(pr, **api)))
+    result, description = merge_status(state, config.merge_check_confidence)
+    return await set_status(pr, sha, result, description, **api)
+
+
+async def run_check(args) -> int:
+    """Update the merge check on a PR's latest commit, from its summary and conversations"""
+    try:
+        pr = parse_pr_reference(args.target)
+    except ValueError as e:
+        print(f"codemop: {e}", file=sys.stderr)
+        return 2
+    token = github_token()
+    if not token:
+        print("codemop: check needs a GitHub token: set GITHUB_TOKEN (or `gh auth login`)", file=sys.stderr)
+        return 2
+    api = dict(token=token, api_url=args.github_api_url)
+    try:
+        pull = await fetch_pull_request(pr, **api)
+        ok = await check_after_change(pr, pull.head_sha, api)
+        if args.comment and ok:
+            await react_to_issue_comment(pr.repo, args.comment, "+1", **api)
+        return 0 if ok else 1
+    except GitHubError as e:
+        print(f"codemop: {e}", file=sys.stderr)
+        return 1
 
 
 async def load_settled(pr: Optional[PullRequestRef], token: Optional[str], api_url: str,
@@ -485,6 +582,7 @@ async def run_learn(args) -> int:
                     raise
         if thread:
             await resolve_thread(thread.id, **api)
+        await check_after_change(pr, commit, api)  # no review runs on CodeMop's own commit
         await reply(f"Learned: I've added this to `{LEARNED_FILE}` on this branch ({commit[:7]}) and resolved this "
                     "conversation. Once this PR is merged, I won't raise it again in this repository. If that's too "
                     "broad, edit or delete the note in that file.")
@@ -545,6 +643,8 @@ async def run_apply(args) -> int:
         # their ids, so the marks still go on the right ones)
         latest = find_summary(await list_issue_comments(pr, **api)) or summary
         await post_issue_comment(pr, record_applied(latest.body, commit, applied, skipped), comment_id=latest.id, **api)
+        if applied:
+            await check_after_change(pr, commit, api)  # no review runs on CodeMop's own commit
     except GitHubError as e:
         print(f"codemop: {e}", file=sys.stderr)
         return 1
@@ -582,6 +682,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return asyncio.run(run_apply(args))
     if args.command == "learn":
         return asyncio.run(run_learn(args))
+    if args.command == "check":
+        return asyncio.run(run_check(args))
     return 2
 
 
