@@ -1,0 +1,32 @@
+name: CodeMop
+
+# CodeMop reviewing its own pull requests, with the action as it is on master. Also runs by
+# hand (Actions → CodeMop → Run workflow) for any PR number.
+on:
+  pull_request_target:
+    types: [ opened, synchronize, reopened, ready_for_review ]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: codemop-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Dependabot's runs don't get Actions secrets, so they'd have no key
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+    # Never check out the PR here: this job holds the API key (see the README)
+    - uses: sgtwickool/codemop@master
+      with:
+        api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+        pull-request: ${{ inputs.pr && format('{0}#{1}', github.repository, inputs.pr) || '' }}
