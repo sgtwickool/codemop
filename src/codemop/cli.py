@@ -28,9 +28,9 @@ from codemop.config import (
 )
 from codemop.github.client import (
     DEFAULT_API_URL, GitHubError, PullRequestRef, fetch_pr_diff, fetch_pull_request, fetch_repo_file,
-    fetch_review_bodies, parse_pr_reference, post_review,
+    list_issue_comments, parse_pr_reference, post_issue_comment, post_review,
 )
-from codemop.github.review import already_reviewed, review_payload
+from codemop.github.review import find_summary, review_payload, reviewed_commit, split_inline, summary_body
 from codemop.providers import DEFAULT_MODELS, PROVIDERS, create_model
 from codemop.providers.base import DEFAULT_CHUNK_TOKENS, Usage
 from codemop.providers.pricing import PRICES_AS_OF
@@ -212,7 +212,7 @@ async def run_review(args) -> int:
         print(f"codemop: {e}", file=sys.stderr)
         return 2 if isinstance(e, ConfigError) else 1
 
-    head_sha = None
+    head_sha = summary = None
     if pr is None:
         diff, target = sys.stdin.read(), "stdin"
     else:
@@ -221,8 +221,8 @@ async def run_review(args) -> int:
             if args.post:
                 # The commit the review's line numbers will refer to, read before the diff
                 head_sha = (await fetch_pull_request(pr, token=token, api_url=args.github_api_url)).head_sha
-                reviews = await fetch_review_bodies(pr, token=token, api_url=args.github_api_url)
-                if already_reviewed(reviews, head_sha):
+                summary = find_summary(await list_issue_comments(pr, token=token, api_url=args.github_api_url))
+                if reviewed_commit(summary) == head_sha:
                     print(f"CodeMop has already reviewed {target} at {head_sha[:7]}; nothing to do")
                     return 0
             diff = await fetch_pr_diff(pr, token=token, api_url=args.github_api_url)
@@ -251,7 +251,8 @@ async def run_review(args) -> int:
             print(f"codemop: not posting a review: {report.stopped}", file=sys.stderr)
             return 1
         try:
-            url = await post(pr, report, head_sha, token, args.max_comments or config.max_comments, args.github_api_url)
+            url = await post(pr, report, head_sha, summary.id if summary else None, token,
+                             args.max_comments or config.max_comments, args.github_api_url)
         except GitHubError as e:
             print(f"codemop: {e}", file=sys.stderr)
             return 1
@@ -260,19 +261,29 @@ async def run_review(args) -> int:
     return 0 if report.complete or report.too_large else 1
 
 
-async def post(pr: PullRequestRef, report: ReviewReport, head_sha: str, token: str, max_comments: int,
-               api_url: str) -> str:
-    """Post the review; if GitHub won't take the inline comments, the summary alone (it lists them all)"""
-    payload = review_payload(report, head_sha, format_cost(report.cost, report.usage), max_comments)
+async def post(pr: PullRequestRef, report: ReviewReport, head_sha: str, summary_id: Optional[int], token: str,
+               max_comments: int, api_url: str) -> str:
+    """
+    Post the inline comments as a review, then create or update the summary comment, last, so
+    it only says a commit was reviewed once everything is posted. Returns the summary's URL.
+    """
+    inline, not_inline = split_inline(report, max_comments)
+    review_url, rejected = None, False
+    if inline:
+        try:
+            review_url = await post_review(pr, review_payload(inline, head_sha), token=token, api_url=api_url)
+        except GitHubError as e:
+            if e.status != 422:
+                raise
+            rejected = True  # the summary lists them all anyway
+    body = summary_body(report, inline, not_inline, format_cost(report.cost, report.usage), head_sha,
+                        review_url, rejected)
     try:
-        return await post_review(pr, payload, token=token, api_url=api_url)
+        return await post_issue_comment(pr, body, comment_id=summary_id, token=token, api_url=api_url)
     except GitHubError as e:
-        if e.status != 422 or not payload["comments"]:
+        if summary_id is None or e.status != 404:
             raise
-    payload["body"] += ("\n\n⚠️ GitHub didn't accept the inline comments (has the PR changed since it was "
-                        "reviewed?), so they're only listed above.")
-    payload["comments"] = []
-    return await post_review(pr, payload, token=token, api_url=api_url)
+        return await post_issue_comment(pr, body, token=token, api_url=api_url)  # it was deleted meanwhile
 
 
 def main(argv: Optional[List[str]] = None) -> int:

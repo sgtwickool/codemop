@@ -189,7 +189,7 @@ core package. This phase includes what makes it worth choosing over Claude's own
 
 ### Fixes you can apply
 
-- [ ] One summary comment, edited in place on every run, listing the findings as a checklist
+- [ ] One summary comment, edited in place on every run, listing the findings as a checklist (edited in place since 2026-10-09; the checkboxes come with ticking to commit)
 - [ ] Grouped fixes: related findings (the same mistake in several places, or one fix that spans files) become one item with one fix
 - [ ] Tick items and CodeMop commits those fixes to the PR branch as one commit (an `issue_comment` edited trigger; only from people with write access). Fork branches can't be pushed to, so there it falls back to suggestion blocks
 - [ ] Check every fix still applies to the current code before committing it, and say so when one doesn't
