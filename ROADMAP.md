@@ -4,6 +4,8 @@ CodeMop reviews pull requests with AI and suggests fixes. The goal is a tool tha
 useful day to day and that anyone can adopt in a couple of minutes, with no server to run.
 
 This roadmap replaces the original scope documents in `docs/` (see [Decisions](#decisions)).
+[`docs/product.md`](docs/product.md) is the product design: who it's for, the rules it doesn't
+break, and how ideas are judged.
 Phases are worked through in order. Each phase has a "done when" line, so it's clear when
 to move on.
 
@@ -241,7 +243,8 @@ core package. This phase includes what makes it worth choosing over Claude's own
 
 ## Phase 6: Design ideas
 
-Not yet planned in detail; each needs a design pass before it becomes a phase.
+Not yet planned in detail; each needs a design pass before it becomes a phase. The
+[product design](docs/product.md) judges each against the review loop and proposes an order.
 
 - **Tiered review with a pre-judge** (revived 2026-10-09: the eval measured models on the same
   diff-only review, where routing saves about a cent; between a 2¢ diff review and an agentic
