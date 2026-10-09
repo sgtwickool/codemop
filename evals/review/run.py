@@ -274,9 +274,10 @@ class Runner:
             status, failure = "ok", None
             if not report.complete:
                 reasons = " | ".join(f.reason for f in report.failed)
-                if "declined" in reasons:
+                kinds = {f.kind for f in report.failed}
+                if "refused" in kinds:
                     failure = "refusal"  # the user gets no review: graded as a failure
-                elif "cut off" in reasons:
+                elif "cut_off" in kinds:
                     status, failure = "truncated", "max_tokens"
                 else:
                     return self.error(case, rep, "harness_or_serving", reasons, model=served or [requested], usage=usage)

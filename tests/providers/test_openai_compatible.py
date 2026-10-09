@@ -110,16 +110,17 @@ async def test_gives_up_after_the_repair_attempt():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("reply, expected", [
-    (completion("", refusal="I can't help with that"), "declined"),
-    (completion("", finish_reason="content_filter"), "declined"),
-    (completion('{"suggestions": [', finish_reason="length"), "cut off at 16000 output tokens"),
+@pytest.mark.parametrize("reply, expected, kind", [
+    (completion("", refusal="I can't help with that"), "declined", "refused"),
+    (completion("", finish_reason="content_filter"), "declined", "refused"),
+    (completion('{"suggestions": [', finish_reason="length"), "cut off at 16000 output tokens", "cut_off"),
 ])
-async def test_non_answers_say_why(reply, expected):
+async def test_non_answers_say_why(reply, expected, kind):
     with pytest.raises(NoReview) as error:
         await model(FakeAPI((200, reply))).review("i", "d")
 
     assert expected in error.value.reason
+    assert error.value.kind == kind
     assert not error.value.fatal
 
 

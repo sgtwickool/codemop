@@ -4,10 +4,10 @@ that says what was reviewed and what wasn't, and why.
 """
 import asyncio
 from dataclasses import dataclass, field
-from typing import List, Optional, Sequence
+from typing import List, Literal, Optional, Sequence
 
 from codemop.config import DEFAULT_MIN_CONFIDENCE
-from codemop.providers.base import NoReview, ReviewModel, Usage
+from codemop.providers.base import NoReview, NoReviewKind, ReviewModel, Usage
 from codemop.review.chunks import DEFAULT_IGNORED_PATHS, Skipped, plan_chunks
 from codemop.review.diff import parse_diff
 from codemop.review.placement import Unplaced, place_suggestions
@@ -21,6 +21,7 @@ DEFAULT_CONCURRENCY = 4
 class FailedChunk:
     paths: List[str]
     reason: str
+    kind: NoReviewKind | Literal["not_reviewed"] = "error"  # not_reviewed: skipped after a fatal error
 
 
 @dataclass
@@ -60,13 +61,13 @@ async def review_diff(
         async with limit:
             paths = [file.path for file in chunk.files]
             if report.stopped:
-                report.failed.append(FailedChunk(paths, f"not reviewed: {report.stopped}"))
+                report.failed.append(FailedChunk(paths, f"not reviewed: {report.stopped}", "not_reviewed"))
                 return
             try:
                 review, usage = await model.review(SYSTEM_PROMPT, chunk.text)
             except NoReview as e:
                 report.usage += e.usage
-                report.failed.append(FailedChunk(paths, e.reason))
+                report.failed.append(FailedChunk(paths, e.reason, e.kind))
                 if e.fatal and not report.stopped:
                     report.stopped = e.reason
                 return

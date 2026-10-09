@@ -28,10 +28,10 @@ from codemop.config import (
 from codemop.github.client import (
     DEFAULT_API_URL, GitHubError, PullRequestRef, fetch_pr_diff, fetch_repo_file, parse_pr_reference,
 )
-from codemop.providers.pricing import PRICES_AS_OF
 from codemop.providers import DEFAULT_MODELS, PROVIDERS, create_model
-from codemop.review.chunks import DEFAULT_IGNORED_PATHS
 from codemop.providers.base import DEFAULT_CHUNK_TOKENS
+from codemop.providers.pricing import PRICES_AS_OF
+from codemop.review.chunks import DEFAULT_IGNORED_PATHS
 from codemop.review.pipeline import ReviewReport, review_diff
 
 
@@ -135,18 +135,14 @@ def report_text(report: ReviewReport, target: str, config_source: str) -> str:
         lines.append("")
 
     notes: List[str] = []
-    if report.stopped:
-        # The chunk that hit the fatal error, and those not started after it, share one note
-        stopped_paths = [
-            path for failed in report.failed
-            if failed.reason in (report.stopped, f"not reviewed: {report.stopped}")
-            for path in failed.paths
-        ]
-        notes.append(f"Stopped early: {report.stopped} (not reviewed: {', '.join(stopped_paths)})")
+    # The chunk that hit the fatal error, and those not started after it, share one note
+    stopped = [f for f in report.failed if report.stopped and (f.kind == "not_reviewed" or f.reason == report.stopped)]
+    if stopped:
+        paths = ", ".join(path for failed in stopped for path in failed.paths)
+        notes.append(f"Stopped early: {report.stopped} (not reviewed: {paths})")
     for failed in report.failed:
-        if report.stopped and failed.reason in (report.stopped, f"not reviewed: {report.stopped}"):
-            continue
-        notes.append(f"Not reviewed ({', '.join(failed.paths)}): {failed.reason}")
+        if failed not in stopped:
+            notes.append(f"Not reviewed ({', '.join(failed.paths)}): {failed.reason}")
     for skipped in report.skipped:
         notes.append(f"Skipped {skipped.path}: {skipped.reason}")
     if report.unplaced:

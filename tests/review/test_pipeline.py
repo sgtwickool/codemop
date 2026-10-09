@@ -7,7 +7,7 @@ from codemop.providers.base import NoReview, Usage
 from codemop.review.chunks import estimate_tokens
 from codemop.review.diff import parse_diff
 from codemop.review.pipeline import review_diff
-from codemop.review.prompt import SYSTEM_PROMPT, render_file
+from codemop.review.prompt import SYSTEM_PROMPT, render_file, render_hunks
 from codemop.review.schema import ModelReview, ModelSuggestion
 
 
@@ -69,6 +69,26 @@ async def test_suggestions_must_be_for_files_in_their_own_chunk(sample_diff):
 
 
 @pytest.mark.asyncio
+async def test_suggestions_must_be_on_hunks_in_their_own_chunk(sample_diff):
+    """When a file is split across chunks, a model can only point at the hunks it was shown"""
+    files = parse_diff(sample_diff)
+    service = next(f for f in files if f.path == "app/service.py")
+    largest_hunk = max(estimate_tokens(render_hunks(service, [h])) for h in service.hunks)
+
+    class AnswersEveryChunk(FakeModel):
+        async def review(self, instructions, diff_text):
+            self.calls.append((instructions, diff_text))
+            # Line 13 is in the first hunk and line 43 in the second, whichever chunk this is
+            return ModelReview(suggestions=[suggestion("app/service.py", 13), suggestion("app/service.py", 43)]), Usage()
+
+    report = await review_diff(sample_diff, AnswersEveryChunk({}), chunk_tokens=largest_hunk)
+
+    assert report.chunks == 2  # one of service.py's hunks each (new_module.py fits in the second)
+    assert sorted(s.line for s in report.suggestions) == [13, 43]  # each placed once, from its own chunk
+    assert sorted(u.suggestion.line for u in report.unplaced) == [13, 43]  # and set aside from the other
+
+
+@pytest.mark.asyncio
 async def test_low_confidence_suggestions_are_counted_not_kept(sample_diff):
     model = FakeModel({"app/service.py": [suggestion("app/service.py", 12, 0.3), suggestion("app/service.py", 13, 0.8)]})
 
@@ -83,13 +103,13 @@ async def test_a_failed_chunk_is_reported_and_the_rest_still_reviewed(sample_dif
     files = parse_diff(sample_diff)
     service = next(f for f in files if f.path == "app/service.py")
     model = FakeModel({
-        "app/service.py": NoReview("declined", usage=Usage(input_tokens=50)),
+        "app/service.py": NoReview.refused("fake/model", Usage(input_tokens=50)),
         "app/new_module.py": [suggestion("app/new_module.py", 2)],
     })
 
     report = await review_diff(sample_diff, model, chunk_tokens=estimate_tokens(render_file(service)))
 
-    assert [(f.paths, f.reason) for f in report.failed] == [(["app/service.py"], "declined")]
+    assert [(f.paths, f.kind) for f in report.failed] == [(["app/service.py"], "refused")]
     assert [s.file_path for s in report.suggestions] == ["app/new_module.py"]
     assert not report.complete
     assert report.usage.input_tokens == 150
@@ -105,7 +125,9 @@ async def test_a_fatal_error_stops_the_chunks_not_yet_started(sample_diff):
 
     assert report.stopped == "rejected API key"
     assert len(model.calls) == 1
-    assert [f.reason for f in report.failed] == ["rejected API key", "not reviewed: rejected API key"]
+    assert [(f.reason, f.kind) for f in report.failed] == [
+        ("rejected API key", "error"), ("not reviewed: rejected API key", "not_reviewed")
+    ]
 
 
 @pytest.mark.asyncio

@@ -18,7 +18,6 @@ class Settings(BaseSettings):
     # Defaults are the safe choice for a deployment; .env.example sets up local development
     APP_ENV: str = "production"
     DEBUG: bool = False
-    PORT: int = 8000
 
     # GitHub Webhook Configuration
     GITHUB_WEBHOOK_SECRET: str = ""
