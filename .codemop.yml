@@ -1,0 +1,6 @@
+# How CodeMop reviews this repository's pull requests (see the README's "Configuring reviews").
+
+# Block merging while bugs or security issues CodeMop is sure of are open. The "CodeMop"
+# status is a required check on master; set this to false to merge past it if it ever
+# gets in the way.
+merge_check: true
