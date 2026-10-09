@@ -1,350 +1,100 @@
 """
 Integration tests for error handling scenarios.
 """
-import pytest
-import json
 from unittest.mock import AsyncMock, patch
 
-from tests.helpers import SAMPLE_DIFF, FakeReviewModel
+from tests.helpers import AUTH_HEADERS, SAMPLE_DIFF, FakeReviewModel, pr_event
 
 
 class TestErrorHandlingIntegration:
     """Integration tests for error handling."""
 
-    def test_database_connection_failure_webhook(self, client):
-        """Test webhook handling when database connection fails."""
-        payload = {
-            "action": "opened",
-            "number": 123,
-            "pull_request": {
-                "title": "Test PR",
-                "user": {"login": "testuser"},
-                "head": {"ref": "test-branch"},
-                "html_url": "https://github.com/testuser/testrepo/pull/123",
-                "diff_url": "https://github.com/testuser/testrepo/pull/123.diff"
-            },
-            "repository": {
-                "name": "testrepo",
-                "full_name": "testuser/testrepo"
-            }
-        }
-        
-        body = json.dumps(payload)
-        from app.config import settings
-        secret = settings.GITHUB_WEBHOOK_SECRET.encode()
-        import hmac
-        import hashlib
-        signature = "sha256=" + hmac.new(secret, body.encode(), hashlib.sha256).hexdigest()
-        
-        # Mock database to raise connection error
-        with patch('app.services.pr_service.pr_service.create_pr') as mock_create_pr:
-            mock_create_pr.side_effect = Exception("Database connection failed")
-            
-            response = client.post(
-                "/api/v1/github/webhook",
-                content=body,
-                headers={
-                    "X-GitHub-Event": "pull_request",
-                    "X-Hub-Signature-256": signature,
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            # Should return 500 error
-            assert response.status_code == 500
-            data = response.json()
-            assert "detail" in data
-            assert "Database error" in data["detail"]
+    def test_database_connection_failure_webhook(self, post_webhook):
+        """A database failure while storing the PR is a 500 that says so."""
+        with patch('app.services.pr_service.pr_service.create_pr', side_effect=Exception("Database connection failed")):
+            response = post_webhook(pr_event())
 
-    def test_network_failure_ai_api(self, client):
-        """Test handling of AI API network failures."""
-        payload = {
-            "action": "opened",
-            "number": 456,
-            "pull_request": {
-                "title": "Test PR with AI failure",
-                "user": {"login": "testuser"},
-                "head": {"ref": "test-branch"},
-                "html_url": "https://github.com/testuser/testrepo/pull/456",
-                "diff_url": "https://github.com/testuser/testrepo/pull/456.diff"
-            },
-            "repository": {
-                "name": "testrepo",
-                "full_name": "testuser/testrepo"
-            }
-        }
-        
-        body = json.dumps(payload)
-        from app.config import settings
-        secret = settings.GITHUB_WEBHOOK_SECRET.encode()
-        import hmac
-        import hashlib
-        signature = "sha256=" + hmac.new(secret, body.encode(), hashlib.sha256).hexdigest()
-        
-        # Mock AI analysis to fail
+        assert response.status_code == 500
+        assert "Database error" in response.json()["detail"]
+
+    def test_network_failure_ai_api(self, post_webhook):
+        """Analysis runs after the response, so an AI failure can't break the webhook."""
         failing_ai = AsyncMock(side_effect=Exception("AI API network timeout"))
         with patch('app.services.pr_analysis.fetch_pr_diff', new=AsyncMock(return_value=SAMPLE_DIFF)), \
              patch('app.services.pr_analysis.review_model', return_value=FakeReviewModel(failing_ai)):
-            
-            response = client.post(
-                "/api/v1/github/webhook",
-                content=body,
-                headers={
-                    "X-GitHub-Event": "pull_request",
-                    "X-Hub-Signature-256": signature,
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            # Analysis runs after the response, so its failure can't break the webhook
-            assert response.status_code == 200
-            data = response.json()
-            assert data["status"] == "success"
-            assert data["analysis"] == "queued"
-            failing_ai.assert_awaited_once()
+            response = post_webhook(pr_event(number=456, title="Test PR with AI failure"))
 
-    def test_network_failure_github_diff(self, client):
-        """Test handling of GitHub diff fetch failures."""
-        payload = {
-            "action": "opened",
-            "number": 789,
-            "pull_request": {
-                "title": "Test PR with GitHub failure",
-                "user": {"login": "testuser"},
-                "head": {"ref": "test-branch"},
-                "html_url": "https://github.com/testuser/testrepo/pull/789",
-                "diff_url": "https://github.com/testuser/testrepo/pull/789.diff"
-            },
-            "repository": {
-                "name": "testrepo",
-                "full_name": "testuser/testrepo"
-            }
-        }
-        
-        body = json.dumps(payload)
-        from app.config import settings
-        secret = settings.GITHUB_WEBHOOK_SECRET.encode()
-        import hmac
-        import hashlib
-        signature = "sha256=" + hmac.new(secret, body.encode(), hashlib.sha256).hexdigest()
-        
-        # Mock GitHub diff fetch to fail
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["analysis"] == "queued"
+        failing_ai.assert_awaited_once()
+
+    def test_network_failure_github_diff(self, post_webhook):
+        """Analysis runs after the response, so a failed diff fetch can't break the webhook."""
         failing_fetch = AsyncMock(side_effect=Exception("GitHub API unavailable"))
         with patch('app.services.pr_analysis.fetch_pr_diff', new=failing_fetch):
-            
-            response = client.post(
-                "/api/v1/github/webhook",
-                content=body,
-                headers={
-                    "X-GitHub-Event": "pull_request",
-                    "X-Hub-Signature-256": signature,
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            # Analysis runs after the response, so its failure can't break the webhook
-            assert response.status_code == 200
-            data = response.json()
-            assert data["status"] == "success"
-            assert data["analysis"] == "queued"
-            failing_fetch.assert_awaited_once()
+            response = post_webhook(pr_event(number=789, title="Test PR with GitHub failure"))
 
-    def test_invalid_pr_data_missing_fields(self, client):
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["analysis"] == "queued"
+        failing_fetch.assert_awaited_once()
+
+    def test_invalid_pr_data_missing_fields(self, post_webhook):
         """PR events without the data needed to store the PR are rejected, not a 500."""
-        # Minimal payload with missing fields
-        payload = {
-            "action": "opened",
-            "number": 999,
-            "pull_request": {},  # Empty PR data
-            "repository": {}     # Empty repo data
-        }
-        
-        body = json.dumps(payload)
-        from app.config import settings
-        secret = settings.GITHUB_WEBHOOK_SECRET.encode()
-        import hmac
-        import hashlib
-        signature = "sha256=" + hmac.new(secret, body.encode(), hashlib.sha256).hexdigest()
-        
-        response = client.post(
-            "/api/v1/github/webhook",
-            content=body,
-            headers={
-                "X-GitHub-Event": "pull_request",
-                "X-Hub-Signature-256": signature,
-                "Content-Type": "application/json"
-            }
-        )
-        
+        response = post_webhook({"action": "opened", "number": 999, "pull_request": {}, "repository": {}})
+
         assert response.status_code == 422
         assert "missing required fields" in response.json()["detail"]
 
-    def test_invalid_suggestion_data(self, client):
-        """Test handling of invalid suggestion data."""
-        # First create a PR
-        payload = {
-            "action": "opened",
-            "number": 111,
-            "pull_request": {
-                "title": "Test PR",
-                "user": {"login": "testuser"},
-                "head": {"ref": "test-branch"},
-                "html_url": "https://github.com/testuser/testrepo/pull/111",
-                "diff_url": "https://github.com/testuser/testrepo/pull/111.diff"
-            },
-            "repository": {
-                "name": "testrepo",
-                "full_name": "testuser/testrepo"
-            }
-        }
-        
-        body = json.dumps(payload)
-        from app.config import settings
-        secret = settings.GITHUB_WEBHOOK_SECRET.encode()
-        import hmac
-        import hashlib
-        signature = "sha256=" + hmac.new(secret, body.encode(), hashlib.sha256).hexdigest()
-        
-        response = client.post(
-            "/api/v1/github/webhook",
-            content=body,
-            headers={
-                "X-GitHub-Event": "pull_request",
-                "X-Hub-Signature-256": signature,
-                "Content-Type": "application/json"
-            }
-        )
-        
-        assert response.status_code == 200
-        pr_data = response.json()
-        pr_id = pr_data["database_id"]
-        
-        # Now test suggestions endpoint with this PR
-        response = client.get(
-            f"/api/v1/pr/{pr_id}/suggestions",
-            headers={
-                "Authorization": "Bearer test_api_key"
-            }
-        )
-        
-        # Should return 200 even with no suggestions
-        assert response.status_code == 200
-        data = response.json()
-        assert data["suggestions_count"] == 0
+    def test_invalid_suggestion_data(self, client, post_webhook):
+        """A stored PR with no suggestions yet returns an empty list, not an error."""
+        pr_id = post_webhook(pr_event(number=111)).json()["database_id"]
 
-    def test_malformed_json_webhook(self, client, github_signature):
-        """Test handling of malformed JSON in webhook."""
-        response = client.post(
-            "/api/v1/github/webhook",
-            content="{invalid json",
-            headers={
-                "X-GitHub-Event": "pull_request",
-                "X-Hub-Signature-256": github_signature("{invalid json"),
-                "Content-Type": "application/json"
-            }
-        )
-        
-        # Should return 422 (Unprocessable Entity)
+        response = client.get(f"/api/v1/pr/{pr_id}/suggestions", headers=AUTH_HEADERS)
+
+        assert response.status_code == 200
+        assert response.json()["suggestions_count"] == 0
+
+    def test_malformed_json_webhook(self, post_webhook):
+        response = post_webhook("{invalid json")
+
         assert response.status_code == 422
-        data = response.json()
-        assert "detail" in data
+        assert "detail" in response.json()
 
     def test_malformed_json_suggestions(self, client):
-        """Test handling of malformed JSON in suggestions endpoint."""
+        """A JSON content type on a GET doesn't matter: an unknown PR is a 404."""
         response = client.get(
-            "/api/v1/pr/999/suggestions",
-            headers={
-                "Authorization": "Bearer test_api_key",
-                "Content-Type": "application/json"
-            }
+            "/api/v1/pr/999/suggestions", headers={**AUTH_HEADERS, "Content-Type": "application/json"}
         )
-        
-        # Should return 404 (PR not found) not JSON error
+
         assert response.status_code == 404
 
     def test_internal_server_error_handling(self, client):
-        """Test handling of unexpected internal server errors."""
-        # Try to access a non-existent endpoint
+        """An unknown endpoint is a 404 with a detail message."""
         response = client.get("/api/v1/nonexistent")
-        
-        # Should return 404
+
         assert response.status_code == 404
-        data = response.json()
-        assert "detail" in data
+        assert "detail" in response.json()
 
     def test_error_response_format(self, client):
-        """Test that error responses have consistent format."""
+        """Error responses all have a string `detail`."""
         error_scenarios = [
-            {
-                "endpoint": "/api/v1/pr/999/suggestions",
-                "method": "GET",
-                "headers": {"Authorization": "Bearer test_api_key"},
-                "expected_status": 404
-            },
-            {
-                "endpoint": "/api/v1/pr/999/suggestions",
-                "method": "GET",
-                "headers": {},
-                "expected_status": 401
-            },
-            {
-                "endpoint": "/api/v1/nonexistent",
-                "method": "GET",
-                "headers": {},
-                "expected_status": 404
-            }
+            ("/api/v1/pr/999/suggestions", AUTH_HEADERS, 404),
+            ("/api/v1/pr/999/suggestions", {}, 401),
+            ("/api/v1/nonexistent", {}, 404),
         ]
-        
-        for scenario in error_scenarios:
-            if scenario["method"] == "GET":
-                response = client.get(scenario["endpoint"], headers=scenario["headers"])
-            else:
-                response = client.post(scenario["endpoint"], headers=scenario["headers"])
-            
-            assert response.status_code == scenario["expected_status"]
-            data = response.json()
-            assert "detail" in data
-            assert isinstance(data["detail"], str)
 
-    def test_error_recovery_after_failure(self, client):
-        """Test that system recovers properly after errors."""
-        # First cause an error
-        response = client.get("/api/v1/pr/999/suggestions")
-        assert response.status_code == 401  # Unauthorized
-        
-        # Then make a valid request
-        payload = {
-            "action": "opened",
-            "number": 333,
-            "pull_request": {
-                "title": "Test PR after error",
-                "user": {"login": "testuser"},
-                "head": {"ref": "test-branch"},
-                "html_url": "https://github.com/testuser/testrepo/pull/333",
-                "diff_url": "https://github.com/testuser/testrepo/pull/333.diff"
-            },
-            "repository": {
-                "name": "testrepo",
-                "full_name": "testuser/testrepo"
-            }
-        }
-        
-        body = json.dumps(payload)
-        from app.config import settings
-        secret = settings.GITHUB_WEBHOOK_SECRET.encode()
-        import hmac
-        import hashlib
-        signature = "sha256=" + hmac.new(secret, body.encode(), hashlib.sha256).hexdigest()
-        
-        response = client.post(
-            "/api/v1/github/webhook",
-            content=body,
-            headers={
-                "X-GitHub-Event": "pull_request",
-                "X-Hub-Signature-256": signature,
-                "Content-Type": "application/json"
-            }
-        )
-        
-        # Should work fine after previous error
-        assert response.status_code == 200
+        for endpoint, headers, expected_status in error_scenarios:
+            response = client.get(endpoint, headers=headers)
+
+            assert response.status_code == expected_status
+            assert isinstance(response.json()["detail"], str)
+
+    def test_error_recovery_after_failure(self, client, post_webhook):
+        """A failed request doesn't affect the next one."""
+        assert client.get("/api/v1/pr/999/suggestions").status_code == 401
+
+        assert post_webhook(pr_event(number=333, title="Test PR after error")).status_code == 200

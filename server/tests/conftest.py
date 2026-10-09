@@ -131,12 +131,12 @@ def github_signature():
 @pytest.fixture
 def post_webhook(client):
     """POST a signed webhook (a dict payload, or a raw str body) to the app."""
-    def _post(payload, event="pull_request", delivery_id=None):
+    def _post(payload, event="pull_request", delivery_id=None, content_type="application/json"):
         body = payload if isinstance(payload, str) else json.dumps(payload)
         headers = {
             "X-GitHub-Event": event,
             "X-Hub-Signature-256": sign_body(body),
-            "Content-Type": "application/json"
+            "Content-Type": content_type
         }
         if delivery_id:
             headers["X-GitHub-Delivery"] = delivery_id
