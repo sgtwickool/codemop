@@ -3,7 +3,7 @@ def order_total(items):
     total = 0
     for item in items:
         total += item.price_pence * item.quantity
-    return total + 1
+    return total
 
 
 def is_free_shipping(total_pence):
