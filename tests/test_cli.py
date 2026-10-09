@@ -1009,3 +1009,48 @@ def test_check_does_nothing_before_the_first_review_or_when_its_off(capsys, monk
     github["default_branch"].clear()
     assert run(capsys, monkeypatch, ["check", "owner/repo#7"])[0] == 0
     assert github["statuses"] == []
+
+
+def test_check_wont_pass_a_commit_that_hasnt_been_reviewed(capsys, monkeypatch, fake_model, github):
+    """Found by CodeMop on PR #14: after a push, /codemop check could set success on unreviewed code"""
+    merge_check_on(github)
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+    codemop_comment(github)
+    github["threads"][0] = ReviewThread(**{**github["threads"][0].__dict__, "resolved": True})
+    new_commit(github)  # pushed, not reviewed yet
+    before = list(github["statuses"])
+
+    code, _, _ = run(capsys, monkeypatch, ["check", "owner/repo#7", "--comment", "321"])
+
+    assert code == 0
+    assert github["statuses"] == before
+    assert github["reactions"] == []
+    assert any("The latest commit hasn't been reviewed yet" in body for body, _, _ in github["comments"].values())
+
+
+def test_codemops_own_commit_counts_as_reviewed(capsys, monkeypatch, fake_model, github):
+    merge_check_on(github)
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+    tick_all(github)
+    run(capsys, monkeypatch, ["apply", "owner/repo#7", "--by", "maintainer"])
+
+    assert cli.read_state(summary_of(github)).commit == github["head"]  # the fix commit
+    code, _, _ = run(capsys, monkeypatch, ["check", "owner/repo#7"])
+    assert code == 0 and github["statuses"][-1][0] == github["head"]
+
+
+def test_a_fix_committed_on_top_of_someone_elses_push_isnt_counted_as_reviewed(capsys, monkeypatch, fake_model, github):
+    merge_check_on(github)
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+    reviewed = github["head"]
+    tick_all(github)
+    github["branch_moves"] = 1  # someone pushes while the fix is being committed
+    statuses = len(github["statuses"])
+
+    run(capsys, monkeypatch, ["apply", "owner/repo#7", "--by", "maintainer"])
+
+    assert cli.read_state(summary_of(github)).commit == reviewed  # their push gets its own review
+    assert len(github["statuses"]) == statuses  # and nothing is set on unreviewed code

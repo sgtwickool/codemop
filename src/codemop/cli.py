@@ -39,8 +39,8 @@ from codemop.github.client import (
 from codemop.github.check import merge_status
 from codemop.github.review import parse_comment, ranked, review_payload
 from codemop.github.summary import (
-    OPEN, SummaryState, find_summary, read_state, record_applied, stored_fixes, summary_body, sync_threads, ticked,
-    trusted, update_earlier,
+    OPEN, SummaryState, find_summary, read_state, record_applied, record_own_commit, stored_fixes, summary_body,
+    sync_threads, ticked, trusted, update_earlier,
 )
 from codemop.review.placement import place_suggestions
 from codemop.review.schema import Severity
@@ -452,21 +452,40 @@ async def repo_settings(pr: PullRequestRef, token: str, api_url: str) -> RepoCon
         return RepoConfig()
 
 
-async def check_after_change(pr: PullRequestRef, sha: str, api: dict) -> bool:
+NOT_REVIEWED = ("The latest commit hasn't been reviewed yet, so the merge check stays as it is. It's updated when "
+                "the review of that commit finishes; comment `/codemop check` again after that if you need to.")
+
+
+async def check_after_change(pr: PullRequestRef, sha: str, api: dict) -> Optional[str]:
     """
     After a change that doesn't get a review (CodeMop's own commit, or a conversation resolved),
-    set the merge check on `sha` from the summary and the conversations as they are now
+    set the merge check on `sha` from the summary and the conversations as they are now. Only
+    on the commit the summary describes: anything else hasn't been reviewed, and setting the
+    check there would let it pass unreviewed code. Returns why it wasn't set, if that matters.
     """
     config = await repo_settings(pr, **api)
     if not config.merge_check:
-        return True
+        return None
     summary = find_summary(await list_issue_comments(pr, **api))
     state = read_state(summary.body if summary else None)
     if not state.kept:
-        return True  # not reviewed yet: the review will set it
+        return None  # not reviewed yet: the review will set it
+    if state.commit != sha:
+        return NOT_REVIEWED
     sync_threads(state, conversations(await list_review_threads(pr, **api)))
     result, description = merge_status(state, config.merge_check_confidence)
-    return await set_status(pr, sha, result, description, **api)
+    return None if await set_status(pr, sha, result, description, **api) else "couldn't set the merge check"
+
+
+async def record_commit(pr: PullRequestRef, parent: str, commit: str, api: dict) -> None:
+    """After CodeMop's own commit on `parent`: record it as reviewed if it can be, then set the merge check on it"""
+    summary = find_summary(await list_issue_comments(pr, **api))
+    body = record_own_commit(summary.body, parent, commit) if summary else None
+    if body:
+        await post_issue_comment(pr, body, comment_id=summary.id, **api)
+    why = await check_after_change(pr, commit, api)
+    if why:
+        print(f"Merge check not updated: {why}")
 
 
 async def run_check(args) -> int:
@@ -483,10 +502,13 @@ async def run_check(args) -> int:
     api = dict(token=token, api_url=args.github_api_url)
     try:
         pull = await fetch_pull_request(pr, **api)
-        ok = await check_after_change(pr, pull.head_sha, api)
-        if args.comment and ok:
+        why = await check_after_change(pr, pull.head_sha, api)
+        if why == NOT_REVIEWED and args.comment:
+            await post_issue_comment(pr, why, **api)  # say why nothing changed, rather than leave them guessing
+        elif args.comment and not why:
             await react_to_issue_comment(pr.repo, args.comment, "+1", **api)
-        return 0 if ok else 1
+        print(why or "Merge check updated")
+        return 1 if why and why != NOT_REVIEWED else 0
     except GitHubError as e:
         print(f"codemop: {e}", file=sys.stderr)
         return 1
@@ -582,7 +604,7 @@ async def run_learn(args) -> int:
                     raise
         if thread:
             await resolve_thread(thread.id, **api)
-        await check_after_change(pr, commit, api)  # no review runs on CodeMop's own commit
+        await record_commit(pr, pull.head_sha, commit, api)  # no review runs on CodeMop's own commit
         await reply(f"Learned: I've added this to `{LEARNED_FILE}` on this branch ({commit[:7]}) and resolved this "
                     "conversation. Once this PR is merged, I won't raise it again in this repository. If that's too "
                     "broad, edit or delete the note in that file.")
@@ -644,7 +666,7 @@ async def run_apply(args) -> int:
         latest = find_summary(await list_issue_comments(pr, **api)) or summary
         await post_issue_comment(pr, record_applied(latest.body, commit, applied, skipped), comment_id=latest.id, **api)
         if applied:
-            await check_after_change(pr, commit, api)  # no review runs on CodeMop's own commit
+            await record_commit(pr, pull.head_sha, commit, api)  # no review runs on CodeMop's own commit
     except GitHubError as e:
         print(f"codemop: {e}", file=sys.stderr)
         return 1
