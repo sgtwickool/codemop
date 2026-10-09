@@ -143,6 +143,23 @@ async def test_lists_the_prs_comments_with_their_authors():
 
 
 @pytest.mark.asyncio
+async def test_reads_every_page_of_comments():
+    """A busy PR has more than 100 comments, and the summary may be after the first page"""
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        page = int(request.url.params.get("page", 1))
+        headers = {"Link": f'<https://api.github.com/repos/owner/repo/issues/7/comments?per_page=100&page={page + 1}>; rel="next"'} if page < 3 else {}
+        return httpx.Response(200, headers=headers, json=[{"id": page, "body": f"page {page}", "user": {"login": "a"}}])
+
+    comments = await list_issue_comments(PR, transport=httpx.MockTransport(handler))
+
+    assert [c.id for c in comments] == [1, 2, 3]
+    assert len(requests) == 3
+
+
+@pytest.mark.asyncio
 async def test_posts_a_new_comment_or_edits_an_existing_one():
     transport, requests = json_api((201, {"html_url": "https://github.com/c/1"}), (200, {"html_url": "https://github.com/c/1"}))
 

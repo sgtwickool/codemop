@@ -18,6 +18,8 @@ _PR_URL = re.compile(r"^https?://[^/]+/(?P<repo>[\w.-]+/[\w.-]+)/pull/(?P<number
 
 
 JSON = "application/vnd.github+json"
+# A PR's conversation can be long; CodeMop's summary may be anywhere in it
+MAX_COMMENT_PAGES = 10
 
 
 class GitHubError(Exception):
@@ -157,21 +159,27 @@ async def list_issue_comments(
     api_url: str = DEFAULT_API_URL,
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> List[IssueComment]:
-    """The PR's conversation comments, oldest first (the first 100)"""
-    url = f"{api_url.rstrip('/')}/repos/{pr.repo}/issues/{pr.number}/comments?per_page=100"
-    response = await _request("GET", url, JSON, token, transport)
-    if response.status_code != 200:
-        raise GitHubError(_error_message(response.status_code, response.text, pr, bool(token)), response.status_code)
-    return [
-        IssueComment(
-            id=comment["id"],
-            body=comment.get("body") or "",
-            author=(comment.get("user") or {}).get("login", ""),
-            author_is_bot=(comment.get("user") or {}).get("type") == "Bot",
-            author_association=comment.get("author_association", "NONE"),
-        )
-        for comment in response.json()
-    ]
+    """The PR's conversation comments, oldest first (up to MAX_COMMENT_PAGES pages of 100)"""
+    url: Optional[str] = f"{api_url.rstrip('/')}/repos/{pr.repo}/issues/{pr.number}/comments?per_page=100"
+    comments: List[IssueComment] = []
+    for _ in range(MAX_COMMENT_PAGES):
+        response = await _request("GET", url, JSON, token, transport)
+        if response.status_code != 200:
+            raise GitHubError(_error_message(response.status_code, response.text, pr, bool(token)), response.status_code)
+        comments += [
+            IssueComment(
+                id=comment["id"],
+                body=comment.get("body") or "",
+                author=(comment.get("user") or {}).get("login", ""),
+                author_is_bot=(comment.get("user") or {}).get("type") == "Bot",
+                author_association=comment.get("author_association", "NONE"),
+            )
+            for comment in response.json()
+        ]
+        url = response.links.get("next", {}).get("url")
+        if not url:
+            break
+    return comments
 
 
 def _write_error(response: httpx.Response, pr: PullRequestRef, token: Optional[str], doing: str) -> GitHubError:
