@@ -1,4 +1,4 @@
-from codemop.github.client import IssueComment
+from codemop.github.api import IssueComment
 from codemop.github.summary import (
     ADDRESSED, APPLIED, DISMISSED, MARKER, OPEN, SummaryState, find_summary, read_state, record_applied,
     stored_fixes, summary_body, sync_threads, ticked, update_earlier,

@@ -4,7 +4,7 @@ import re
 import httpx
 import pytest
 
-from codemop.github.client import (
+from codemop.github.api import (
     GitHubError, PullRequestRef, commit_files, compare_commits, fetch_pr_diff, fetch_pull_request, fetch_repo_file,
     list_issue_comments, list_review_threads, parse_pr_reference, post_issue_comment, post_review,
     reply_to_review_comment, resolve_thread, set_commit_status, user_permission,

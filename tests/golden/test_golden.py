@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from codemop import cli
+from codemop.cli.review import report_json, report_text
 from codemop.providers.base import NoReview, Usage
 from codemop.providers.pricing import ANTHROPIC_PRICES
 from codemop.review.chunks import DEFAULT_IGNORED_PATHS
@@ -84,5 +84,5 @@ async def test_golden(case: Path):
 
     target = f"golden/{case.name}"
     check(case / "requests.txt", f"{SYSTEM_PROMPT}\n\n" + "".join(f"===== chunk\n{r}\n" for r in model.requests))
-    check(case / "report.txt", cli.report_text(report, target, "defaults") + "\n")
-    check(case / "report.json", cli.report_json(report, target, "defaults") + "\n")
+    check(case / "report.txt", report_text(report, target, "defaults") + "\n")
+    check(case / "report.json", report_json(report, target, "defaults") + "\n")

@@ -19,7 +19,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
-from codemop.github.client import IssueComment
+from codemop.github.conversation import IssueComment
 from codemop.github.review import SEVERITY_LABELS, ranked
 from codemop.review.fixes import Fix, still_there
 from codemop.review.pipeline import ReviewReport
