@@ -127,6 +127,7 @@ def apply_fixes(text: str, fixes: Sequence[Fix]) -> AppliedFixes:
 
     # From the bottom up, so earlier line numbers stay put
     for start, end, fix in sorted(placed, key=lambda p: p[0], reverse=True):
-        lines[start:end] = fix.code.split("\n")
+        code = fix.code.removesuffix("\n")
+        lines[start:end] = code.split("\n") if code else []  # empty: delete the lines, as on GitHub
     applied = [fix for _, _, fix in sorted(placed, key=lambda p: p[0])]
     return AppliedFixes(ending.join(lines) + (ending if trailing else ""), applied, skipped)

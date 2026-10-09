@@ -52,7 +52,8 @@ def comment_body(s: ModelSuggestion) -> str:
     if s.suggested_code is not None:
         # A fence longer than any run of backticks in the code, so the code can't end it
         fence = "`" * max(3, max(map(len, re.findall(r"`+", s.suggested_code)), default=0) + 1)
-        parts += ["", f"{fence}suggestion", s.suggested_code, fence]
+        # An empty suggestion deletes the lines; an empty line in the block would replace them with one
+        parts += ["", f"{fence}suggestion", *([s.suggested_code] if s.suggested_code else []), fence]
     parts += ["", f"<sub>CodeMop · confidence {s.confidence:.2f}</sub>"]
     return "\n".join(parts)
 
