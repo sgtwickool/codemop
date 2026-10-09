@@ -2,13 +2,12 @@
 Unit tests for middleware components.
 """
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 from fastapi import FastAPI
 from starlette.requests import Request
 from app.core.middleware.security_middleware import limit_request_size, add_security_headers
 from app.core.middleware.monitoring_middleware import error_tracking_middleware, request_monitoring_middleware
 from app.core.security_config import MAX_REQUEST_SIZE, SECURITY_HEADERS
-import logging
 
 
 def make_request(method="GET", headers=None, client=("127.0.0.1", 50000)) -> Request:

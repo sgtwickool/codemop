@@ -9,11 +9,10 @@ from typing import Optional
 import anthropic
 import pydantic
 
+from codemop.providers import DEFAULT_MODELS
 from codemop.providers.base import DEFAULT_CHUNK_TOKENS, NoReview, Usage
 from codemop.providers.pricing import ANTHROPIC_PRICES
 from codemop.review.schema import ModelReview
-
-DEFAULT_MODEL = "claude-opus-5-5"
 
 # Models that accept fallbacks="default": if the model declines a request, the API re-runs it
 # on Anthropic's recommended model for that refusal category instead of returning a refusal
@@ -31,7 +30,7 @@ class AnthropicModel:
 
     def __init__(
         self,
-        model: str = DEFAULT_MODEL,
+        model: str = DEFAULT_MODELS["anthropic"],
         *,
         api_key: Optional[str] = None,
         effort: Optional[str] = "high",
@@ -107,13 +106,9 @@ class AnthropicModel:
         if response.stop_reason == "refusal":
             category = getattr(response.stop_details, "category", None)
             detail = f" ({category})" if category else ""
-            raise NoReview(f"{self.name} declined to review this part of the diff{detail}", usage=usage)
+            raise NoReview.refused(self.name, usage, detail)
         if response.stop_reason == "max_tokens":
-            raise NoReview(
-                f"{self.name}'s review was cut off at {self.max_output_tokens} output tokens; "
-                "raise the output limit or use smaller chunks",
-                usage=usage,
-            )
+            raise NoReview.cut_off(self.name, self.max_output_tokens, usage)
         if response.parsed_output is None:
             raise NoReview(f"{self.name} returned no review", usage=usage)
         return response.parsed_output, usage

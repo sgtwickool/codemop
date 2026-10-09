@@ -3,7 +3,6 @@ Integration tests for API authentication.
 """
 import json
 
-import pytest
 
 from tests.helpers import AUTH_HEADERS, pr_event
 

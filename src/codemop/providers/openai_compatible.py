@@ -170,13 +170,9 @@ class OpenAICompatibleModel:
                 message = choice.get("message") or {}
 
                 if message.get("refusal") or choice.get("finish_reason") == "content_filter":
-                    raise NoReview(f"{self.name} declined to review this part of the diff", usage=total)
+                    raise NoReview.refused(self.name, total)
                 if choice.get("finish_reason") == "length":
-                    raise NoReview(
-                        f"{self.name}'s review was cut off at {self.max_output_tokens} output tokens; "
-                        "raise the output limit or use smaller chunks",
-                        usage=total,
-                    )
+                    raise NoReview.cut_off(self.name, self.max_output_tokens, total)
 
                 content = message.get("content") or ""
                 try:

@@ -83,18 +83,19 @@ async def test_older_models_get_neither_fallbacks_nor_effort():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("stop_reason, category, expected", [
-    ("refusal", "cyber", "declined to review this part of the diff (cyber)"),
-    ("refusal", None, "declined to review this part of the diff"),
-    ("max_tokens", None, "cut off at 16000 output tokens"),
+@pytest.mark.parametrize("stop_reason, category, expected, kind", [
+    ("refusal", "cyber", "declined to review this part of the diff (cyber)", "refused"),
+    ("refusal", None, "declined to review this part of the diff", "refused"),
+    ("max_tokens", None, "cut off at 16000 output tokens", "cut_off"),
 ])
-async def test_non_answers_say_why(stop_reason, category, expected):
+async def test_non_answers_say_why(stop_reason, category, expected, kind):
     client, _ = fake_client(response(stop_reason, category=category))
 
     with pytest.raises(NoReview) as error:
         await AnthropicModel(client=client).review("i", "d")
 
     assert expected in error.value.reason
+    assert error.value.kind == kind
     assert not error.value.fatal
     assert error.value.usage.input_tokens == 1200  # the tokens were still used
 

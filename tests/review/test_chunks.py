@@ -45,6 +45,18 @@ def test_a_large_file_is_split_by_hunk(sample_diff):
     assert plan.skipped == []
 
 
+def test_a_chunk_holds_only_the_hunks_it_shows(sample_diff):
+    """So a suggestion can't be placed on a line from a hunk the model wasn't shown"""
+    files = parse_diff(sample_diff)
+    service = next(f for f in files if f.path == "app/service.py")
+    largest_hunk = max(estimate_tokens(render_hunks(service, [h])) for h in service.hunks)
+
+    plan = plan_chunks([service], budget_tokens=largest_hunk)
+
+    assert [[h.header for f in c.files for h in f.hunks] for c in plan.chunks] == [[h.header] for h in service.hunks]
+    assert len(service.hunks) == 2  # the parsed diff itself is unchanged
+
+
 def test_a_hunk_too_large_for_any_chunk_is_reported(sample_diff):
     service = next(f for f in parse_diff(sample_diff) if f.path == "app/service.py")
     small_hunk = min(estimate_tokens(render_hunks(service, [h])) for h in service.hunks)

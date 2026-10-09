@@ -6,7 +6,7 @@ hunk, and anything that still doesn't fit, or isn't worth reviewing (lock files,
 deletions), is skipped with a reason, so a large PR is never silently cut short.
 """
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fnmatch import fnmatch
 from typing import Callable, Iterable, List, Sequence
 
@@ -33,7 +33,7 @@ def estimate_tokens(text: str) -> int:
 
 @dataclass
 class Chunk:
-    """Part of the diff, rendered for the model, and the files it covers"""
+    """Part of the diff, rendered for the model, and the files it shows (with only the hunks it shows)"""
     files: List[FileDiff] = field(default_factory=list)
     parts: List[str] = field(default_factory=list)
     tokens: int = 0
@@ -74,12 +74,12 @@ def _skip_reason(file: FileDiff, ignored_paths: Sequence[str]) -> str | None:
 
 def _pieces(
     file: FileDiff, budget: int, count_tokens: Callable[[str], int], skipped: List[Skipped]
-) -> Iterable[tuple[str, int]]:
+) -> Iterable[tuple[str, int, List[Hunk]]]:
     """The file as one rendered piece if it fits, otherwise its hunks packed into pieces"""
     whole = render_hunks(file, file.hunks)
     whole_tokens = count_tokens(whole)
     if whole_tokens <= budget:
-        yield whole, whole_tokens
+        yield whole, whole_tokens, list(file.hunks)
         return
 
     group: List[Hunk] = []
@@ -89,12 +89,12 @@ def _pieces(
             continue
         if group and count_tokens(render_hunks(file, group + [hunk])) > budget:
             rendered = render_hunks(file, group)
-            yield rendered, count_tokens(rendered)
+            yield rendered, count_tokens(rendered), group
             group = []
         group.append(hunk)
     if group:
         rendered = render_hunks(file, group)
-        yield rendered, count_tokens(rendered)
+        yield rendered, count_tokens(rendered), group
 
 
 def plan_chunks(
@@ -113,14 +113,18 @@ def plan_chunks(
         if reason:
             skipped.append(Skipped(file.path, reason))
             continue
-        for rendered, tokens in _pieces(file, budget_tokens, count_tokens, skipped):
+        for rendered, tokens, hunks in _pieces(file, budget_tokens, count_tokens, skipped):
             if current.parts and current.tokens + tokens > budget_tokens:
                 chunks.append(current)
                 current = Chunk()
             current.parts.append(rendered)
             current.tokens += tokens
-            if file not in current.files:
-                current.files.append(file)
+            # Only the hunks shown, so suggestions can only be placed on lines the model saw
+            shown = next((f for f in current.files if f.path == file.path), None)
+            if shown:
+                shown.hunks.extend(hunks)
+            else:
+                current.files.append(replace(file, hunks=list(hunks)))
 
     if current.parts:
         chunks.append(current)

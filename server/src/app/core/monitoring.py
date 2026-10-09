@@ -91,16 +91,11 @@ def setup_error_tracking() -> None:
         from sentry_sdk.integrations.logging import LoggingIntegration
         from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
         
-        sentry_logging = LoggingIntegration(
-            level=logging.INFO,        # Capture info and above
-            event_level=logging.ERROR  # Send errors as events
-        )
-        
         sentry_sdk.init(
             dsn=settings.SENTRY_DSN,
             integrations=[
                 FastApiIntegration(),
-                LoggingIntegration(),
+                LoggingIntegration(),  # breadcrumbs from INFO, events from ERROR
                 SqlalchemyIntegration(),
             ],
             traces_sample_rate=1.0 if settings.is_development else 0.1,

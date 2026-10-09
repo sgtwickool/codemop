@@ -11,7 +11,6 @@ import json
 import math
 import statistics
 from collections import defaultdict
-from pathlib import Path
 
 from codemop.providers.base import Usage
 from codemop.providers.pricing import ANTHROPIC_PRICES, PRICES_AS_OF
