@@ -44,6 +44,10 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/codemop"]
 
+# The source release is the package and its tests, not the server, evals or docs
+[tool.hatch.build.targets.sdist]
+include = ["/src/codemop", "/tests", "/README.md", "/LICENSE"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests", "evals"]
 asyncio_mode = "strict"

@@ -111,7 +111,7 @@ Each review ends with the tokens used and, where the model's list price is known
 
 ### Choosing a model
 The default is Claude Opus 5.5 (`claude-opus-5-5`) at high effort, chosen by the
-[review eval](evals/review/README.md): it found the most known issues, with almost no false alarms,
+[review eval](https://github.com/sgtwickool/codemop/blob/master/evals/review/README.md): it found the most known issues, with almost no false alarms,
 for about two cents a review. `--effort` (or `CODEMOP_EFFORT`) sets Claude's effort level. For less
 cost, `--model claude-sonnet-5-5 --effort low` was as good on simple changes and missed a little more
 on complex ones. Claude Haiku 4.5 isn't recommended: half its comments were wrong.
@@ -228,7 +228,7 @@ This implementation provides:
 ✅ Test suite with pytest
 
 ### Next Steps
-See [ROADMAP.md](ROADMAP.md).
+See [ROADMAP.md](https://github.com/sgtwickool/codemop/blob/master/ROADMAP.md).
 
 ## 🚀 CI/CD Pipeline
 
