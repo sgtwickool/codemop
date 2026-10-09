@@ -6,17 +6,26 @@ summary comment in the PR's conversation that each later review edits in place.
 The summary records the commit it describes, so a re-run on the same commit can tell it has
 already been reviewed. Only a summary by a bot or someone with write access counts: anyone
 can comment on a public PR, and a fake summary mustn't be able to stop a review.
+
+With a checklist, each issue that has a fix gets a checkbox, and the fixes themselves are
+kept in the comment (hidden), so ticking some and running `codemop apply` commits them.
 """
+import base64
+import dataclasses
+import json
 import re
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from codemop.config import RepoConfig
 from codemop.github.client import IssueComment
+from codemop.review.fixes import Fix
 from codemop.review.pipeline import ReviewReport
 from codemop.review.schema import ModelSuggestion, Severity
 
 MARKER = "<!-- codemop-summary -->"
 _COMMIT = re.compile(r"<!-- codemop-commit: ([0-9a-f]{7,40}) -->")
+_FIXES = re.compile(r"<!-- codemop-fixes: ([A-Za-z0-9+/=]+) -->")
+_ITEM = re.compile(r"^- \[([ xX])\] (.*) <!-- codemop-fix:(\d+) -->$", re.M)
 TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 DEFAULT_MAX_COMMENTS = RepoConfig().max_comments
 
@@ -55,8 +64,32 @@ def inline_comment(s: ModelSuggestion) -> dict:
     return comment
 
 
+def offered_fixes(issues: Sequence[ModelSuggestion], shown: Dict[str, Dict[int, str]]) -> Dict[int, Fix]:
+    """The fixes that can be applied later, by the issue's position in `issues` (from 1)"""
+    fixes = {}
+    for n, s in enumerate(issues, 1):
+        end = s.end_line or s.line
+        original = [shown.get(s.file_path, {}).get(line) for line in range(s.line, end + 1)]
+        if s.suggested_code is not None and None not in original:
+            fixes[n] = Fix(n, s.file_path, s.line, end, s.suggested_code, original, s.title)
+    return fixes
+
+
+def _item(s: ModelSuggestion, fix: Optional[Fix], checklist: bool) -> str:
+    text = f"{SEVERITY_LABELS[s.severity]} `{location(s)}`: {s.title}"
+    return f"- [ ] {text} <!-- codemop-fix:{fix.id} -->" if checklist and fix else f"- {text}"
+
+
 def summary_body(report: ReviewReport, inline: Sequence[ModelSuggestion], not_inline: Sequence[ModelSuggestion],
-                 cost: str, head_sha: str, review_url: Optional[str] = None, inline_rejected: bool = False) -> str:
+                 cost: str, head_sha: str, review_url: Optional[str] = None, inline_rejected: bool = False,
+                 fixes: Optional[Dict[int, Fix]] = None, checklist: bool = False) -> str:
+    """
+    With a checklist, issues that have a fix (in `fixes`, numbered by position in inline then
+    not_inline) get a checkbox, and the fixes are kept in the comment for `codemop apply`
+    """
+    fixes = fixes or {}
+    checklist = checklist and bool(fixes)
+    numbered = list(enumerate([*inline, *not_inline], 1))
     lines = [MARKER, f"<!-- codemop-commit: {head_sha} -->", f"### CodeMop review of {head_sha[:7]}", ""]
     if report.too_large:
         lines.append(f"Not reviewed: this PR has {report.too_large} set for CodeMop here.")
@@ -64,11 +97,12 @@ def summary_body(report: ReviewReport, inline: Sequence[ModelSuggestion], not_in
         lines.append("No issues found." if report.complete else "No issues found in the parts that were reviewed.")
     else:
         where = f" ([comments on the code]({review_url}))" if review_url else ""
-        lines += [f"Found {len(report.suggestions)} issue(s){where}:", ""]
-        lines += [f"- {SEVERITY_LABELS[s.severity]} `{location(s)}`: {s.title}" for s in inline]
+        tick = " Tick the fixes you want, and CodeMop commits them to this branch together." if checklist else ""
+        lines += [f"Found {len(report.suggestions)} issue(s){where}.{tick}", ""]
+        lines += [_item(s, fixes.get(n), checklist) for n, s in numbered[:len(inline)]]
     if not_inline:
         lines += ["", f"Not posted inline (over the limit of {len(inline)} comments; set `max_comments` in `.codemop.yml`):", ""]
-        lines += [f"- {SEVERITY_LABELS[s.severity]} `{location(s)}`: {s.title}" for s in not_inline]
+        lines += [_item(s, fixes.get(n), checklist) for n, s in numbered[len(inline):]]
     if inline_rejected:
         lines += ["", "⚠️ GitHub didn't accept the comments on the code (has the PR changed since it was "
                       "reviewed?), so the issues are only listed here."]
@@ -87,7 +121,48 @@ def summary_body(report: ReviewReport, inline: Sequence[ModelSuggestion], not_in
     lines += ["", f"<sub>{report.model} · {report.usage.input_tokens:,} input / "
                   f"{report.usage.output_tokens:,} output tokens · {cost} · this comment is updated "
                   f"when CodeMop reviews new commits</sub>"]
+    if checklist:
+        lines.append(_fixes_data(head_sha, fixes.values(), applied=set()))
     return "\n".join(lines)
+
+
+def _fixes_data(commit: str, fixes, applied: Set[int]) -> str:
+    data = {"commit": commit, "applied": sorted(applied), "fixes": [dataclasses.asdict(f) for f in fixes]}
+    # Base64, so nothing in the code can end the HTML comment it's kept in
+    return f"<!-- codemop-fixes: {base64.b64encode(json.dumps(data).encode()).decode()} -->"
+
+
+def stored_fixes(body: str) -> Tuple[Optional[str], Dict[int, Fix], Set[int]]:
+    """The commit the summary's fixes were made for, the fixes by id, and the ids already applied"""
+    match = _FIXES.search(body)
+    if not match:
+        return None, {}, set()
+    data = json.loads(base64.b64decode(match.group(1)))
+    return data["commit"], {f["id"]: Fix(**f) for f in data["fixes"]}, set(data["applied"])
+
+
+def ticked(body: str) -> Set[int]:
+    """The ids of the fixes ticked in the summary's checklist"""
+    return {int(fix_id) for box, _, fix_id in _ITEM.findall(body) if box.lower() == "x"}
+
+
+def record_applied(body: str, commit: str, applied: Sequence[Fix], skipped: Sequence[Tuple[Fix, str]]) -> str:
+    """The summary with the applied fixes marked as done in `commit`, and the skipped ones unticked, saying why"""
+    done = {f.id for f in applied}
+    why = {f.id: reason for f, reason in skipped}
+
+    def item(match: re.Match) -> str:
+        box, fix_id = match.group(1), int(match.group(3))
+        text = re.sub(r" · (✅|⚠️) .*$", "", match.group(2))  # an earlier result, replaced by this one
+        if fix_id in done:
+            return f"- [x] {text} · ✅ applied in {commit[:7]} <!-- codemop-fix:{fix_id} -->"
+        if fix_id in why:
+            return f"- [ ] {text} · ⚠️ not applied: {why[fix_id]} <!-- codemop-fix:{fix_id} -->"
+        return match.group(0)
+
+    body = _ITEM.sub(item, body)
+    reviewed, fixes, already = stored_fixes(body)
+    return _FIXES.sub(lambda _: _fixes_data(reviewed, fixes.values(), already | done), body)
 
 
 def split_inline(report: ReviewReport, max_comments: int = DEFAULT_MAX_COMMENTS) -> tuple[list, list]:

@@ -1,7 +1,9 @@
 from codemop.github.client import IssueComment
 from codemop.github.review import (
-    MARKER, comment_body, find_summary, review_payload, reviewed_commit, split_inline, summary_body,
+    MARKER, comment_body, find_summary, offered_fixes, record_applied, review_payload, reviewed_commit,
+    split_inline, stored_fixes, summary_body, ticked,
 )
+from codemop.review.fixes import Fix
 from codemop.providers.base import Usage
 from codemop.review.chunks import Skipped
 from codemop.review.pipeline import DroppedFix, FailedChunk, ReviewReport
@@ -78,7 +80,7 @@ def test_the_summary_says_what_was_reviewed_and_what_wasnt():
 
     assert body.startswith(MARKER)
     assert "### CodeMop review of abc1234" in body
-    assert "Found 1 issue(s) ([comments on the code](https://github.com/o/r/pull/7#pullrequestreview-1)):" in body
+    assert "Found 1 issue(s) ([comments on the code](https://github.com/o/r/pull/7#pullrequestreview-1))." in body
     assert "⚠️ Some of this PR wasn't reviewed:\n\n- `big.py`: declined to review this part of the diff" in body
     assert "Skipped `uv.lock`: matches an ignored path pattern" in body
     assert "Left out the suggested fix for `app.py:3`: it repeats a nearby line" in body
@@ -115,3 +117,57 @@ def test_only_a_summary_by_a_bot_or_someone_with_write_access_counts():
     assert find_summary([comment(forged, association="OWNER")]) is not None
     assert find_summary([comment(forged, bot=True)]) is not None
     assert reviewed_commit(None) is None
+
+
+SHOWN = {"app.py": {3: "    return result + 1", 5: "x = 1", 6: "y = 2", 7: "z = 3"}}
+
+
+def test_a_checklist_has_a_box_for_each_issue_with_a_fix():
+    with_fix, without_fix = suggestion(line=3), suggestion(line=5, end_line=7, code=None, title="No fix")
+    r = report(with_fix, without_fix)
+    fixes = offered_fixes([with_fix, without_fix], SHOWN)
+
+    body = summary_body(r, [with_fix, without_fix], [], "about $0.02", SHA, fixes=fixes, checklist=True)
+
+    assert "Tick the fixes you want, and CodeMop commits them to this branch together." in body
+    assert "- [ ] 🐛 Bug `app.py:3`: Adds one to the total <!-- codemop-fix:1 -->" in body
+    assert "- 🐛 Bug `app.py:5-7`: No fix" in body
+    commit, stored, applied = stored_fixes(body)
+    assert commit == SHA and applied == set()
+    assert stored == {1: Fix(1, "app.py", 3, 3, "    return result", ["    return result + 1"], "Adds one to the total")}
+
+
+def test_no_checklist_without_the_option_or_without_fixes():
+    s = suggestion()
+    fixes = offered_fixes([s], SHOWN)
+
+    assert "- [ ]" not in summary_body(report(s), [s], [], "c", SHA, fixes=fixes)
+    assert "- [ ]" not in summary_body(report(s), [s], [], "c", SHA, fixes={}, checklist=True)
+    assert stored_fixes(summary_body(report(s), [s], [], "c", SHA, fixes=fixes)) == (None, {}, set())
+
+
+def test_a_fix_whose_lines_the_diff_doesnt_show_isnt_offered():
+    assert offered_fixes([suggestion(line=40)], SHOWN) == {}
+
+
+def test_reads_which_fixes_are_ticked():
+    s1, s2 = suggestion(line=3), suggestion(line=6, title="Other")
+    body = summary_body(report(s1, s2), [s1, s2], [], "c", SHA, fixes=offered_fixes([s1, s2], SHOWN), checklist=True)
+
+    assert ticked(body) == set()
+    assert ticked(body.replace("- [ ] 🐛 Bug `app.py:6`", "- [x] 🐛 Bug `app.py:6`")) == {2}
+
+
+def test_records_which_fixes_were_applied_and_which_skipped():
+    s1, s2 = suggestion(line=3), suggestion(line=6, title="Other")
+    fixes = offered_fixes([s1, s2], SHOWN)
+    body = summary_body(report(s1, s2), [s1, s2], [], "c", SHA, fixes=fixes, checklist=True).replace("- [ ]", "- [x]")
+
+    body = record_applied(body, "fed9876" + "0" * 33, [fixes[1]], [(fixes[2], "the code it replaces has changed")])
+
+    assert "- [x] 🐛 Bug `app.py:3`: Adds one to the total · ✅ applied in fed9876 <!-- codemop-fix:1 -->" in body
+    assert "- [ ] 🐛 Bug `app.py:6`: Other · ⚠️ not applied: the code it replaces has changed <!-- codemop-fix:2 -->" in body
+    assert stored_fixes(body)[2] == {1}
+    # Ticked again and skipped again: one note, not two
+    body = record_applied(body.replace("- [ ] 🐛 Bug `app.py:6`", "- [x] 🐛 Bug `app.py:6`"), "a" * 40, [], [(fixes[2], "still changed")])
+    assert "- [ ] 🐛 Bug `app.py:6`: Other · ⚠️ not applied: still changed <!-- codemop-fix:2 -->" in body

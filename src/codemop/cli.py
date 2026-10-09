@@ -5,6 +5,7 @@ The codemop command.
     codemop review https://github.com/owner/repo/pull/123
     codemop review owner/repo#123 --post   ...and post the review on it
     git diff main | codemop review -       review a local diff
+    codemop apply owner/repo#123           commit the fixes ticked in CodeMop's summary on it
 
 Exit status: 0 when every part of the diff was reviewed, 1 when some of it couldn't be
 (see the report), 2 for usage errors.
@@ -27,10 +28,15 @@ from codemop.config import (
     CONFIG_FILE, DEFAULT_MIN_CONFIDENCE, ConfigError, RepoConfig, load_config_file, parse_config,
 )
 from codemop.github.client import (
-    DEFAULT_API_URL, GitHubError, PullRequestRef, fetch_pr_diff, fetch_pull_request, fetch_repo_file,
-    list_issue_comments, parse_pr_reference, post_issue_comment, post_review,
+    DEFAULT_API_URL, GitHubError, PullRequest, PullRequestRef, commit_files, fetch_pr_diff, fetch_pull_request,
+    fetch_repo_file, list_issue_comments, parse_pr_reference, post_issue_comment, post_review, user_permission,
 )
-from codemop.github.review import find_summary, review_payload, reviewed_commit, split_inline, summary_body
+from codemop.github.review import (
+    find_summary, offered_fixes, record_applied, review_payload, reviewed_commit, split_inline, stored_fixes,
+    summary_body, ticked,
+)
+from codemop.review.diff import parse_diff
+from codemop.review.fixes import apply_fixes, file_lines
 from codemop.providers import DEFAULT_MODELS, PROVIDERS, create_model
 from codemop.providers.base import DEFAULT_CHUNK_TOKENS, Usage
 from codemop.providers.pricing import PRICES_AS_OF
@@ -100,6 +106,19 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--post", action="store_true",
                         help="post the review on the pull request (needs a token with pull-requests: write); "
                              "a commit CodeMop has already reviewed isn't reviewed again")
+    review.add_argument("--checklist", action="store_true",
+                        help="with --post, a checkbox in the summary for each issue with a fix: ticking some and "
+                             "running `codemop apply` commits them (the GitHub Action does that for you)")
+
+    apply = commands.add_parser(
+        "apply", help="commit the fixes ticked in CodeMop's summary on a pull request",
+        description="Commit the fixes ticked in CodeMop's summary comment on a pull request to its branch, as one "
+                    "commit. Needs a token with contents: write and pull-requests: write.",
+    )
+    apply.add_argument("target", help="owner/repo#123 or a pull request URL")
+    apply.add_argument("--by", metavar="USER",
+                       help="who ticked them: nothing is applied unless they have write access to the repository")
+    apply.add_argument("--github-api-url", default=DEFAULT_API_URL, help="for GitHub Enterprise Server")
     return parser
 
 
@@ -212,7 +231,7 @@ async def run_review(args) -> int:
         print(f"codemop: {e}", file=sys.stderr)
         return 2 if isinstance(e, ConfigError) else 1
 
-    head_sha = summary = None
+    head_sha = summary = pull = None
     if pr is None:
         diff, target = sys.stdin.read(), "stdin"
     else:
@@ -220,7 +239,8 @@ async def run_review(args) -> int:
         try:
             if args.post:
                 # The commit the review's line numbers will refer to, read before the diff
-                head_sha = (await fetch_pull_request(pr, token=token, api_url=args.github_api_url)).head_sha
+                pull = await fetch_pull_request(pr, token=token, api_url=args.github_api_url)
+                head_sha = pull.head_sha
                 summary = find_summary(await list_issue_comments(pr, token=token, api_url=args.github_api_url))
                 if reviewed_commit(summary) == head_sha:
                     print(f"CodeMop has already reviewed {target} at {head_sha[:7]}; nothing to do")
@@ -251,8 +271,11 @@ async def run_review(args) -> int:
             print(f"codemop: not posting a review: {report.stopped}", file=sys.stderr)
             return 1
         try:
+            # A fork's branch can't be committed to, so no checklist there
+            checklist = args.checklist and pull.head_repo == pr.repo
             url = await post(pr, report, head_sha, summary.id if summary else None, token,
-                             args.max_comments or config.max_comments, args.github_api_url)
+                             args.max_comments or config.max_comments, args.github_api_url,
+                             diff=diff, checklist=checklist)
         except GitHubError as e:
             print(f"codemop: {e}", file=sys.stderr)
             return 1
@@ -262,7 +285,7 @@ async def run_review(args) -> int:
 
 
 async def post(pr: PullRequestRef, report: ReviewReport, head_sha: str, summary_id: Optional[int], token: str,
-               max_comments: int, api_url: str) -> str:
+               max_comments: int, api_url: str, diff: str = "", checklist: bool = False) -> str:
     """
     Post the inline comments as a review, then create or update the summary comment, last, so
     it only says a commit was reviewed once everything is posted. Returns the summary's URL.
@@ -276,8 +299,11 @@ async def post(pr: PullRequestRef, report: ReviewReport, head_sha: str, summary_
             if e.status != 422:
                 raise
             rejected = True  # the summary lists them all anyway
-    body = summary_body(report, inline, not_inline, format_cost(report.cost, report.usage), head_sha,
-                        review_url, rejected)
+    cost = format_cost(report.cost, report.usage)
+    fixes = offered_fixes([*inline, *not_inline], {f.path: file_lines(f) for f in parse_diff(diff)}) if checklist else {}
+    body = summary_body(report, inline, not_inline, cost, head_sha, review_url, rejected, fixes, checklist)
+    if len(body) > MAX_COMMENT_CHARS:  # the fixes kept in it made it too long for GitHub
+        body = summary_body(report, inline, not_inline, cost, head_sha, review_url, rejected)
     try:
         return await post_issue_comment(pr, body, comment_id=summary_id, token=token, api_url=api_url)
     except GitHubError as e:
@@ -286,10 +312,89 @@ async def post(pr: PullRequestRef, report: ReviewReport, head_sha: str, summary_
         return await post_issue_comment(pr, body, token=token, api_url=api_url)  # it was deleted meanwhile
 
 
+WRITE_PERMISSIONS = {"admin", "maintain", "write"}
+MAX_COMMENT_CHARS = 65_000  # GitHub's limit is 65,536
+
+
+async def run_apply(args) -> int:
+    """Commit the fixes ticked in CodeMop's summary on a PR, as one commit, and mark them in the summary"""
+    try:
+        pr = parse_pr_reference(args.target)
+    except ValueError as e:
+        print(f"codemop: {e}", file=sys.stderr)
+        return 2
+    token = github_token()
+    if not token:
+        print("codemop: apply needs a GitHub token: set GITHUB_TOKEN (or `gh auth login`)", file=sys.stderr)
+        return 2
+    api = dict(token=token, api_url=args.github_api_url)
+    try:
+        if args.by and await user_permission(pr.repo, args.by, **api) not in WRITE_PERMISSIONS:
+            print(f"Not applying fixes for {args.by}: only people with write access to {pr.repo} can")
+            return 0
+        summary = find_summary(await list_issue_comments(pr, **api))
+        _, fixes, done = stored_fixes(summary.body) if summary else (None, {}, set())
+        wanted = [fixes[i] for i in sorted(ticked(summary.body) - done) if i in fixes] if summary else []
+        if not wanted:
+            print(f"No ticked fixes to apply on {pr}")
+            return 0
+
+        for attempt in range(2):  # again if the branch moves on while this runs
+            pull = await fetch_pull_request(pr, **api)
+            if pull.head_repo != pr.repo:
+                print(f"Can't commit to {pr}'s branch: it's in a fork ({pull.head_repo})")
+                return 0
+            files, applied, skipped = await _apply_to_files(pull, wanted, api)
+            commit = pull.head_sha
+            if not files:
+                break
+            message = "Apply CodeMop's suggested fixes\n\n" + "\n".join(f"- {f.path}:{f.line}: {f.title}" for f in applied)
+            if args.by:
+                message += f"\n\nTicked by @{args.by} in CodeMop's summary on #{pr.number}."
+            try:
+                commit = await commit_files(pull.head_repo, pull.head_ref, pull.head_sha, files, message, **api)
+                break
+            except GitHubError as e:
+                if e.status != 422 or attempt:
+                    raise
+
+        await post_issue_comment(pr, record_applied(summary.body, commit, applied, skipped),
+                                 comment_id=summary.id, **api)
+    except GitHubError as e:
+        print(f"codemop: {e}", file=sys.stderr)
+        return 1
+    for fix in applied:
+        print(f"Applied {fix.path}:{fix.line}: {fix.title}")
+    for fix, reason in skipped:
+        print(f"Not applied {fix.path}:{fix.line}: {reason}")
+    if applied:
+        print(f"Committed {commit[:7]} to {pull.head_ref}")
+    return 0
+
+
+async def _apply_to_files(pull: PullRequest, wanted, api: dict):
+    """The new text of each file the fixes change, and which fixes were applied and skipped"""
+    files, applied, skipped = {}, [], []
+    for path in dict.fromkeys(f.path for f in wanted):
+        for_path = [f for f in wanted if f.path == path]
+        text = await fetch_repo_file(pull.head_repo, path, ref=pull.head_sha, **api)
+        if text is None:
+            skipped += [(f, "the file no longer exists") for f in for_path]
+            continue
+        result = apply_fixes(text, for_path)
+        applied += result.applied
+        skipped += result.skipped
+        if result.applied:
+            files[path] = result.text
+    return files, applied, skipped
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "review":
         return asyncio.run(run_review(args))
+    if args.command == "apply":
+        return asyncio.run(run_apply(args))
     return 2
 
 

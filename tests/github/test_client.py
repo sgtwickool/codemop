@@ -5,8 +5,8 @@ import httpx
 import pytest
 
 from codemop.github.client import (
-    GitHubError, PullRequestRef, fetch_pr_diff, fetch_pull_request, fetch_repo_file, list_issue_comments,
-    parse_pr_reference, post_issue_comment, post_review,
+    GitHubError, PullRequestRef, commit_files, fetch_pr_diff, fetch_pull_request, fetch_repo_file,
+    list_issue_comments, parse_pr_reference, post_issue_comment, post_review, user_permission,
 )
 
 PR = PullRequestRef("owner/repo", 7)
@@ -198,3 +198,55 @@ async def test_posting_errors_say_what_to_do(status, token, expected):
     with pytest.raises(GitHubError, match=re.escape(expected)) as error:
         await post_review(PR, {}, token=token, transport=transport)
     assert error.value.status == status
+
+
+@pytest.mark.asyncio
+async def test_reads_a_file_at_a_commit():
+    transport, requests = api(body="x = 1\n")
+
+    assert await fetch_repo_file("owner/repo", "app.py", ref="abc", transport=transport) == "x = 1\n"
+    assert str(requests[0].url) == "https://api.github.com/repos/owner/repo/contents/app.py?ref=abc"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status, body, expected", [(200, {"permission": "write"}, "write"), (404, {}, "none")])
+async def test_reads_a_users_permission(status, body, expected):
+    transport, requests = json_api((status, body))
+
+    assert await user_permission("owner/repo", "sam", transport=transport) == expected
+    assert str(requests[0].url) == "https://api.github.com/repos/owner/repo/collaborators/sam/permission"
+
+
+@pytest.mark.asyncio
+async def test_commits_files_as_one_commit_and_moves_the_branch():
+    transport, requests = json_api(
+        (200, {"tree": {"sha": "tree0"}}),
+        (200, {"tree": [{"path": "run.sh", "mode": "100755"}, {"path": "app.py", "mode": "100644"}]}),
+        (201, {"sha": "tree1"}),
+        (201, {"sha": "commit1"}),
+        (200, {"object": {"sha": "commit1"}}),
+    )
+
+    sha = await commit_files("owner/repo", "feature", "parent0", {"run.sh": "echo hi\n", "new.py": "x\n"}, "msg",
+                             token="ghp_x", transport=transport)
+
+    assert sha == "commit1"
+    get_commit, get_tree, post_tree, post_commit, patch_ref = requests
+    assert str(get_tree.url).endswith("/git/trees/tree0?recursive=1")
+    assert json.loads(post_tree.content) == {"base_tree": "tree0", "tree": [
+        {"path": "run.sh", "mode": "100755", "type": "blob", "content": "echo hi\n"},  # stays executable
+        {"path": "new.py", "mode": "100644", "type": "blob", "content": "x\n"},
+    ]}
+    assert json.loads(post_commit.content) == {"message": "msg", "tree": "tree1", "parents": ["parent0"]}
+    assert (patch_ref.method, str(patch_ref.url)) == ("PATCH", "https://api.github.com/repos/owner/repo/git/refs/heads/feature")
+    assert json.loads(patch_ref.content) == {"sha": "commit1", "force": False}
+
+
+@pytest.mark.asyncio
+async def test_committing_when_the_branch_has_moved_is_a_422():
+    transport, _ = json_api((200, {"tree": {"sha": "t"}}), (200, {"tree": []}), (201, {"sha": "t1"}),
+                            (201, {"sha": "c1"}), (422, {"message": "Update is not a fast forward"}))
+
+    with pytest.raises(GitHubError) as error:
+        await commit_files("owner/repo", "feature", "p", {"a": "b"}, "m", transport=transport)
+    assert error.value.status == 422

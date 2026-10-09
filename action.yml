@@ -1,5 +1,5 @@
 name: CodeMop review
-description: AI code review for pull requests, with the model of your choice. Posts one review with one-click suggested fixes.
+description: AI code review for pull requests, with the model of your choice. Tick the fixes you want and it commits them.
 author: Gregory Kemp
 branding:
   icon: check-circle
@@ -7,7 +7,7 @@ branding:
 
 inputs:
   api-key:
-    description: The model provider's API key. Store it as a repository secret.
+    description: The model provider's API key. Store it as a repository secret. (Not used when committing ticked fixes.)
     required: true
   provider:
     description: anthropic, mistral, openai, openrouter, ollama or openai-compatible
@@ -27,6 +27,9 @@ inputs:
   max-comments:
     description: Most inline comments in a review; the rest go in its summary (default, the repository's .codemop.yml or 10)
     default: ""
+  checklist:
+    description: A checkbox in the summary for each fix; ticking them commits them (needs the issue_comment trigger and contents write, see the README)
+    default: "true"
   review-drafts:
     description: Review draft pull requests too
     default: "false"
@@ -34,7 +37,7 @@ inputs:
     description: The pull request to review, as owner/repo#123 (default, the one that triggered the workflow)
     default: ""
   github-token:
-    description: Token for reading the PR and posting the review; needs pull-requests write
+    description: Token for reading the PR, posting the review and committing fixes; needs pull-requests write (and contents write for fixes). Commits made with the default token don't start other workflows, so CI won't run on them; a personal access token here fixes that
     default: ${{ github.token }}
 
 runs:
@@ -59,12 +62,29 @@ runs:
         MAX_CHANGED_LINES: ${{ inputs.max-changed-lines }}
         MAX_COMMENTS: ${{ inputs.max-comments }}
         REVIEW_DRAFTS: ${{ inputs.review-drafts }}
+        CHECKLIST: ${{ inputs.checklist }}
+        EVENT_NAME: ${{ github.event_name }}
+        EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
+        EVENT_ISSUE_IS_PR: ${{ github.event.issue.pull_request && 'true' || '' }}
+        EVENT_EDITED_SUMMARY: ${{ contains(github.event.comment.body, '<!-- codemop-summary -->') }}
+        EVENT_SENDER: ${{ github.event.sender.login }}
         PULL_REQUEST: ${{ inputs.pull-request }}
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
         EVENT_PR_DRAFT: ${{ github.event.pull_request.draft }}
         REPOSITORY: ${{ github.repository }}
         GITHUB_API: ${{ github.api_url }}
       run: |
+        codemop="$RUNNER_TEMP/codemop/bin/codemop"
+
+        # Someone ticked fixes in CodeMop's summary: commit them (if they have write access)
+        if [ "$EVENT_NAME" = "issue_comment" ]; then
+          if [ -z "$EVENT_ISSUE_IS_PR" ] || [ "$EVENT_EDITED_SUMMARY" != "true" ]; then
+            echo "Not CodeMop's summary on a pull request; nothing to do"
+            exit 0
+          fi
+          exec "$codemop" apply "$REPOSITORY#$EVENT_ISSUE_NUMBER" --by "$EVENT_SENDER" --github-api-url "$GITHUB_API"
+        fi
+
         target="$PULL_REQUEST"
         if [ -z "$target" ]; then
           if [ -z "$EVENT_PR_NUMBER" ]; then
@@ -84,4 +104,5 @@ runs:
         [ -n "$EFFORT" ] && args+=(--effort "$EFFORT")
         [ -n "$MAX_CHANGED_LINES" ] && args+=(--max-changed-lines "$MAX_CHANGED_LINES")
         [ -n "$MAX_COMMENTS" ] && args+=(--max-comments "$MAX_COMMENTS")
-        "$RUNNER_TEMP/codemop/bin/codemop" "${args[@]}"
+        [ "$CHECKLIST" = "true" ] && args+=(--checklist)
+        "$codemop" "${args[@]}"
