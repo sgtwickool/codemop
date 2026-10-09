@@ -41,9 +41,10 @@ def test_apply_commits_the_ticked_fixes_and_marks_them(capsys, monkeypatch, fake
     assert "· ✅ applied in c0ffee0" in summary_of(github)
     assert "Committed c0ffee0 to feature" in out
 
-    # Run again (another edit of the comment): nothing new to apply
+    assert "- [ ] **Commit the ticked fixes**" in summary_of(github)  # unticked, ready for next time
+    # Run again (another edit of the comment): the commit box isn't ticked, so nothing happens
     _, out, _ = run(capsys, monkeypatch, ["apply", "owner/repo#7", "--by", "maintainer"])
-    assert "No ticked fixes to apply on owner/repo#7" in out
+    assert "\"Commit the ticked fixes\" isn't ticked on owner/repo#7; nothing to do" in out
     assert len(github["commits"]) == 1
 
 
@@ -87,12 +88,39 @@ def test_apply_tries_again_if_the_branch_moves_meanwhile(capsys, monkeypatch, fa
 
 def test_apply_with_no_summary_or_nothing_ticked(capsys, monkeypatch, fake_model, github):
     _, out, _ = run(capsys, monkeypatch, ["apply", "owner/repo#7"])
-    assert "No ticked fixes to apply on owner/repo#7" in out
+    assert "isn't ticked on owner/repo#7; nothing to do" in out
 
     fake_model([SUGGESTION])
     run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
     _, out, _ = run(capsys, monkeypatch, ["apply", "owner/repo#7"])
+    assert "isn't ticked on owner/repo#7; nothing to do" in out
+
+
+def test_ticking_a_fix_only_selects_it(capsys, monkeypatch, fake_model, github):
+    """Several fixes can be ticked, one at a time, and then committed together"""
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+    [(cid, (body, author, association))] = list(github["comments"].items())
+    github["comments"][cid] = (body.replace("- [ ] 🐛 Bug", "- [x] 🐛 Bug"), author, association)
+
+    _, out, _ = run(capsys, monkeypatch, ["apply", "owner/repo#7", "--by", "maintainer"])
+
+    assert github["commits"] == []
+    assert "nothing to do" in out
+
+
+def test_the_commit_box_with_nothing_ticked_commits_nothing_and_unticks_itself(capsys, monkeypatch, fake_model, github):
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+    [(cid, (body, author, association))] = list(github["comments"].items())
+    github["comments"][cid] = (body.replace("- [ ] **Commit the ticked fixes**", "- [x] **Commit the ticked fixes**"),
+                               author, association)
+
+    _, out, _ = run(capsys, monkeypatch, ["apply", "owner/repo#7", "--by", "maintainer"])
+
+    assert github["commits"] == []
     assert "No ticked fixes to apply on owner/repo#7" in out
+    assert "- [ ] **Commit the ticked fixes**" in summary_of(github)
 
 
 def test_apply_keeps_boxes_ticked_while_it_ran(capsys, monkeypatch, fake_model, github):
@@ -101,7 +129,9 @@ def test_apply_keeps_boxes_ticked_while_it_ran(capsys, monkeypatch, fake_model, 
                                                           "suggested_code": "    result = sum(items or [])"})])
     run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
     [(cid, (body, author, association))] = list(github["comments"].items())
-    github["comments"][cid] = (body.replace("- [ ] 🐛 Bug `app.py:3`", "- [x] 🐛 Bug `app.py:3`"), author, association)
+    github["comments"][cid] = (body.replace("- [ ] 🐛 Bug `app.py:3`", "- [x] 🐛 Bug `app.py:3`")
+                               .replace("- [ ] **Commit the ticked fixes**", "- [x] **Commit the ticked fixes**"),
+                               author, association)
 
     def tick_the_other():
         current = github["comments"][cid][0]

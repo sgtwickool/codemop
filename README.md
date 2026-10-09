@@ -82,7 +82,7 @@ conversation. For each issue, you can:
 
 | You want to | Do this | What happens |
 |---|---|---|
-| Fix it | Tick its box in the summary (or use "Commit suggestion" on its comment) | The ticked fixes are committed to the PR's branch as one commit, and marked as applied in the summary |
+| Fix it | Tick its box in the summary, and when you've ticked all you want, tick **Commit the ticked fixes** (or use "Commit suggestion" on its comment) | The ticked fixes are committed to the PR's branch as one commit, and marked as applied in the summary |
 | Say it isn't a problem here | Resolve the comment's conversation | CodeMop won't raise it again on this pull request |
 | Say it isn't a problem anywhere in the repository | Reply `/codemop learn <why it's fine>` to the comment | CodeMop adds a note to `.codemop-learned.yml` on the PR's branch, resolves the conversation, and replies to confirm. Once the PR is merged, it won't raise it again in the repository |
 
