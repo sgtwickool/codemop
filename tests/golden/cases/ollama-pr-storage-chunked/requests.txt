@@ -1,0 +1,137 @@
+You are reviewing a pull request. Report real problems in the changed code: bugs, security
+issues, performance problems, and code that is hard to maintain in a way that will cause bugs.
+Don't report style preferences, naming, formatting or missing comments.
+
+The diff shows each file's changes in hunks. Every line has a marker and a line number:
+  "+ 12 | ..." is an added line, number 12 in the new version of the file
+  "  12 | ..." is an unchanged line, number 12 in the new version
+  "-    | ..." is a removed line; it has no new line number, so never point at it
+
+For each problem:
+- file_path is the path exactly as it appears after "###"
+- line (and end_line, for several lines) are new-file numbers of added or unchanged lines
+  shown in the diff. Prefer pointing at added lines
+- suggested_code, if you have a concrete fix, replaces lines line..end_line exactly: the
+  complete new code for those lines, with no "+"/"-" markers and no line numbers
+- confidence is how sure you are the problem is real
+
+Only report problems you are confident about. If the changes look fine, return no suggestions.
+
+===== chunk
+### backend/src/database.py (modified)
+@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
+   4 | from datetime import datetime
+   5 | import os
+   6 | 
+-    | DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/codemop")
++  7 | DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://codemop:codemop@localhost:5432/codemop")
+   8 | 
+   9 | engine = create_engine(DATABASE_URL)
+  10 | SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+@@ -49,4 +49,36 @@ def get_db():
+  49 |     try:
+  50 |         yield db
+  51 |     finally:
+-    |         db.close()
++ 52 |         db.close()
++ 53 | 
++ 54 | # PR storage functions
++ 55 | def create_pr(db, pr_data: dict):
++ 56 |     """Create a new PR record in the database"""
++ 57 |     db_pr = PR(
++ 58 |         github_id=pr_data.get("github_id"),
++ 59 |         repo_name=pr_data.get("repo_name"),
++ 60 |         repo_full_name=pr_data.get("repo_full_name"),
++ 61 |         branch=pr_data.get("branch"),
++ 62 |         author=pr_data.get("author"),
++ 63 |         title=pr_data.get("title"),
++ 64 |         status=pr_data.get("status"),
++ 65 |         github_url=pr_data.get("github_url"),
++ 66 |         diff_url=pr_data.get("diff_url")
++ 67 |     )
++ 68 |     db.add(db_pr)
++ 69 |     db.commit()
++ 70 |     db.refresh(db_pr)
++ 71 |     return db_pr
++ 72 | 
++ 73 | def get_pr_by_github_id(db, github_id: int):
++ 74 |     """Get PR by GitHub ID"""
++ 75 |     return db.query(PR).filter(PR.github_id == github_id).first()
++ 76 | 
++ 77 | def update_pr_status(db, github_id: int, status: str):
++ 78 |     """Update PR status"""
++ 79 |     db_pr = get_pr_by_github_id(db, github_id)
++ 80 |     if db_pr:
++ 81 |         db_pr.status = status
++ 82 |         db.commit()
++ 83 |         db.refresh(db_pr)
++ 84 |     return db_pr
+===== chunk
+### backend/src/main.py (modified)
+@@ -1,5 +1,5 @@
+    1 | import os
+-     | from fastapi import FastAPI, Request, HTTPException, Header
++   2 | from fastapi import FastAPI, Request, HTTPException, Header, Depends
+    3 | from fastapi.middleware.cors import CORSMiddleware
+    4 | import hmac
+    5 | import hashlib
+@@ -7,6 +7,7 @@ from typing import Optional
+    7 | from pydantic import BaseModel
+    8 | import logging
+    9 | from datetime import datetime
++  10 | from database import get_db, create_pr, update_pr_status, init_db
+   11 | 
+   12 | # Configure logging
+   13 | logging.basicConfig(level=logging.INFO)
+@@ -14,6 +15,11 @@ logger = logging.getLogger(__name__)
+   15 | 
+   16 | app = FastAPI()
+   17 | 
++  18 | # Initialize database on startup
++  19 | @app.on_event("startup")
++  20 | def on_startup():
++  21 |     init_db()
++  22 | 
+   23 | # CORS configuration
+   24 | app.add_middleware(
+   25 |     CORSMiddleware,
+@@ -67,8 +73,28 @@ async def handle_github_webhook(
+   73 |     logger.info(f"Author: {pr_data.get('user', {}).get('login')}")
+   74 |     logger.info(f"Branch: {pr_data.get('head', {}).get('ref')}")
+   75 | 
++  76 |     # Store PR data in database
++  77 |     db = next(get_db())
++  78 |     try:
++  79 |         pr_record = create_pr(db, {
++  80 |             "github_id": pr_number,
++  81 |             "repo_name": repo_data.get("name"),
++  82 |             "repo_full_name": repo_data.get("full_name"),
++  83 |             "branch": pr_data.get("head", {}).get("ref"),
++  84 |             "author": pr_data.get("user", {}).get("login"),
++  85 |             "title": pr_data.get("title"),
++  86 |             "status": action,
++  87 |             "github_url": pr_data.get("html_url"),
++  88 |             "diff_url": pr_data.get("diff_url")
++  89 |         })
++  90 |         logger.info(f"Stored PR #{pr_number} in database with ID {pr_record.id}")
++  91 |     except Exception as e:
++  92 |         logger.error(f"Failed to store PR data: {str(e)}")
++  93 |         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
++  94 |     finally:
++  95 |         db.close()
++  96 | 
+   97 |     # Here you would:
+-     |     # 1. Store PR data in database
+   98 |     # 2. Trigger AI analysis
+   99 |     # 3. Return appropriate response
+  100 | 
+===== chunk
+### backend/src/main.py (modified)
+@@ -77,6 +103,7 @@ async def handle_github_webhook(
+  103 |         "pr_number": pr_number,
+  104 |         "action": action,
+  105 |         "repository": repo_data.get("full_name"),
++ 106 |         "database_id": pr_record.id,
+  107 |         "timestamp": datetime.utcnow().isoformat()
+  108 |     }
+  109 | 

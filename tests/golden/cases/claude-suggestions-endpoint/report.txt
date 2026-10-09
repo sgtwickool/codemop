@@ -1,0 +1,34 @@
+CodeMop review of golden/claude-suggestions-endpoint with anthropic/claude-opus-5-5
+
+backend/src/main.py:18  [bug, confidence 0.85]  Hardcoded developer-specific absolute path for .env
+    `/home/sgtwickool/...` only exists on one developer's machine. In any other
+    environment the .env file is silently not loaded, so config like API_KEY will be
+    missing.
+    Suggested change:
+      load_dotenv()
+
+backend/src/main.py:41-45  [security, confidence 0.85]  Authentication bypass when API_KEY is unset; non-constant-time comparison
+    API_KEY defaults to an empty string. A header such as `Authorization: Bearer ` is
+    non-empty, so it passes the missing-header check, then strips to "" and matches the
+    empty key, granting access. The `!=` comparison is also not constant-time.
+    Suggested change:
+          if not API_KEY or not api_key or not hmac.compare_digest(api_key, API_KEY):
+              raise HTTPException(
+                  status_code=401,
+                  detail="Invalid API key"
+              )
+
+backend/src/main.py:420-425  [bug, confidence 0.95]  HTTPException (404) is caught and re-raised as 500
+    The broad `except Exception` also catches the HTTPException raised for a missing PR.
+    Clients get a 500 'Error retrieving suggestions: ...' instead of a 404.
+    Suggested change:
+          except HTTPException:
+              raise
+          except Exception as e:
+              logger.error(f"Error fetching suggestions for PR {pr_id}: {str(e)}")
+              raise HTTPException(
+                  status_code=500,
+                  detail="Error retrieving suggestions"
+              )
+
+3 suggestion(s) · 1 chunk(s) · 3,810 input / 1,000 output tokens · about $0.04 (list prices as of 2026-09-25)

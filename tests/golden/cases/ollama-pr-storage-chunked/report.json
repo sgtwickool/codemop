@@ -1,0 +1,51 @@
+{
+  "target": "golden/ollama-pr-storage-chunked",
+  "config": "defaults",
+  "complete": true,
+  "model": "ollama/qwen2.5-coder:7b",
+  "suggestions": [
+    {
+      "file_path": "backend/src/database.py",
+      "line": 64,
+      "end_line": null,
+      "severity": "bug",
+      "title": "Unnecessary call to `get_pr_by_github_id` in `update_pr_status`",
+      "explanation": "The function `update_pr_status` currently retrieves the PR record using `get_pr_by_github_id` and then updates it. This is unnecessary because the PR record has already been retrieved in the `db_pr` variable. Removing the call to `get_pr_by_github_id` will simplify the function and reduce the number of database queries.",
+      "suggested_code": null,
+      "confidence": 1.0
+    },
+    {
+      "file_path": "backend/src/main.py",
+      "line": 19,
+      "end_line": null,
+      "severity": "bug",
+      "title": "Database session not properly reused in startup handler",
+      "explanation": "The `get_db` function likely uses context management (e.g., `yield`) to create and close the database session. Using `next(get_db())` directly in the startup handler will create a new session that is not closed properly, leading to a resource leak. The `get_db` function should be used as a context manager with `with` to ensure the session is properly managed.",
+      "suggested_code": "with next(get_db()) as db:\n    init_db()",
+      "confidence": 1.0
+    },
+    {
+      "file_path": "backend/src/main.py",
+      "line": 106,
+      "end_line": null,
+      "severity": "bug",
+      "title": "Potential SQL Injection",
+      "explanation": "The 'database_id' parameter from `pr_record.id` is directly included in the payload. If `pr_record.id` contains user input or is not properly sanitized, it could lead to SQL injection.",
+      "suggested_code": "database_id=db.engine.execute('SELECT id FROM pr_record WHERE record_id = :id', {'id': pr_record.id}).scalar()",
+      "confidence": 1.0
+    }
+  ],
+  "unplaced": [],
+  "below_confidence": 0,
+  "skipped": [],
+  "failed": [],
+  "stopped": null,
+  "chunks": 3,
+  "usage": {
+    "input_tokens": 4237,
+    "output_tokens": 771,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0
+  },
+  "cost": 0.0
+}
