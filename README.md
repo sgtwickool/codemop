@@ -70,9 +70,10 @@ The summary comment lists what CodeMop found, with a checkbox for each issue tha
 fix. Tick the ones you want and CodeMop commits them to the PR's branch as one commit:
 only for people with write access to the repository, and only where the code they replace
 hasn't changed since the review (the summary says which were applied, and why any weren't).
-Commits made with the workflow's own token don't start other workflows, so CI won't run on
-a fix commit unless you pass a personal access token (contents and pull requests: write) as
-`github-token`. Pull requests from forks get no checkboxes, since their branches can't be
+GitHub doesn't run other workflows for a commit made with the workflow's own token, so CI
+doesn't run on a fix commit: its checks show as failed to start ("a workflow file issue").
+To have CI run on fix commits, pass a personal access token (contents and pull requests:
+write) as `github-token`. Pull requests from forks get no checkboxes, since their branches can't be
 committed to; their comments still have one-click suggestions. `checklist: false` turns
 the checkboxes off.
 

@@ -37,7 +37,7 @@ inputs:
     description: The pull request to review, as owner/repo#123 (default, the one that triggered the workflow)
     default: ""
   github-token:
-    description: Token for reading the PR, posting the review and committing fixes; needs pull-requests write (and contents write for fixes). Commits made with the default token don't start other workflows, so CI won't run on them; a personal access token here fixes that
+    description: Token for reading the PR, posting the review and committing fixes; needs pull-requests write (and contents write for fixes). GitHub doesn't run other workflows for commits made with the default token (their checks show as failed to start), so CI doesn't run on fix commits; a personal access token here fixes that
     default: ${{ github.token }}
 
 runs:
