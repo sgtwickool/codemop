@@ -100,6 +100,8 @@ def _enclosing(tree: ast.Module, text: str, path: str, changed: Set[int]) -> Lis
     blocks = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
     found: Dict[Tuple[int, int], Snippet] = {}
     for line in sorted(changed):
+        if any(s.start <= line <= s.end for s in found.values()):
+            continue  # already covered by a block found for an earlier line
         around = [b for b in blocks if b.lineno <= line <= (b.end_lineno or b.lineno)]
         if not around:
             continue
