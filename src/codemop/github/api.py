@@ -9,5 +9,5 @@ from codemop.github.conversation import (  # noqa: F401
     post_issue_comment, post_review, react_to_issue_comment, reply_to_review_comment, resolve_thread,
 )
 from codemop.github.pulls import (  # noqa: F401
-    PullRequest, compare_commits, fetch_pr_diff, fetch_pull_request, fetch_repo_file, list_paths,
+    PullRequest, compare_commits, fetch_pr_diff, fetch_pull_request, fetch_repo_file, fetch_snapshot, list_paths,
 )

@@ -1,12 +1,13 @@
 # Review eval
 
-Compares models on the same 25 pull request diffs, each with a hand-written answer key, by running
+Compares models on the same 32 pull request diffs, each with a hand-written answer key, by running
 CodeMop's real review pipeline and grading every comment. It chose the default model, and can be
 rerun when the prompt or the models change.
 
 - [`cases.yml`](cases.yml): the cases and their known issues; the diffs are in `cases/`, and
   [`CASES.md`](CASES.md) shows them together (`render_cases.py`). 9 are real bugs from CodeMop's own
-  history, 9 have a seeded bug, 7 are clean; 15 are tagged simple and 10 complex
+  history, 9 have a seeded bug, 5 have a seeded bug that only shows in other files (`cross-file`, with
+  the repository in `repos/`), 9 are clean (2 of them cross-file); 15 are tagged simple and 17 complex
 - [`run.py`](run.py): reviews every case with one configuration and grades it. A comment counts as
   finding a known issue when it's within 3 lines of it and a judge model (Claude Opus 4.8, not one of
   those compared) agrees it describes that issue and its claims hold up. Any other comment is judged
@@ -101,4 +102,34 @@ the 0.5 threshold. Why so little: most of the real cases are commits that create
 files, so the diff already shows everything the context would add, and what they lack is in
 other files that call the changed code (where `github_id` is set to the PR number, for
 real-pr-model), which this version doesn't look for.
+
+## Where the changed code is used, 2026-10-09
+
+Context now also includes where what the change defines is used: the functions that call a
+changed function, or use a changed constant or field, in files that import it. Seven
+cross-file cases were added for it: in five, the change is fine on its own and breaks code in
+another file (arguments reordered, None returned instead of an exception, seconds instead of
+minutes, a function made async, a dict key renamed); two are clean changes that only look
+risky (a new optional argument, a list returned as a generator). The default with context and
+uses, against the default without context (the grouping run above, plus the new cases), every
+case twice:
+
+| | Without context | With context and uses |
+|---|---|---|
+| Cases passed | 55/64 | **59/64** |
+| Cases that got context (16) | 24/32 | **29/32** |
+| Cases that didn't (16; the same input both times) | 31/32 | 30/32 |
+| Cross-file bugs found | 4/10 | **10/10** |
+| False alarms | 1 | 1 |
+| Review cost per case | $0.022 | $0.025 |
+
+- **Context is now on by default.** The three cross-file bugs a diff gives no hint of
+  (arguments reordered, units changed, made async) went from 0/6 to 6/6, the clean cross-file
+  cases stayed clean, and a review costs about 13% more
+- The difference on the cases without context is noise: their input was identical
+- To watch: real-security-config passed once in two runs with context, in both context
+  configurations so far, against every run without it. Its context includes four uses of the
+  changed settings; a larger sample would say whether they distract
+- Limits: the cross-file cases were written for this, so they show what context can do rather
+  than how often real PRs need it; dogfooding will say more
 

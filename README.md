@@ -149,10 +149,12 @@ aren't reviewed, because GitHub doesn't give their workflows your secrets.)
 Drafts are skipped until they're ready for review (`review-drafts: true` to review them),
 and the job fails only when the review couldn't be done (a rejected key, say). The other
 inputs: `base-url`, `effort` (Claude: `low` is cheaper), `max-comments`, `github-token`, and
-`context: true` to send the code around each change as well as the diff (the whole of each
-changed function, and the definitions it uses; it costs a little more and hasn't measurably
-helped in [CodeMop's eval](https://github.com/sgtwickool/codemop/blob/master/evals/review/README.md)
-yet, so it's off by default).
+`context`. Context is on by default: as well as the diff, CodeMop sends the whole of each
+changed function, where the changed code is used in other files, and the definitions it uses.
+A change can be right in itself and break the code that calls it, and in
+[CodeMop's eval](https://github.com/sgtwickool/codemop/blob/master/evals/review/README.md) context
+took those bugs from 4/10 found to 10/10, for about 13% more per review. The repository is read
+in one download, kept in memory and never checked out or run. `context: false` turns it off.
 
 The rest of this README covers configuring reviews, choosing a model, and running the
 webhook server.

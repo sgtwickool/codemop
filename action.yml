@@ -31,8 +31,8 @@ inputs:
     description: A checkbox in the summary for each fix; ticking them commits them (needs the issue_comment trigger and contents write, see the README)
     default: "true"
   context:
-    description: Send the code around each change too (whole functions, definitions it uses), not just the diff. Costs a little more; it hasn't measurably helped in CodeMop's eval yet
-    default: "false"
+    description: Send the code around each change too, not just the diff (whole functions, where the changed code is used in other files, definitions it uses). About 13% more per review; "false" to turn it off
+    default: "true"
   review-drafts:
     description: Review draft pull requests too
     default: "false"
@@ -126,5 +126,5 @@ runs:
         [ -n "$MAX_CHANGED_LINES" ] && args+=(--max-changed-lines "$MAX_CHANGED_LINES")
         [ -n "$MAX_COMMENTS" ] && args+=(--max-comments "$MAX_COMMENTS")
         [ "$CHECKLIST" = "true" ] && args+=(--checklist)
-        [ "$CONTEXT" = "true" ] && args+=(--context)
+        [ "$CONTEXT" = "false" ] && args+=(--no-context)
         "$codemop" "${args[@]}"

@@ -1,0 +1,23 @@
+diff --git a/accounts/users.py b/accounts/users.py
+--- a/accounts/users.py
++++ b/accounts/users.py
+@@ -1,4 +1,5 @@
+ from dataclasses import dataclass
++from typing import Optional
+ 
+ 
+ class UserNotFound(Exception):
+@@ -15,9 +16,9 @@
+         return hasher.verify(password, self.password_hash)
+ 
+ 
+-def find_user(db, email):
+-    """The user with this email address"""
+-    row = db.fetch_one("SELECT id, email, password_hash FROM users WHERE email = ?", (email,))
++def find_user(db, email) -> Optional["User"]:
++    """The user with this email address, or None if there isn't one"""
++    row = db.fetch_one("SELECT id, email, password_hash FROM users WHERE email = ?", (email.lower(),))
+     if row is None:
+-        raise UserNotFound(email)
++        return None
+     return User(**row)

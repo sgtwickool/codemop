@@ -34,7 +34,10 @@ def no_repo_config(monkeypatch, tmp_path):
     monkeypatch.setattr(api, "fetch_repo_file", fake_fetch_repo_file)
     monkeypatch.setattr(api, "list_review_threads", no_threads)
     monkeypatch.setattr(api, "fetch_pull_request", an_open_pr)
+    async def no_snapshot(repo, ref, token=None, api_url=None):
+        return None
     monkeypatch.setattr(api, "list_paths", no_paths)
+    monkeypatch.setattr(api, "fetch_snapshot", no_snapshot)
     return files
 
 

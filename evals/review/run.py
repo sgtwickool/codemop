@@ -31,6 +31,7 @@ from pydantic import BaseModel
 from codemop.config import DEFAULT_MIN_CONFIDENCE
 from codemop.providers import create_model
 from codemop.review.chunks import DEFAULT_IGNORED_PATHS, plan_chunks
+from codemop.review.context import FileSource, LocalFiles
 from codemop.review.diff import parse_diff
 from codemop.review.pipeline import review_diff
 from codemop.review.prompt import SYSTEM_PROMPT, render_file
@@ -51,6 +52,10 @@ VARIANTS = {
     # And with repository context (2026-10-09): the code around each change, for the cases from
     # this repository's history (the others are self-contained, so there's none to add)
     "v6": {"model": "claude-opus-5-5", "effort": "high", "label": "Opus 5.5, high effort, with context", "context": True},
+    # And with where the changed code is used (2026-10-09), on the cases above plus the cross-file
+    # ones, whose bugs are only bugs because of code in other files
+    "v7": {"model": "claude-opus-5-5", "effort": "high", "label": "Opus 5.5, high effort, with context and uses",
+           "context": True},
 }
 
 JUDGE_MODEL = "claude-opus-4-8"  # not one of the models being compared
@@ -129,8 +134,13 @@ class GitFiles:
         return result.stdout.splitlines()
 
 
-def case_files(case: dict) -> Optional[GitFiles]:
-    """The repository at the case's commit, for cases from this repository's history"""
+def case_files(case: dict) -> Optional[FileSource]:
+    """
+    The case's repository: for a case from this repository's history, as of its commit; for a
+    cross-file case, the one in repos/
+    """
+    if (HERE / "repos" / case["id"]).is_dir():
+        return LocalFiles(HERE / "repos" / case["id"])
     match = re.match(r"commit ([0-9a-f]{7,40})", case.get("source", ""))
     return GitFiles(match.group(1)) if match else None
 
