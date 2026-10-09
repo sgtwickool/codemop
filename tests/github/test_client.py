@@ -12,6 +12,12 @@ from codemop.github.client import (
 PR = PullRequestRef("owner/repo", 7)
 
 
+@pytest.fixture(autouse=True)
+def no_retry_delay(monkeypatch):
+    """Retries without waiting, in every test here"""
+    monkeypatch.setattr("codemop.github.client.RETRY_DELAYS", [0, 0])
+
+
 @pytest.mark.parametrize("text", [
     "owner/repo#7",
     " owner/repo#7 ",
@@ -250,3 +256,48 @@ async def test_committing_when_the_branch_has_moved_is_a_422():
     with pytest.raises(GitHubError) as error:
         await commit_files("owner/repo", "feature", "p", {"a": "b"}, "m", transport=transport)
     assert error.value.status == 422
+
+
+
+
+@pytest.mark.asyncio
+async def test_a_brief_github_failure_is_retried():
+    """Seen on PR #5: GitHub returned a 500 for a diff that came back fine a second later"""
+    transport, requests = json_api((500, {}), (502, {}), (200, {"head": {"sha": "abc"}, "state": "open"}))
+
+    assert (await fetch_pull_request(PR, transport=transport)).head_sha == "abc"
+    assert len(requests) == 3
+
+
+@pytest.mark.asyncio
+async def test_retries_give_up_after_two():
+    transport, requests = json_api((500, {}), (500, {}), (500, {}))
+
+    with pytest.raises(GitHubError) as error:
+        await fetch_pull_request(PR, transport=transport)
+    assert error.value.status == 500
+    assert len(requests) == 3
+
+
+@pytest.mark.asyncio
+async def test_creating_something_isnt_retried():
+    """The first attempt may have worked, and a second would post the review twice"""
+    transport, requests = json_api((502, {}))
+
+    with pytest.raises(GitHubError):
+        await post_review(PR, {}, token="ghp_x", transport=transport)
+    assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_connection_is_retried():
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        if len(calls) == 1:
+            raise httpx.ConnectError("reset")
+        return httpx.Response(200, text="diff --git a/x b/x\n")
+
+    assert (await fetch_pr_diff(PR, transport=httpx.MockTransport(handler))).startswith("diff --git")
+    assert len(calls) == 2

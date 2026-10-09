@@ -5,6 +5,7 @@ Uses a token when one is given, which private repositories need (and which raise
 rate limit from 60 to 5,000 requests an hour for public ones). Posting needs one with
 write access to pull requests.
 """
+import asyncio
 import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional
@@ -20,6 +21,13 @@ _PR_URL = re.compile(r"^https?://[^/]+/(?P<repo>[\w.-]+/[\w.-]+)/pull/(?P<number
 JSON = "application/vnd.github+json"
 # A PR's conversation can be long; CodeMop's summary may be anywhere in it
 MAX_COMMENT_PAGES = 10
+
+# GitHub sometimes fails a request briefly (a 500 fetching a diff that works a second later).
+# Requests that are safe to repeat are tried again; creating something isn't, since the first
+# attempt may have worked
+RETRY_STATUSES = {500, 502, 503, 504}
+RETRY_METHODS = {"GET", "PATCH", "PUT", "DELETE"}
+RETRY_DELAYS = [1.0, 3.0]
 
 
 class GitHubError(Exception):
@@ -75,11 +83,18 @@ async def _request(
     headers = {"Accept": accept, "X-GitHub-Api-Version": "2022-11-28"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    retries = RETRY_DELAYS if method in RETRY_METHODS else []
     async with httpx.AsyncClient(headers=headers, timeout=60.0, transport=transport) as client:
-        try:
-            return await client.request(method, url, json=json)
-        except httpx.TransportError:
-            raise GitHubError(f"Couldn't connect to {url.split('/repos/')[0]}; check the network")
+        for attempt in range(len(retries) + 1):
+            try:
+                response = await client.request(method, url, json=json)
+            except httpx.TransportError:
+                if attempt == len(retries):
+                    raise GitHubError(f"Couldn't connect to {url.split('/repos/')[0]}; check the network")
+            else:
+                if response.status_code not in RETRY_STATUSES or attempt == len(retries):
+                    return response
+            await asyncio.sleep(retries[attempt])
 
 
 async def fetch_pr_diff(
