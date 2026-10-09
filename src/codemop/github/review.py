@@ -141,9 +141,14 @@ def stored_fixes(body: str) -> Tuple[Optional[str], Dict[int, Fix], Set[int]]:
     return data["commit"], {f["id"]: Fix(**f) for f in data["fixes"]}, set(data["applied"])
 
 
+def _lf(body: str) -> str:
+    # A comment saved from GitHub's web page (as when a box is ticked there) has \r\n line endings
+    return body.replace("\r\n", "\n")
+
+
 def ticked(body: str) -> Set[int]:
     """The ids of the fixes ticked in the summary's checklist"""
-    return {int(fix_id) for box, _, fix_id in _ITEM.findall(body) if box.lower() == "x"}
+    return {int(fix_id) for box, _, fix_id in _ITEM.findall(_lf(body)) if box.lower() == "x"}
 
 
 def record_applied(body: str, commit: str, applied: Sequence[Fix], skipped: Sequence[Tuple[Fix, str]]) -> str:
@@ -160,7 +165,7 @@ def record_applied(body: str, commit: str, applied: Sequence[Fix], skipped: Sequ
             return f"- [ ] {text} · ⚠️ not applied: {why[fix_id]} <!-- codemop-fix:{fix_id} -->"
         return match.group(0)
 
-    body = _ITEM.sub(item, body)
+    body = _ITEM.sub(item, _lf(body))
     reviewed, fixes, already = stored_fixes(body)
     return _FIXES.sub(lambda _: _fixes_data(reviewed, fixes.values(), already | done), body)
 
