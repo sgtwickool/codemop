@@ -85,7 +85,24 @@ class SummaryState:
         return added
 
 
-NEAR_LINES = 3  # a suggestion this close to an earlier finding, same file and severity, is the same issue
+NEAR_LINES = 3  # how close a suggestion must be to an earlier finding to be the same issue reworded
+SIMILAR_TITLES = 0.5  # and the share of their titles' words in common
+
+
+def _similar(a: str, b: str) -> bool:
+    words_a, words_b = (set(re.findall(r"[a-z0-9_]+", t.lower())) for t in (a, b))
+    return bool(words_a and words_b) and len(words_a & words_b) / len(words_a | words_b) >= SIMILAR_TITLES
+
+
+def _same_issue(s: ModelSuggestion, f: "Finding") -> bool:
+    """
+    Whether a new suggestion is an earlier finding raised again: same file and severity, and
+    the same title, or nearby with a similar one (the model rewords its titles). A different
+    issue on a nearby line is a new finding, not this one with someone else's fix.
+    """
+    if s.file_path != f.path or s.severity.value != f.severity:
+        return False
+    return s.title == f.title or (abs(s.line - f.line) <= NEAR_LINES and _similar(s.title, f.title))
 
 
 def update_earlier(state: SummaryState, new: Sequence[ModelSuggestion], resolved: Set[Tuple[str, str]],
@@ -107,8 +124,7 @@ def update_earlier(state: SummaryState, new: Sequence[ModelSuggestion], resolved
         if (f.path, f.title) in resolved:
             f.status, f.note = DISMISSED, "dismissed: its conversation was resolved"
             continue
-        again = next((s for s in new if s.file_path == f.path and s.severity.value == f.severity
-                      and (abs(s.line - f.line) <= NEAR_LINES or s.title == f.title)), None)
+        again = next((s for s in new if _same_issue(s, f)), None)
         if again:
             new.remove(again)
             f.line, f.end_line, f.code = again.line, again.end_line or again.line, again.suggested_code
