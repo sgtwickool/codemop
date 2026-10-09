@@ -6,8 +6,12 @@ so a fix that also repeats the code around those lines (small models often inclu
 above or below, or rewrite the whole function) would duplicate that code when applied.
 Repeated lines at its edges are trimmed off; a fix that still repeats nearby lines is left
 out, and the comment is kept without it.
+
+Fixes can also be applied later (when someone ticks them in CodeMop's summary), to code
+that may have changed since the review: see apply_fixes.
 """
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from codemop.review.diff import FileDiff
 from codemop.review.schema import ModelSuggestion
@@ -65,3 +69,64 @@ def fit_fix(suggestion: ModelSuggestion, lines: Dict[int, str]) -> Tuple[Optiona
         if len(text) >= DISTINCT_LINE_CHARS and text in nearby and text not in inside:
             return None, f"it repeats a nearby line ({text!r}), which applying it would duplicate"
     return "\n".join(code), None
+
+
+@dataclass(frozen=True)
+class Fix:
+    """A suggested fix as offered for applying later: what it replaces, and with what"""
+    id: int
+    path: str
+    line: int
+    end_line: int
+    code: str
+    original: List[str]  # the lines it replaces, as they were when reviewed
+    title: str
+
+
+@dataclass(frozen=True)
+class AppliedFixes:
+    text: str  # the file with the fixes applied
+    applied: List[Fix]
+    skipped: List[Tuple[Fix, str]]  # and why
+
+
+def _find(lines: List[str], block: List[str]) -> List[int]:
+    """Where `block` occurs in `lines` (0-based starts)"""
+    width = len(block)
+    return [i for i in range(len(lines) - width + 1) if lines[i:i + width] == block]
+
+
+def apply_fixes(text: str, fixes: Sequence[Fix]) -> AppliedFixes:
+    """
+    Apply fixes to one file's text. Each replaces its original lines where they still are;
+    if the file has changed, wherever those lines now are (if they're there exactly once).
+    A fix whose lines have changed, or that overlaps one already applied, is skipped.
+    """
+    ending = "\r\n" if "\r\n" in text else "\n"
+    trailing = text.endswith(ending)
+    # Split on the file's own line ending only (splitlines would also split on form feeds)
+    lines = text.split(ending)
+    if trailing:
+        lines.pop()
+    # (start, end) of each fix, 0-based and end-exclusive, in the file as it is now
+    placed: List[Tuple[int, int, Fix]] = []
+    skipped: List[Tuple[Fix, str]] = []
+    for fix in fixes:
+        start = fix.line - 1
+        if lines[start:start + len(fix.original)] != fix.original:
+            found = _find(lines, fix.original)
+            if len(found) != 1:
+                skipped.append((fix, "the code it replaces has changed since it was reviewed"))
+                continue
+            start = found[0]
+        end = start + len(fix.original)
+        if any(start < e and s < end for s, e, _ in placed):
+            skipped.append((fix, "it overlaps another fix being applied"))
+            continue
+        placed.append((start, end, fix))
+
+    # From the bottom up, so earlier line numbers stay put
+    for start, end, fix in sorted(placed, key=lambda p: p[0], reverse=True):
+        lines[start:end] = fix.code.split("\n")
+    applied = [fix for _, _, fix in sorted(placed, key=lambda p: p[0])]
+    return AppliedFixes(ending.join(lines) + (ending if trailing else ""), applied, skipped)

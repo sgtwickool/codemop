@@ -1,5 +1,5 @@
 from codemop.review.diff import parse_diff
-from codemop.review.fixes import file_lines, fit_fix
+from codemop.review.fixes import Fix, apply_fixes, file_lines, fit_fix
 from codemop.review.schema import ModelSuggestion
 
 # The start of PR #2's test_code.py, as an added file (new-file lines 1-15)
@@ -105,3 +105,68 @@ def test_a_repeated_line_that_cant_be_trimmed_leaves_the_fix_out():
 def test_lines_the_diff_doesnt_show_cant_be_checked_so_the_fix_is_kept():
     code = "    x = compute()\n    y = other()"
     assert fit_fix(fix(code, line=40), LINES) == (code, None)
+
+
+SAMPLE = "def total(items):\n    result = sum(items)\n    return result + 1\n"
+
+
+def stored(code="    return result", line=3, original=("    return result + 1",), fix_id=1):
+    return Fix(id=fix_id, path="app.py", line=line, end_line=line + len(original) - 1, code=code,
+               original=list(original), title="Adds one")
+
+
+def test_applies_a_fix_where_it_was_reviewed():
+    result = apply_fixes(SAMPLE, [stored()])
+
+    assert result.text == "def total(items):\n    result = sum(items)\n    return result\n"
+    assert [f.id for f in result.applied] == [1] and result.skipped == []
+
+
+def test_finds_the_lines_if_the_file_has_moved_on():
+    moved = "import math\n\n" + SAMPLE
+
+    result = apply_fixes(moved, [stored()])
+
+    assert result.text == "import math\n\ndef total(items):\n    result = sum(items)\n    return result\n"
+
+
+def test_skips_a_fix_whose_lines_have_changed():
+    changed = SAMPLE.replace("result + 1", "result + 2")
+
+    result = apply_fixes(changed, [stored()])
+
+    assert result.text == changed
+    assert [reason for _, reason in result.skipped] == ["the code it replaces has changed since it was reviewed"]
+
+
+def test_skips_a_fix_whose_lines_now_appear_twice():
+    """The file moved on, and the line to replace is now in two places: which one is ambiguous"""
+    result = apply_fixes("# moved\n" + SAMPLE + SAMPLE, [stored()])
+
+    assert result.applied == []
+    assert [reason for _, reason in result.skipped] == ["the code it replaces has changed since it was reviewed"]
+
+
+def test_applies_several_fixes_in_one_file_and_skips_overlaps():
+    fixes = [stored(), stored(code="    result = sum(items or [])", line=2, original=("    result = sum(items)",), fix_id=2),
+             stored(code="    pass", line=2, original=("    result = sum(items)", "    return result + 1"), fix_id=3)]
+
+    result = apply_fixes(SAMPLE, fixes)
+
+    assert result.text == "def total(items):\n    result = sum(items or [])\n    return result\n"
+    assert [f.id for f in result.applied] == [2, 1]
+    assert [(f.id, reason) for f, reason in result.skipped] == [(3, "it overlaps another fix being applied")]
+
+
+def test_keeps_the_files_line_endings_and_odd_characters():
+    crlf = SAMPLE.replace("\n", "\r\n").replace("def total", "\fdef total")
+
+    result = apply_fixes(crlf, [stored()])
+
+    assert result.text == "\fdef total(items):\r\n    result = sum(items)\r\n    return result\r\n"
+
+
+def test_a_fix_can_replace_one_line_with_several():
+    result = apply_fixes(SAMPLE, [stored(code="    if not items:\n        return 0\n    return result")])
+
+    assert result.text.endswith("    if not items:\n        return 0\n    return result\n")
