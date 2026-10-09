@@ -7,7 +7,8 @@ import json
 import pytest
 
 from codemop import cli
-from codemop.github.client import GitHubError, IssueComment, PullRequest
+from codemop.github.client import GitHubError, IssueComment, PullRequest, ReviewComment, ReviewThread
+from codemop.review.learned import parse_learned
 from codemop.providers.base import NoReview, Usage
 from codemop.review.schema import ModelReview, ModelSuggestion
 
@@ -52,7 +53,11 @@ def no_repo_config(monkeypatch):
 
     async def fake_fetch_repo_file(repo, path, token=None, api_url=None):
         return files.get((repo, path))
+
+    async def no_threads(pr, token=None, api_url=None):
+        return []
     monkeypatch.setattr(cli, "fetch_repo_file", fake_fetch_repo_file)
+    monkeypatch.setattr(cli, "list_review_threads", no_threads)
     return files
 
 
@@ -287,6 +292,8 @@ def github(monkeypatch):
         "files": {"app.py": "def total(items):\n    result = sum(items)\n    return result + 1\n"},
         "commits": [], "permissions": {"maintainer": "write", "visitor": "read"}, "branch_moves": 0,
         "while_committing": None,  # something to happen to the PR while fixes are being committed
+        "default_branch": {},  # files on the default branch (the PR's are in "files")
+        "threads": [], "review_comments": {}, "replies": [], "resolved": [],
     }
 
     async def fetch_pull_request(pr, token=None, api_url=None):
@@ -294,7 +301,20 @@ def github(monkeypatch):
                            head_repo=state["head_repo"])
 
     async def fetch_repo_file(repo, path, ref=None, token=None, api_url=None):
-        return state["files"].get(path) if ref else None  # no .codemop.yml on the default branch
+        return state["files"].get(path) if ref else state["default_branch"].get(path)
+
+    async def list_review_threads(pr, token=None, api_url=None):
+        return list(state["threads"])
+
+    async def fetch_review_comment(repo, comment_id, token=None, api_url=None):
+        return state["review_comments"].get(comment_id)
+
+    async def reply_to_review_comment(pr, comment_id, body, token=None, api_url=None):
+        state["replies"].append((comment_id, body))
+        return "https://github.com/reply"
+
+    async def resolve_thread(thread_id, token=None, api_url=None):
+        state["resolved"].append(thread_id)
 
     async def user_permission(repo, user, token=None, api_url=None):
         return state["permissions"].get(user, "none")
@@ -334,7 +354,9 @@ def github(monkeypatch):
     for name, fake in [("fetch_pull_request", fetch_pull_request), ("list_issue_comments", list_issue_comments),
                        ("fetch_pr_diff", fetch_pr_diff), ("post_review", post_review),
                        ("post_issue_comment", post_issue_comment), ("fetch_repo_file", fetch_repo_file),
-                       ("user_permission", user_permission), ("commit_files", commit_files)]:
+                       ("user_permission", user_permission), ("commit_files", commit_files),
+                       ("list_review_threads", list_review_threads), ("fetch_review_comment", fetch_review_comment),
+                       ("reply_to_review_comment", reply_to_review_comment), ("resolve_thread", resolve_thread)]:
         monkeypatch.setattr(cli, name, fake)
     monkeypatch.setenv("GITHUB_TOKEN", "ghp_test")
     return state
@@ -609,3 +631,142 @@ def test_one_tick_commits_a_whole_group_across_files(capsys, monkeypatch, fake_m
 
 async def _async(value):
     return value
+
+
+def codemop_comment(github, comment_id=500, path="app.py", line=3):
+    """One of CodeMop's comments on the code, as posted, in its own thread"""
+    body = cli.review_payload([SUGGESTION.model_copy(update={"file_path": path, "line": line})], github["head"])["comments"][0]["body"]
+    github["review_comments"][comment_id] = ReviewComment(comment_id, body, path, line, None, "github-actions[bot]", True)
+    github["threads"].append(ReviewThread(f"thread-{comment_id}", False, path, line, comment_id, body, True))
+    return comment_id
+
+
+def learn_reply(github, text, author="maintainer", reply_id=501, to=500):
+    github["review_comments"][reply_id] = ReviewComment(reply_id, text, "app.py", 3, to, author, False)
+    return reply_id
+
+
+def test_every_comment_says_how_to_respond(capsys, monkeypatch, fake_model, github):
+    fake_model([SUGGESTION])
+
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+
+    comment = github["reviews"][0]["comments"][0]["body"]
+    assert "Not a problem? Resolve this conversation and CodeMop won't raise it again on this PR" in comment
+    assert "reply `/codemop learn <why>`" in comment
+    summary = summary_of(github)
+    assert "<summary>How to respond to CodeMop</summary>" in summary
+    assert "**Fix it:** tick its box above" in summary
+    assert "**Not a problem here:** resolve the comment's conversation" in summary
+    assert "**Not a problem anywhere in this repository:** reply `/codemop learn <why it's fine>`" in summary
+
+
+def test_on_a_fork_the_summary_says_what_works_there(capsys, monkeypatch, fake_model, github):
+    fake_model([SUGGESTION])
+    github["head_repo"] = "someone/fork"
+
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+
+    assert "**Fix it:** use \"Commit suggestion\" on its comment" in summary_of(github)
+    assert "CodeMop can't commit to a fork's branch, so add a note to `.codemop-learned.yml`" in summary_of(github)
+
+
+def test_a_resolved_comment_isnt_raised_again(capsys, monkeypatch, fake_model, github):
+    codemop_comment(github)
+    github["threads"][0] = github["threads"][0].__class__(**{**github["threads"][0].__dict__, "resolved": True})
+    fake_model([SUGGESTION.model_copy(update={"line": 2})])  # the same issue, a line away after an edit
+
+    code, out, _ = run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+
+    assert code == 0
+    assert "No issues found." in summary_of(github)
+    assert "Left out 1 suggestion(s) dismissed earlier on this pull request" in out
+
+
+def test_the_model_is_told_whats_settled(capsys, monkeypatch, github):
+    """Learned notes come from the default branch; dismissed issues from resolved conversations"""
+    codemop_comment(github)
+    github["threads"][0] = github["threads"][0].__class__(**{**github["threads"][0].__dict__, "resolved": True})
+    github["default_branch"][".codemop-learned.yml"] = "- path: db.py\n  issue: Float money\n  reason: Cents are ints\n"
+    seen = []
+
+    class Recording(FakeModel):
+        async def review(self, instructions, diff_text):
+            seen.append(instructions)
+            return await super().review(instructions, diff_text)
+    monkeypatch.setattr(cli, "create_model", lambda *a, **k: Recording([]))
+
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+
+    assert "These have already been settled by the people reviewing this code" in seen[0]
+    assert "- In db.py: Float money. It's fine here: Cents are ints" in seen[0]
+    assert "- In app.py near line 3: Adds one to the total. Dismissed on this pull request" in seen[0]
+
+
+def test_learn_adds_a_note_resolves_the_conversation_and_says_so(capsys, monkeypatch, github):
+    codemop_comment(github)
+    reply = learn_reply(github, "/codemop learn The +1 is the header row, which the total includes")
+
+    code, _, _ = run(capsys, monkeypatch, ["learn", "owner/repo#7", "--comment", str(reply)])
+
+    assert code == 0
+    learned = github["files"][".codemop-learned.yml"]
+    assert learned.startswith("# What this repository's reviewers have told CodeMop isn't a problem here.")
+    assert "- path: app.py\n  issue: Adds one to the total\n  reason: The +1 is the header row, which the total includes\n  from: '#7, @maintainer'" in learned
+    assert github["commits"][0].startswith("Teach CodeMop: Adds one to the total")
+    assert github["resolved"] == ["thread-500"]
+    [(to, text)] = github["replies"]
+    assert to == reply
+    assert text.startswith("Learned: I've added this to `.codemop-learned.yml` on this branch (c0ffee0)")
+
+
+def test_learn_adds_to_an_existing_file(capsys, monkeypatch, github):
+    codemop_comment(github)
+    github["files"][".codemop-learned.yml"] = "# my notes\n- path: x.py\n  issue: A\n  reason: B\n"
+    run(capsys, monkeypatch, ["learn", "owner/repo#7", "--comment", str(learn_reply(github, "/codemop learn fine"))])
+
+    learned = github["files"][".codemop-learned.yml"]
+    assert learned.startswith("# my notes\n- path: x.py")
+    assert [e.issue for e in parse_learned(learned)] == ["A", "Adds one to the total"]
+
+
+def test_learn_needs_a_reason(capsys, monkeypatch, github):
+    codemop_comment(github)
+
+    run(capsys, monkeypatch, ["learn", "owner/repo#7", "--comment", str(learn_reply(github, "/codemop learn"))])
+
+    assert github["commits"] == [] and github["resolved"] == []
+    assert "Say why it's fine" in github["replies"][0][1]
+
+
+def test_learn_is_only_for_people_with_write_access(capsys, monkeypatch, github):
+    codemop_comment(github)
+
+    run(capsys, monkeypatch, ["learn", "owner/repo#7", "--comment",
+                              str(learn_reply(github, "/codemop learn trust me", author="visitor"))])
+
+    assert github["commits"] == [] and github["resolved"] == []
+    assert "Only people with write access to owner/repo can teach CodeMop" in github["replies"][0][1]
+
+
+def test_learn_ignores_replies_to_other_peoples_comments(capsys, monkeypatch, github):
+    github["review_comments"][500] = ReviewComment(500, "I think this is wrong", "app.py", 3, None, "sam", False)
+
+    _, out, _ = run(capsys, monkeypatch, ["learn", "owner/repo#7", "--comment",
+                                         str(learn_reply(github, "/codemop learn because"))])
+
+    assert github["replies"] == [] and github["commits"] == []
+    assert "Not a `/codemop learn` reply to one of CodeMop's comments" in out
+
+
+def test_learn_on_a_fork_resolves_and_says_how_to_add_the_note(capsys, monkeypatch, github):
+    codemop_comment(github)
+    github["head_repo"] = "someone/fork"
+
+    run(capsys, monkeypatch, ["learn", "owner/repo#7", "--comment", str(learn_reply(github, "/codemop learn fine here"))])
+
+    assert github["commits"] == []
+    assert github["resolved"] == ["thread-500"]
+    text = github["replies"][0][1]
+    assert "I can't commit to a fork's branch" in text
+    assert "```yaml\n- path: app.py\n  issue: Adds one to the total\n  reason: fine here" in text

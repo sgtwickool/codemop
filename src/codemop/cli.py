@@ -6,6 +6,7 @@ The codemop command.
     codemop review owner/repo#123 --post   ...and post the review on it
     git diff main | codemop review -       review a local diff
     codemop apply owner/repo#123           commit the fixes ticked in CodeMop's summary on it
+    codemop learn owner/repo#123 --comment ID   act on a `/codemop learn <why>` reply on it
 
 Exit status: 0 when every part of the diff was reviewed, 1 when some of it couldn't be
 (see the report), 2 for usage errors.
@@ -29,11 +30,15 @@ from codemop.config import (
 )
 from codemop.github.client import (
     DEFAULT_API_URL, GitHubError, PullRequest, PullRequestRef, commit_files, fetch_pr_diff, fetch_pull_request,
-    fetch_repo_file, list_issue_comments, parse_pr_reference, post_issue_comment, post_review, user_permission,
+    fetch_repo_file, fetch_review_comment, list_issue_comments, list_review_threads, parse_pr_reference,
+    post_issue_comment, post_review, reply_to_review_comment, resolve_thread, user_permission,
 )
 from codemop.github.review import (
-    find_summary, offered_fixes, record_applied, review_payload, reviewed_commit, split_inline, stored_fixes,
-    summary_body, ticked,
+    find_summary, offered_fixes, parse_comment, record_applied, review_payload, reviewed_commit, split_inline,
+    stored_fixes, summary_body, ticked,
+)
+from codemop.review.learned import (
+    LEARNED_FILE, Dismissed, Learned, Settled, add_learned, learned_yaml, parse_learned,
 )
 from codemop.review.diff import parse_diff
 from codemop.review.fixes import apply_fixes, file_lines
@@ -119,6 +124,16 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument("--by", metavar="USER",
                        help="who ticked them: nothing is applied unless they have write access to the repository")
     apply.add_argument("--github-api-url", default=DEFAULT_API_URL, help="for GitHub Enterprise Server")
+
+    learn = commands.add_parser(
+        "learn", help="act on a `/codemop learn <why>` reply to one of CodeMop's comments",
+        description=f"Act on a `/codemop learn <why>` reply to one of CodeMop's comments on a pull request: add a "
+                    f"note to {LEARNED_FILE} on the PR's branch, resolve the conversation, and reply to confirm. "
+                    "Needs a token with contents: write and pull-requests: write.",
+    )
+    learn.add_argument("target", help="owner/repo#123 or a pull request URL")
+    learn.add_argument("--comment", type=int, required=True, metavar="ID", help="the reply's id")
+    learn.add_argument("--github-api-url", default=DEFAULT_API_URL, help="for GitHub Enterprise Server")
     return parser
 
 
@@ -182,6 +197,8 @@ def report_text(report: ReviewReport, target: str, config_source: str) -> str:
         notes.append(f"Set aside {len(report.unplaced)} suggestion(s) that pointed at lines outside the diff")
     if report.below_confidence:
         notes.append(f"Dropped {report.below_confidence} suggestion(s) below the confidence threshold")
+    if report.already_dismissed:
+        notes.append(f"Left out {report.already_dismissed} suggestion(s) dismissed earlier on this pull request")
     for dropped in report.dropped_fixes:
         notes.append(f"Left out the suggested fix for {dropped.file_path}:{dropped.line}: {dropped.reason}")
     if notes:
@@ -249,6 +266,7 @@ async def run_review(args) -> int:
         except GitHubError as e:
             print(f"codemop: {e}", file=sys.stderr)
             return 1
+    settled = await load_settled(pr, token, args.github_api_url, dismissed=args.post)
 
     try:
         model = create_model(
@@ -264,6 +282,7 @@ async def run_review(args) -> int:
         min_confidence=args.min_confidence if args.min_confidence is not None else config.min_confidence,
         ignored_paths=[*DEFAULT_IGNORED_PATHS, *config.ignore, *(args.ignore or [])],
         max_changed_lines=args.max_changed_lines,
+        settled=settled,
     )
     print(report_json(report, target, config_source) if args.json else report_text(report, target, config_source))
     if args.post:
@@ -271,11 +290,11 @@ async def run_review(args) -> int:
             print(f"codemop: not posting a review: {report.stopped}", file=sys.stderr)
             return 1
         try:
-            # A fork's branch can't be committed to, so no checklist there
-            checklist = args.checklist and pull.head_repo == pr.repo
+            # A fork's branch can't be committed to: no checklist, and no `/codemop learn` there
+            same_repo = pull.head_repo == pr.repo
             url = await post(pr, report, head_sha, summary.id if summary else None, token,
                              args.max_comments or config.max_comments, args.github_api_url,
-                             diff=diff, checklist=checklist)
+                             diff=diff, checklist=args.checklist and same_repo, teachable=same_repo)
         except GitHubError as e:
             print(f"codemop: {e}", file=sys.stderr)
             return 1
@@ -285,7 +304,8 @@ async def run_review(args) -> int:
 
 
 async def post(pr: PullRequestRef, report: ReviewReport, head_sha: str, summary_id: Optional[int], token: str,
-               max_comments: int, api_url: str, diff: str = "", checklist: bool = False) -> str:
+               max_comments: int, api_url: str, diff: str = "", checklist: bool = False,
+               teachable: bool = True) -> str:
     """
     Post the inline comments as a review, then create or update the summary comment, last, so
     it only says a commit was reviewed once everything is posted. Returns the summary's URL.
@@ -302,15 +322,111 @@ async def post(pr: PullRequestRef, report: ReviewReport, head_sha: str, summary_
             rejected = True  # the summary lists them all anyway
     cost = format_cost(report.cost, report.usage)
     fixes = offered_fixes([*inline, *not_inline], {f.path: file_lines(f) for f in parse_diff(diff)}) if checklist else {}
-    body = summary_body(report, inline, not_inline, cost, head_sha, review_url, rejected, fixes, checklist)
+    body = summary_body(report, inline, not_inline, cost, head_sha, review_url, rejected, fixes, checklist, teachable)
     if len(body) > MAX_COMMENT_CHARS:  # the fixes kept in it made it too long for GitHub
-        body = summary_body(report, inline, not_inline, cost, head_sha, review_url, rejected)
+        body = summary_body(report, inline, not_inline, cost, head_sha, review_url, rejected, teachable=teachable)
     try:
         return await post_issue_comment(pr, body, comment_id=summary_id, token=token, api_url=api_url)
     except GitHubError as e:
         if summary_id is None or e.status != 404:
             raise
         return await post_issue_comment(pr, body, token=token, api_url=api_url)  # it was deleted meanwhile
+
+
+async def load_settled(pr: Optional[PullRequestRef], token: Optional[str], api_url: str, dismissed: bool) -> Settled:
+    """
+    What not to raise again: the repository's learned notes (from its default branch, or for a
+    local diff the current directory), and with `dismissed` the CodeMop comments resolved on the PR
+    """
+    if pr is None:
+        path = Path(LEARNED_FILE)
+        return Settled(learned=parse_learned(path.read_text() if path.is_file() else None))
+    try:
+        learned = parse_learned(await fetch_repo_file(pr.repo, LEARNED_FILE, token=token, api_url=api_url))
+        threads = await list_review_threads(pr, token=token, api_url=api_url) if dismissed else []
+    except GitHubError as e:
+        # Not worth failing the review over: it may just raise something again
+        print(f"codemop: couldn't read what's been dismissed or learned ({e}); reviewing without it", file=sys.stderr)
+        return Settled()
+    resolved = []
+    for thread in threads:
+        parsed = parse_comment(thread.first_comment_body) if thread.resolved and thread.first_comment_by_bot else None
+        if parsed:
+            resolved.append(Dismissed(thread.path, thread.line, parsed[0], parsed[1]))
+    return Settled(learned=learned, dismissed=resolved)
+
+
+LEARN_COMMAND = "/codemop learn"
+
+
+async def run_learn(args) -> int:
+    """
+    Act on a `/codemop learn <why>` reply to one of CodeMop's comments: add a note to the
+    learned file on the PR's branch, resolve the conversation, and reply saying what happened
+    """
+    try:
+        pr = parse_pr_reference(args.target)
+    except ValueError as e:
+        print(f"codemop: {e}", file=sys.stderr)
+        return 2
+    token = github_token()
+    if not token:
+        print("codemop: learn needs a GitHub token: set GITHUB_TOKEN (or `gh auth login`)", file=sys.stderr)
+        return 2
+    api = dict(token=token, api_url=args.github_api_url)
+
+    async def reply(text: str) -> None:
+        await reply_to_review_comment(pr, args.comment, text, **api)
+        print(text)
+
+    try:
+        # The reply and what it replies to, read from GitHub (not trusted from the event)
+        command = await fetch_review_comment(pr.repo, args.comment, **api)
+        parent = await fetch_review_comment(pr.repo, command.in_reply_to, **api) if command and command.in_reply_to else None
+        parsed = parse_comment(parent.body) if parent and parent.author_is_bot else None
+        if not command or not command.body.strip().startswith(LEARN_COMMAND) or not parsed:
+            print("Not a `/codemop learn` reply to one of CodeMop's comments; nothing to do")
+            return 0
+        reason = command.body.strip()[len(LEARN_COMMAND):].strip()
+        if not reason:
+            await reply(f"Say why it's fine, so the note makes sense to the next person: `{LEARN_COMMAND} <why it's fine>`.")
+            return 0
+        if await user_permission(pr.repo, command.author, **api) not in WRITE_PERMISSIONS:
+            await reply(f"Only people with write access to {pr.repo} can teach CodeMop. Resolving this conversation "
+                        "dismisses it for this pull request.")
+            return 0
+
+        entry = Learned(parent.path, parsed[1], reason, f"#{pr.number}, @{command.author}")
+        thread = next((t for t in await list_review_threads(pr, **api) if t.first_comment_id == parent.id), None)
+        pull = await fetch_pull_request(pr, **api)
+        if pull.head_repo != pr.repo:
+            if thread:
+                await resolve_thread(thread.id, **api)
+            await reply("I can't commit to a fork's branch, so I've only resolved this conversation (I won't raise it "
+                        f"again on this PR). To teach the whole repository, add this to `{LEARNED_FILE}` on the "
+                        f"default branch:\n\n```yaml\n{learned_yaml(entry).strip()}\n```")
+            return 0
+
+        for attempt in range(2):  # again if the branch moves on while this runs
+            pull = await fetch_pull_request(pr, **api)
+            text = await fetch_repo_file(pull.head_repo, LEARNED_FILE, ref=pull.head_sha, **api)
+            message = f"Teach CodeMop: {entry.issue}\n\n{entry.reason}\n\nFrom @{command.author} on #{pr.number}."
+            try:
+                commit = await commit_files(pull.head_repo, pull.head_ref, pull.head_sha,
+                                            {LEARNED_FILE: add_learned(text, entry)}, message, **api)
+                break
+            except GitHubError as e:
+                if e.status != 422 or attempt:
+                    raise
+        if thread:
+            await resolve_thread(thread.id, **api)
+        await reply(f"Learned: I've added this to `{LEARNED_FILE}` on this branch ({commit[:7]}) and resolved this "
+                    "conversation. Once this PR is merged, I won't raise it again in this repository. If that's too "
+                    "broad, edit or delete the note in that file.")
+    except GitHubError as e:
+        print(f"codemop: {e}", file=sys.stderr)
+        return 1
+    return 0
 
 
 WRITE_PERMISSIONS = {"admin", "maintain", "write"}
@@ -402,6 +518,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return asyncio.run(run_review(args))
     if args.command == "apply":
         return asyncio.run(run_apply(args))
+    if args.command == "learn":
+        return asyncio.run(run_learn(args))
     return 2
 
 
