@@ -1,5 +1,5 @@
 def to_pounds(pence):
-    """Pence to pounds, for display only"""
+    """Pence to pounds, for display only (not for sums)"""
     return pence / 100
 
 
