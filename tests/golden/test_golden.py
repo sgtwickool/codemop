@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from codemop.cli.review import report_json, report_text
+from codemop.cli.report import report_json, report_text
 from codemop.providers.base import NoReview, Usage
 from codemop.providers.pricing import ANTHROPIC_PRICES
 from codemop.review.chunks import DEFAULT_IGNORED_PATHS

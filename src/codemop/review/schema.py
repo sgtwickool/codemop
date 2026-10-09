@@ -17,6 +17,15 @@ class Severity(str, Enum):
     maintainability = "maintainability"
 
 
+# What re-reviews still raise, and what the merge check blocks on
+IMPORTANT_SEVERITIES = {Severity.bug, Severity.security}
+
+
+def location_text(path: str, line: int, end_line: Optional[int] = None) -> str:
+    """path:line, or path:line-end for several lines"""
+    return f"{path}:{line}" + (f"-{end_line}" if end_line and end_line != line else "")
+
+
 class ModelSuggestion(BaseModel):
     """One issue, as the model reports it"""
     file_path: str = Field(description="Path of the file, exactly as shown in the diff")

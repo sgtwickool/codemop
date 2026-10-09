@@ -15,16 +15,18 @@ Exit status: 0 when every part of the diff was reviewed, 1 when some of it could
 import argparse
 import asyncio
 import os
+import sys
 from pathlib import Path
 from typing import List, Optional
 
 from codemop import __version__
 from codemop.cli.apply import run_apply
 from codemop.cli.check import run_check
+from codemop.cli.common import CommandError
 from codemop.cli.learn import run_learn
 from codemop.cli.review import run_review
 from codemop.config import CONFIG_FILE, DEFAULT_MIN_CONFIDENCE
-from codemop.github.api import DEFAULT_API_URL
+from codemop.github.api import DEFAULT_API_URL, GitHubError
 from codemop.providers import DEFAULT_MODELS, PROVIDERS
 from codemop.providers.base import DEFAULT_CHUNK_TOKENS
 from codemop.review.chunks import DEFAULT_IGNORED_PATHS
@@ -35,9 +37,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="codemop", description="AI code review for pull requests.")
     parser.add_argument("--version", action="version", version=f"codemop {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
+    github = argparse.ArgumentParser(add_help=False)
+    github.add_argument("--github-api-url", default=DEFAULT_API_URL, help="for GitHub Enterprise Server")
 
     review = commands.add_parser(
-        "review", help="review a pull request or a diff",
+        "review", parents=[github], help="review a pull request or a diff",
         description=(
             "Review a pull request (owner/repo#123 or a PR URL), or a diff on stdin (-). "
             f"How the repository is reviewed comes from its {CONFIG_FILE} (on the default branch; "
@@ -46,6 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     review.add_argument("target", help="owner/repo#123, a pull request URL, or - to read a diff from stdin")
+    review.set_defaults(run=run_review)
 
     who = review.add_argument_group("model and cost (chosen by you, never by the repository)")
     who.add_argument("--provider", choices=PROVIDERS, default=os.environ.get("CODEMOP_PROVIDER", "anthropic"),
@@ -78,7 +83,6 @@ def build_parser() -> argparse.ArgumentParser:
                      help="another path pattern not to review (repeatable; added to the defaults: "
                           + " ".join(DEFAULT_IGNORED_PATHS) + ")")
 
-    review.add_argument("--github-api-url", default=DEFAULT_API_URL, help="for GitHub Enterprise Server")
     review.add_argument("--json", action="store_true", help="print the report as JSON")
     review.add_argument("--post", action="store_true",
                         help="post the review on the pull request (needs a token with pull-requests: write); "
@@ -88,45 +92,45 @@ def build_parser() -> argparse.ArgumentParser:
                              "running `codemop apply` commits them (the GitHub Action does that for you)")
 
     apply = commands.add_parser(
-        "apply", help="commit the fixes ticked in CodeMop's summary on a pull request",
+        "apply", parents=[github], help="commit the fixes ticked in CodeMop's summary on a pull request",
         description="Commit the fixes ticked in CodeMop's summary comment on a pull request to its branch, as one "
                     "commit. Needs a token with contents: write and pull-requests: write.",
     )
     apply.add_argument("target", help="owner/repo#123 or a pull request URL")
+    apply.set_defaults(run=run_apply)
     apply.add_argument("--by", metavar="USER",
                        help="who ticked them: nothing is applied unless they have write access to the repository")
-    apply.add_argument("--github-api-url", default=DEFAULT_API_URL, help="for GitHub Enterprise Server")
 
     learn = commands.add_parser(
-        "learn", help="act on a `/codemop learn <why>` reply to one of CodeMop's comments",
+        "learn", parents=[github], help="act on a `/codemop learn <why>` reply to one of CodeMop's comments",
         description=f"Act on a `/codemop learn <why>` reply to one of CodeMop's comments on a pull request: add a "
                     f"note to {LEARNED_FILE} on the PR's branch, resolve the conversation, and reply to confirm. "
                     "Needs a token with contents: write and pull-requests: write.",
     )
     learn.add_argument("target", help="owner/repo#123 or a pull request URL")
+    learn.set_defaults(run=run_learn)
     learn.add_argument("--comment", type=int, required=True, metavar="ID", help="the reply's id")
-    learn.add_argument("--github-api-url", default=DEFAULT_API_URL, help="for GitHub Enterprise Server")
 
     check = commands.add_parser(
-        "check", help="update CodeMop's merge check on a pull request",
+        "check", parents=[github], help="update CodeMop's merge check on a pull request",
         description="Set CodeMop's merge check (a commit status, for repositories with `merge_check: true` in "
                     f"{CONFIG_FILE}) on a pull request's latest commit, from its summary and which of CodeMop's "
                     "conversations are resolved. Needs a token with statuses: write.",
     )
     check.add_argument("target", help="owner/repo#123 or a pull request URL")
+    check.set_defaults(run=run_check)
     check.add_argument("--comment", type=int, metavar="ID",
                        help="the `/codemop check` comment that asked for it, to react to so its author knows it ran")
-    check.add_argument("--github-api-url", default=DEFAULT_API_URL, help="for GitHub Enterprise Server")
     return parser
+
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.command == "review":
-        return asyncio.run(run_review(args))
-    if args.command == "apply":
-        return asyncio.run(run_apply(args))
-    if args.command == "learn":
-        return asyncio.run(run_learn(args))
-    if args.command == "check":
-        return asyncio.run(run_check(args))
-    return 2
+    try:
+        return asyncio.run(args.run(args))
+    except CommandError as e:
+        print(f"codemop: {e}", file=sys.stderr)
+        return e.code
+    except GitHubError as e:
+        print(f"codemop: {e}", file=sys.stderr)
+        return 1

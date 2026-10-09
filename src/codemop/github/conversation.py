@@ -44,7 +44,8 @@ async def list_issue_comments(
         comments += [
             IssueComment(
                 id=comment["id"],
-                body=comment.get("body") or "",
+                # A comment saved from GitHub's web page (as when a box is ticked there) has \r\n line endings
+            body=(comment.get("body") or "").replace("\r\n", "\n"),
                 author=(comment.get("user") or {}).get("login", ""),
                 author_is_bot=(comment.get("user") or {}).get("type") == "Bot",
                 author_association=comment.get("author_association", "NONE"),

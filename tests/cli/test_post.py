@@ -4,9 +4,9 @@ import pytest
 
 from codemop import providers
 from codemop.cli import common
-from codemop.cli.common import MAX_COMMENT_CHARS
-from codemop.cli.review import only_files_in
-from codemop.github.summary import read_state
+from codemop.cli.post import only_files_in
+from codemop.review.diff import parse_diff
+from codemop.github.summary import MAX_COMMENT_CHARS, read_state
 from codemop.providers.base import NoReview
 from codemop.review.schema import Severity
 from cli_support import (  # noqa: F401
@@ -210,7 +210,7 @@ def test_only_files_in_keeps_the_prs_files():
     pr_diff = DIFF
     other = "diff --git a/other.py b/other.py\n--- a/other.py\n+++ b/other.py\n@@ -1 +1 @@\n-a\n+b\n"
 
-    assert only_files_in(NEWER + other, pr_diff) == NEWER
+    assert only_files_in(NEWER + other, parse_diff(pr_diff)) == NEWER
 
 
 def test_a_summary_too_long_for_github_gives_up_fixes_before_lines(capsys, monkeypatch, fake_model, github):

@@ -7,9 +7,11 @@ Two kinds:
   request can't quietly teach CodeMop to ignore its own bug
 - dismissed: for one pull request, the CodeMop comments someone resolved there
 
-Both are given to the model as already settled; dismissed ones are also filtered out by
-location, in case the model raises them anyway.
+Both are given to the model as already settled; dismissed ones are also filtered out, in
+case the model raises them anyway (same_issue decides, here and when a re-review matches
+new suggestions to earlier findings).
 """
+import re
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
@@ -20,7 +22,8 @@ from codemop.review.schema import ModelSuggestion, Severity
 LEARNED_FILE = ".codemop-learned.yml"
 MAX_LEARNED = 100  # entries given to the model; a longer file is cut short
 MAX_TEXT = 300  # characters of each field
-NEAR_LINES = 3  # a new suggestion this close to a dismissed one, same file and severity, is the same issue
+NEAR_LINES = 3  # how close a suggestion must be to an earlier issue to be it again, reworded
+SIMILAR_TITLES = 0.5  # and the share of their titles' words in common
 
 HEADER = """\
 # What this repository's reviewers have told CodeMop isn't a problem here. CodeMop reads this
@@ -40,9 +43,25 @@ class Learned:
 @dataclass(frozen=True)
 class Dismissed:
     path: str
-    line: Optional[int]
-    severity: Optional[Severity]
+    line: Optional[int]  # None for a conversation on lines that have since changed
+    severity: Severity
     issue: str
+
+
+def _similar(a: str, b: str) -> bool:
+    words_a, words_b = (set(re.findall(r"[a-z0-9_]+", t.lower())) for t in (a, b))
+    return bool(words_a and words_b) and len(words_a & words_b) / len(words_a | words_b) >= SIMILAR_TITLES
+
+
+def same_issue(s: ModelSuggestion, path: str, line: Optional[int], severity: Severity, title: str) -> bool:
+    """
+    Whether a suggestion is an earlier issue raised again: same file and severity, and the
+    same title, or nearby with a similar one (the model rewords its titles). A different
+    issue on a nearby line is a new one.
+    """
+    if s.file_path != path or s.severity != severity:
+        return False
+    return s.title == title or (line is not None and abs(s.line - line) <= NEAR_LINES and _similar(s.title, title))
 
 
 def _text(value) -> str:
@@ -95,8 +114,4 @@ class Settled:
 
     def dismisses(self, s: ModelSuggestion) -> bool:
         """Whether `s` is one of the dismissed issues again"""
-        return any(
-            d.path == s.file_path and d.line is not None and abs(d.line - s.line) <= NEAR_LINES
-            and d.severity in (None, s.severity)
-            for d in self.dismissed
-        )
+        return any(same_issue(s, d.path, d.line, d.severity, d.issue) for d in self.dismissed)

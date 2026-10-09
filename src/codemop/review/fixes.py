@@ -13,21 +13,16 @@ that may have changed since the review: see apply_fixes.
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from codemop.review.diff import FileDiff
 from codemop.review.schema import ModelSuggestion
 
 # Lines shorter than this (")", "else:", "return") can repeat legitimately
 DISTINCT_LINE_CHARS = 8
 
 
-def file_lines(file: FileDiff) -> Dict[int, str]:
-    """The new-file lines the diff shows, by number"""
-    return {
-        line.new_number: line.text
-        for hunk in file.hunks
-        for line in hunk.lines
-        if line.new_number is not None
-    }
+def lines_between(lines: Dict[int, str], start: int, end: int) -> Optional[List[str]]:
+    """Lines start..end of a file, from the lines a diff shows; None unless it shows all of them"""
+    found = [lines.get(number) for number in range(start, end + 1)]
+    return None if None in found else found
 
 
 def _matches(code: List[str], lines: Dict[int, str], first: int) -> bool:

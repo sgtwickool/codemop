@@ -218,6 +218,7 @@ core package. This phase includes what makes it worth choosing over Claude's own
 
 - [ ] Run it on CodeMop's own PRs for at least two weeks (the workflow is in place, 2026-10-09: `.github/workflows/codemop.yml`, its first review on PR #2; the two weeks start once our work goes through PRs)
 - [ ] Tag `v1`; list on the GitHub Marketplace
+- [x] Tidy: `/simplify` over the Phase 3 diff so far. One rule for "the same issue" (`same_issue`), the checklist in its own module, comments that carry their finding's id, the commands on shared helpers (`cli/common.py`, `cli/post.py`, `cli/report.py`), files read once even when chunks ask at the same time, and committing reads only the changed directories' trees
 
 **Done when:** someone else installs it from the README alone and it reviews their PR.
 

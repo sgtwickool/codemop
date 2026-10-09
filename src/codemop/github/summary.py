@@ -6,8 +6,9 @@ It keeps every finding from every review of the PR (hidden in the comment, as ba
 each with a status: open, applied (its fix was ticked and committed), addressed (its code
 changed and a later review didn't raise it again) or dismissed (its conversation was
 resolved). It's rendered from that each time: the open issues, with a checkbox for each
-fix, and the rest under "Done". It also records the commit last reviewed, so a re-run on the
-same commit does nothing, and a review of a new commit can look at just what's new.
+fix (see checklist.py), and the rest under "Done". It also records the commit last
+reviewed, so a re-run on the same commit does nothing, and a review of a new commit can look
+at just what's new.
 
 Only a summary by a bot or someone with write access counts: anyone can comment on a public
 PR, and a fake summary mustn't be able to stop a review or change its findings.
@@ -17,24 +18,29 @@ import dataclasses
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
+from codemop.config import CONFIG_FILE
 from codemop.github.conversation import IssueComment
-from codemop.github.review import SEVERITY_LABELS, ranked
-from codemop.review.fixes import Fix, still_there
+from codemop.github.review import SEVERITY_LABELS, ranked, trusted
+from codemop.review.fixes import Fix, lines_between, still_there
+from codemop.review.learned import LEARNED_FILE, same_issue
 from codemop.review.pipeline import ReviewReport
-from codemop.review.schema import ModelSuggestion, Severity
+from codemop.review.schema import ModelSuggestion, Severity, location_text
 
 MARKER = "<!-- codemop-summary -->"
-TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
-_COMMIT = re.compile(r"<!-- codemop-commit: ([0-9a-f]{7,40}) -->")
+MAX_COMMENT_CHARS = 65_000  # GitHub's limit is 65,536
 _STATE = re.compile(r"<!-- codemop-state: ([A-Za-z0-9+/=]+) -->")
-_ITEM = re.compile(r"^- \[([ xX])\] (.*) <!-- codemop-fix:([\d,]+) -->$", re.M)
 # Ticking fixes only selects them; ticking this commits them, so several go in one commit
-COMMIT_BOX = "- [ ] **Commit the ticked fixes** <!-- codemop-commit-ticked -->"
-_COMMIT_BOX = re.compile(r"^- \[([ xX])\] \*\*Commit the ticked fixes\*\* <!-- codemop-commit-ticked -->$", re.M)
+COMMIT_BOX_TEXT = "**Commit the ticked fixes** <!-- codemop-commit-ticked -->"
+COMMIT_BOX = f"- [ ] {COMMIT_BOX_TEXT}"
 
 OPEN, APPLIED, ADDRESSED, DISMISSED = "open", "applied", "addressed", "dismissed"
+
+
+def fix_marker(ids: Sequence[int]) -> str:
+    """What ties a checklist item to its findings"""
+    return f"<!-- codemop-fix:{','.join(map(str, ids))} -->"
 
 
 @dataclass
@@ -51,7 +57,7 @@ class Finding:
     code: Optional[str] = None  # its fix, if it has one
     status: str = OPEN
     note: str = ""  # how it was closed, e.g. "applied in abc1234"
-    confidence: float = 0.0  # how sure the model was (0 for findings from before this was kept)
+    confidence: float = 0.0  # how sure the model was
 
     @property
     def fix(self) -> Optional[Fix]:
@@ -61,70 +67,45 @@ class Finding:
 
     @property
     def location(self) -> str:
-        return f"{self.path}:{self.line}" + (f"-{self.end_line}" if self.end_line != self.line else "")
+        return location_text(self.path, self.line, self.end_line)
 
 
 @dataclass
 class SummaryState:
-    commit: Optional[str] = None  # the last commit reviewed
+    commit: Optional[str] = None  # the last commit reviewed (None: no summary yet)
     findings: List[Finding] = field(default_factory=list)
-    kept: bool = False  # read from a summary that kept its findings (older ones didn't)
 
     @property
     def open(self) -> List[Finding]:
         return [f for f in self.findings if f.status == OPEN]
 
     def add(self, suggestions: Sequence[ModelSuggestion], shown: Dict[str, Dict[int, str]], commit: str) -> List[Finding]:
-        """New findings for a review's suggestions, most important first; returns them"""
+        """New findings for a review's suggestions, most important first (so ids are in that order); returns them"""
         next_id = max((f.id for f in self.findings), default=0) + 1
-        added = []
-        for n, s in enumerate(ranked(suggestions)):
-            end = s.end_line or s.line
-            original = [shown.get(s.file_path, {}).get(line) for line in range(s.line, end + 1)]
-            added.append(Finding(
-                next_id + n, s.severity.value, s.file_path, s.line, end, s.title, commit, s.group,
-                original if None not in original else None, s.suggested_code, confidence=s.confidence,
-            ))
+        added = [
+            Finding(next_id + n, s.severity.value, s.file_path, s.line, s.end_line or s.line, s.title, commit, s.group,
+                    lines_between(shown.get(s.file_path, {}), s.line, s.end_line or s.line), s.suggested_code,
+                    confidence=s.confidence)
+            for n, s in enumerate(ranked(suggestions))
+        ]
         self.findings += added
         return added
 
 
-NEAR_LINES = 3  # how close a suggestion must be to an earlier finding to be the same issue reworded
-SIMILAR_TITLES = 0.5  # and the share of their titles' words in common
-
-
-def _similar(a: str, b: str) -> bool:
-    words_a, words_b = (set(re.findall(r"[a-z0-9_]+", t.lower())) for t in (a, b))
-    return bool(words_a and words_b) and len(words_a & words_b) / len(words_a | words_b) >= SIMILAR_TITLES
-
-
-def _same_issue(s: ModelSuggestion, f: "Finding") -> bool:
+def sync_threads(state: SummaryState, threads: Sequence[Tuple[Optional[int], str, str, bool]]) -> None:
     """
-    Whether a new suggestion is an earlier finding raised again: same file and severity, and
-    the same title, or nearby with a similar one (the model rewords its titles). A different
-    issue on a nearby line is a new finding, not this one with someone else's fix.
+    Match findings to their conversations ((finding id, path, title, resolved) for each of
+    CodeMop's threads; by id, or by path and title for a comment from before ids were in
+    them): resolved dismisses an open finding, and unresolving reopens a dismissed one
     """
-    if s.file_path != f.path or s.severity.value != f.severity:
-        return False
-    return s.title == f.title or (abs(s.line - f.line) <= NEAR_LINES and _similar(s.title, f.title))
-
-
-def sync_threads(state: SummaryState, threads: Sequence[Tuple[str, str, bool]]) -> bool:
-    """
-    Match findings to their conversations ((path, title, resolved) for each of CodeMop's
-    threads): resolved dismisses an open finding, and unresolving reopens a dismissed one.
-    Returns whether anything changed.
-    """
-    changed = False
-    for path, title, resolved in threads:
+    for finding_id, path, title, resolved in threads:
         for f in state.findings:
-            if (f.path, f.title) != (path, title):
+            if (f.id != finding_id) if finding_id is not None else ((f.path, f.title) != (path, title)):
                 continue
             if resolved and f.status == OPEN:
-                f.status, f.note, changed = DISMISSED, "dismissed: its conversation was resolved", True
+                f.status, f.note = DISMISSED, "dismissed: its conversation was resolved"
             elif not resolved and f.status == DISMISSED:
-                f.status, f.note, changed = OPEN, "", True
-    return changed
+                f.status, f.note = OPEN, ""
 
 
 def update_earlier(state: SummaryState, new: Sequence[ModelSuggestion], head_files: Dict[str, Optional[str]],
@@ -142,28 +123,19 @@ def update_earlier(state: SummaryState, new: Sequence[ModelSuggestion], head_fil
     new = list(new)
     addressed = []
     for f in [f for f in state.open if f.found_in != head]:
-        again = next((s for s in new if _same_issue(s, f)), None)
+        again = next((s for s in new if same_issue(s, f.path, f.line, Severity(f.severity), f.title)), None)
         if again:
             new.remove(again)
             f.line, f.end_line, f.code = again.line, again.end_line or again.line, again.suggested_code
-            original = [shown.get(f.path, {}).get(line) for line in range(f.line, f.end_line + 1)]
-            f.original = original if None not in original else None
+            f.original = lines_between(shown.get(f.path, {}), f.line, f.end_line)
             continue
-        if f.original is None:
-            continue  # can't tell whether its lines are still there
-        text = head_files.get(f.path)
+        if f.original is None or f.path not in head_files:
+            continue  # can't tell whether its lines are still there, or its file hasn't changed
+        text = head_files[f.path]
         if text is None or not still_there(text, f.line, f.original):
             f.status, f.note = ADDRESSED, f"addressed in {head[:7]}"
             addressed.append(f)
     return new, addressed
-
-
-def trusted(author_is_bot: bool, author_association: str) -> bool:
-    """
-    Whether a comment that looks like CodeMop's can be taken as CodeMop's: posted by a bot (the
-    workflow's own token) or by someone with write access (a personal access token)
-    """
-    return author_is_bot or author_association in TRUSTED_ASSOCIATIONS
 
 
 def find_summary(comments: Sequence[IssueComment]) -> Optional[IssueComment]:
@@ -174,19 +146,29 @@ def find_summary(comments: Sequence[IssueComment]) -> Optional[IssueComment]:
 
 
 def read_state(body: Optional[str]) -> SummaryState:
-    """The last commit reviewed and the findings kept in a summary (none, for one from before they were kept)"""
+    """The last commit reviewed and the findings kept in a summary"""
     match = _STATE.search(body or "")
     if not match:
-        commit = _COMMIT.search(body or "")
-        return SummaryState(commit.group(1) if commit else None)
+        return SummaryState()
     data = json.loads(base64.b64decode(match.group(1)))
-    return SummaryState(data.get("commit"), [Finding(**f) for f in data.get("findings", [])], kept=True)
+    return SummaryState(data.get("commit"), [Finding(**f) for f in data.get("findings", [])])
 
 
 def _state_data(state: SummaryState) -> str:
-    data = {"commit": state.commit, "findings": [dataclasses.asdict(f) for f in state.findings]}
+    findings = []
+    for f in state.findings:
+        data = dataclasses.asdict(f)
+        if f.status != OPEN:  # done: its fix and lines aren't needed any more
+            data.update(code=None, original=None)
+        findings.append(data)
     # Base64, so nothing in the code can end the HTML comment it's kept in
+    data = {"commit": state.commit, "findings": findings}
     return f"<!-- codemop-state: {base64.b64encode(json.dumps(data).encode()).decode()} -->"
+
+
+def write_state(body: str, state: SummaryState) -> str:
+    """The summary with `state` kept in it in place of what was there"""
+    return _STATE.sub(lambda _: _state_data(state), body)
 
 
 def _label(f: Finding) -> str:
@@ -213,8 +195,7 @@ def _open_items(findings: Sequence[Finding], checklist: bool, new_in: Optional[s
                 text += f" · fixes for {len(ids)} of them"
         if new_in and all(m.found_in == new_in for m in members):
             text += " · new"
-        lines.append(f"- [ ] {text} <!-- codemop-fix:{','.join(map(str, ids))} -->" if checklist and ids
-                     else f"- {text}")
+        lines.append(f"- [ ] {text} {fix_marker(ids)}" if checklist and ids else f"- {text}")
     return lines
 
 
@@ -232,12 +213,12 @@ def _how_to_respond(checklist: bool, teachable: bool, merge_check: bool) -> List
                   "this pull request."]
     if teachable:
         lines.append("- **Not a problem anywhere in this repository:** reply `/codemop learn <why it's fine>` to the "
-                     "comment. CodeMop adds a note to `.codemop-learned.yml` on this branch, resolves the "
+                     f"comment. CodeMop adds a note to `{LEARNED_FILE}` on this branch, resolves the "
                      "conversation and replies to confirm; once this PR is merged, it won't raise it again in this "
                      "repository. Only people with write access can teach it.")
     else:
         lines.append("- **Not a problem anywhere in this repository:** CodeMop can't commit to a fork's branch, so "
-                     "add a note to `.codemop-learned.yml` on the default branch (its header says how).")
+                     f"add a note to `{LEARNED_FILE}` on the default branch (its header says how).")
     if merge_check:
         lines.append("- **The merge check** (the \"CodeMop\" status) fails while bugs or security issues are open. "
                      "It's updated on every push; after resolving a conversation, comment `/codemop check` to "
@@ -245,17 +226,31 @@ def _how_to_respond(checklist: bool, teachable: bool, merge_check: bool) -> List
     return lines
 
 
-def summary_body(state: SummaryState, report: ReviewReport, cost: str, *, review_url: Optional[str] = None,
-                 inline_rejected: bool = False, checklist: bool = False, teachable: bool = True,
-                 since: Optional[str] = None, less_important: int = 0, not_commented: int = 0,
-                 merge_check: bool = False) -> str:
+def summary_body(state: SummaryState, report: ReviewReport, cost: str, **options) -> str:
     """
     The summary for `state` (whose commit is the one just reviewed), with what this review
-    (`report`) found. `since`: the commit a re-review looked at the changes after
+    (`report`) found, within GitHub's size limit: if the fixes kept in it make it too long,
+    the open findings give up their fixes (their checkboxes), and only then their lines (which
+    tell later reviews whether they've been addressed). Options as for _summary_body.
     """
+    body = _summary_body(state, report, cost, **options)
+    for drop in ("code", "original"):
+        if len(body) <= MAX_COMMENT_CHARS:
+            break
+        for finding in state.open:
+            setattr(finding, drop, None)
+        body = _summary_body(state, report, cost, **options)
+    return body
+
+
+def _summary_body(state: SummaryState, report: ReviewReport, cost: str, *, review_url: Optional[str] = None,
+                  inline_rejected: bool = False, checklist: bool = False, teachable: bool = True,
+                  since: Optional[str] = None, less_important: int = 0, not_commented: int = 0,
+                  merge_check: bool = False) -> str:
+    """`since`: the commit a re-review looked at the changes after"""
     head = state.commit or ""
     checklist = checklist and any(f.fix for f in state.open)
-    lines = [MARKER, f"<!-- codemop-commit: {head} -->", f"### CodeMop review of {head[:7]}", ""]
+    lines = [MARKER, f"### CodeMop review of {head[:7]}", ""]
     if since:
         lines += [f"Reviewed the changes since {since[:7]}.", ""]
     if report.too_large:
@@ -288,18 +283,13 @@ def summary_body(state: SummaryState, report: ReviewReport, cost: str, *, review
         lines += ["", "<details><summary>How to respond to CodeMop</summary>", ""]
         lines += _how_to_respond(checklist, teachable, merge_check) + ["", "</details>"]
 
-    notes = [f"Skipped `{s.path}`: {s.reason}" for s in report.skipped]
-    if report.unplaced:
-        notes.append(f"Set aside {len(report.unplaced)} suggestion(s) that pointed at lines outside the diff")
-    if report.already_dismissed:
-        notes.append(f"Left out {report.already_dismissed} suggestion(s) dismissed earlier on this pull request")
+    notes = report.notes(code=lambda text: f"`{text}`")
     if less_important:
         notes.append(f"Left out {less_important} less important suggestion(s): re-reviews only raise bugs and "
                      "security issues")
     if not_commented:
         notes.append(f"{not_commented} issue(s) are listed here without a comment on the code (over the "
-                     "`max_comments` limit set in `.codemop.yml`)")
-    notes += [f"Left out the suggested fix for `{d.file_path}:{d.line}`: {d.reason}" for d in report.dropped_fixes]
+                     f"`max_comments` limit set in `{CONFIG_FILE}`)")
     if notes:
         lines += ["", "<details><summary>Notes</summary>", ""] + [f"- {note}" for note in notes] + ["", "</details>"]
 
@@ -307,75 +297,3 @@ def summary_body(state: SummaryState, report: ReviewReport, cost: str, *, review
                   f"{report.usage.output_tokens:,} output tokens · {cost} · this comment is updated "
                   f"when CodeMop reviews new commits</sub>", _state_data(state)]
     return "\n".join(lines)
-
-
-def _lf(body: str) -> str:
-    # A comment saved from GitHub's web page (as when a box is ticked there) has \r\n line endings
-    return body.replace("\r\n", "\n")
-
-
-def ticked(body: str) -> Set[int]:
-    """The ids of the findings whose fixes are ticked in the summary's checklist"""
-    return {int(i) for box, _, ids in _ITEM.findall(_lf(body)) if box.lower() == "x" for i in ids.split(",")}
-
-
-def commit_requested(body: str) -> bool:
-    """Whether "Commit the ticked fixes" is ticked"""
-    match = _COMMIT_BOX.search(_lf(body))
-    return bool(match) and match.group(1).lower() == "x"
-
-
-def untick_commit(body: str) -> str:
-    """The summary with "Commit the ticked fixes" unticked, ready for next time"""
-    return _COMMIT_BOX.sub(COMMIT_BOX, _lf(body))
-
-
-def record_applied(body: str, commit: str, applied: Sequence[Fix], skipped: Sequence[Tuple[Fix, str]]) -> str:
-    """
-    The summary with the applied fixes marked as done in `commit` (in its checklist now, and
-    in its findings, so the next review lists them under Done), the skipped ones unticked,
-    saying why, and "Commit the ticked fixes" unticked
-    """
-    done = {f.id for f in applied}
-    why = {f.id: reason for f, reason in skipped}
-
-    def item(match: re.Match) -> str:
-        ids = [int(i) for i in match.group(3).split(",")]
-        marker = f"<!-- codemop-fix:{match.group(3)} -->"
-        text = re.sub(r" · (✅|⚠️) .*$", "", match.group(2))  # an earlier result, replaced by this one
-        applied_here = [i for i in ids if i in done]
-        reasons = [why[i] for i in ids if i in why]
-        if applied_here and reasons:
-            return f"- [x] {text} · ✅ applied in {commit[:7]}, except {len(reasons)}: {reasons[0]} {marker}"
-        if applied_here:
-            return f"- [x] {text} · ✅ applied in {commit[:7]} {marker}"
-        if reasons:
-            return f"- [ ] {text} · ⚠️ not applied: {reasons[0]} {marker}"
-        return match.group(0)
-
-    body = untick_commit(_ITEM.sub(item, _lf(body)))
-    state = read_state(body)
-    for f in state.findings:
-        if f.id in done:
-            f.status, f.note = APPLIED, f"applied in {commit[:7]}"
-    return _STATE.sub(lambda _: _state_data(state), body)
-
-
-def record_own_commit(body: str, parent: str, commit: str) -> Optional[str]:
-    """
-    The summary with CodeMop's own commit (ticked fixes, a learned note) recorded as reviewed,
-    if it was made on top of the commit last reviewed: it holds nothing CodeMop hasn't seen,
-    so the merge check can be set on it, and the next re-review skips it. None otherwise (if
-    someone pushed in between, that push gets its own review).
-    """
-    state = read_state(body)
-    if not state.kept or state.commit != parent:
-        return None
-    state.commit = commit
-    body = _COMMIT.sub(f"<!-- codemop-commit: {commit} -->", body)
-    return _STATE.sub(lambda _: _state_data(state), body)
-
-
-def stored_fixes(body: str) -> Dict[int, Fix]:
-    """The fixes of the summary's open findings, by id"""
-    return {f.id: f.fix for f in read_state(body).open if f.fix}
