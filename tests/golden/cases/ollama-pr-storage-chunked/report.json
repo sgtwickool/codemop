@@ -21,7 +21,7 @@
       "severity": "bug",
       "title": "Database session not properly reused in startup handler",
       "explanation": "The `get_db` function likely uses context management (e.g., `yield`) to create and close the database session. Using `next(get_db())` directly in the startup handler will create a new session that is not closed properly, leading to a resource leak. The `get_db` function should be used as a context manager with `with` to ensure the session is properly managed.",
-      "suggested_code": "with next(get_db()) as db:\n    init_db()",
+      "suggested_code": null,
       "confidence": 1.0
     },
     {
@@ -37,6 +37,13 @@
   ],
   "unplaced": [],
   "below_confidence": 0,
+  "dropped_fixes": [
+    {
+      "file_path": "backend/src/main.py",
+      "line": 19,
+      "reason": "it repeats a nearby line ('init_db()'), which applying it would duplicate"
+    }
+  ],
   "skipped": [],
   "failed": [],
   "stopped": null,

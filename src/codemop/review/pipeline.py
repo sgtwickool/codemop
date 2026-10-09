@@ -10,6 +10,7 @@ from codemop.config import DEFAULT_MIN_CONFIDENCE
 from codemop.providers.base import NoReview, NoReviewKind, ReviewModel, Usage
 from codemop.review.chunks import DEFAULT_IGNORED_PATHS, Skipped, plan_chunks
 from codemop.review.diff import parse_diff
+from codemop.review.fixes import file_lines, fit_fix
 from codemop.review.placement import Unplaced, place_suggestions
 from codemop.review.prompt import SYSTEM_PROMPT
 from codemop.review.schema import ModelSuggestion
@@ -24,12 +25,21 @@ class FailedChunk:
     kind: NoReviewKind | Literal["not_reviewed"] = "error"  # not_reviewed: skipped after a fatal error
 
 
+@dataclass(frozen=True)
+class DroppedFix:
+    """A suggested fix left out because it doesn't fit its lines (the suggestion is kept)"""
+    file_path: str
+    line: int
+    reason: str
+
+
 @dataclass
 class ReviewReport:
     model: str
     suggestions: List[ModelSuggestion] = field(default_factory=list)
     unplaced: List[Unplaced] = field(default_factory=list)  # suggestions on lines GitHub can't comment on
     below_confidence: int = 0  # suggestions dropped by min_confidence
+    dropped_fixes: List[DroppedFix] = field(default_factory=list)  # fixes that would have duplicated code
     skipped: List[Skipped] = field(default_factory=list)  # parts of the diff not reviewed
     failed: List[FailedChunk] = field(default_factory=list)  # chunks the model gave no review for
     stopped: Optional[str] = None  # why the review stopped early, if it did
@@ -74,11 +84,17 @@ async def review_diff(
             report.usage += usage
             placement = place_suggestions(review.suggestions, chunk.files)
             report.unplaced.extend(placement.unplaced)
+            shown = {file.path: file_lines(file) for file in chunk.files}
             for suggestion in placement.placed:
-                if suggestion.confidence >= min_confidence:
-                    report.suggestions.append(suggestion)
-                else:
+                if suggestion.confidence < min_confidence:
                     report.below_confidence += 1
+                    continue
+                fix, problem = fit_fix(suggestion, shown[suggestion.file_path])
+                if problem:
+                    report.dropped_fixes.append(DroppedFix(suggestion.file_path, suggestion.line, problem))
+                if fix != suggestion.suggested_code:
+                    suggestion = suggestion.model_copy(update={"suggested_code": fix})
+                report.suggestions.append(suggestion)
 
     await asyncio.gather(*(review_chunk(chunk) for chunk in plan.chunks))
     report.suggestions.sort(key=lambda s: (s.file_path, s.line))

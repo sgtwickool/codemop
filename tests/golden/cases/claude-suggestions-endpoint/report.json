@@ -37,6 +37,7 @@
   ],
   "unplaced": [],
   "below_confidence": 0,
+  "dropped_fixes": [],
   "skipped": [],
   "failed": [],
   "stopped": null,
