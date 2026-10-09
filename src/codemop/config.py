@@ -34,6 +34,10 @@ class RepoConfig(BaseModel):
         default=None, ge=1000,
         description="Largest piece of diff sent in one request (default: the model's own)",
     )
+    max_comments: int = Field(
+        default=10, ge=1, le=50,
+        description="Most inline comments in a posted review; the rest are listed in its summary",
+    )
 
 
 def parse_config(text: str, source: str = CONFIG_FILE) -> RepoConfig:

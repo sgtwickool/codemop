@@ -1,7 +1,13 @@
+import json
+import re
+
 import httpx
 import pytest
 
-from codemop.github.client import GitHubError, PullRequestRef, fetch_pr_diff, fetch_repo_file, parse_pr_reference
+from codemop.github.client import (
+    GitHubError, PullRequestRef, fetch_pr_diff, fetch_pull_request, fetch_repo_file, fetch_review_bodies,
+    parse_pr_reference, post_review,
+)
 
 PR = PullRequestRef("owner/repo", 7)
 
@@ -97,3 +103,61 @@ async def test_other_errors_reading_a_file_are_raised():
 
     with pytest.raises(GitHubError, match="GitHub returned 500 reading .codemop.yml from owner/repo"):
         await fetch_repo_file("owner/repo", ".codemop.yml", transport=transport)
+
+
+def json_api(*responses):
+    """Answers requests in turn with (status, JSON) pairs"""
+    requests = []
+    queue = list(responses)
+
+    def handler(request):
+        requests.append(request)
+        status, body = queue.pop(0)
+        return httpx.Response(status, json=body)
+    return httpx.MockTransport(handler), requests
+
+
+@pytest.mark.asyncio
+async def test_fetches_the_pull_requests_head_commit():
+    transport, requests = json_api((200, {"head": {"sha": "abc"}, "state": "open", "draft": False}))
+
+    pr = await fetch_pull_request(PR, token="ghp_x", transport=transport)
+
+    assert (pr.head_sha, pr.state, pr.draft) == ("abc", "open", False)
+    assert requests[0].headers["Accept"] == "application/vnd.github+json"
+
+
+@pytest.mark.asyncio
+async def test_lists_review_commits_and_bodies():
+    transport, requests = json_api((200, [{"commit_id": "abc", "body": "hi"}, {"commit_id": None, "body": None}]))
+
+    assert await fetch_review_bodies(PR, transport=transport) == [("abc", "hi"), ("", "")]
+    assert str(requests[0].url) == "https://api.github.com/repos/owner/repo/pulls/7/reviews?per_page=100"
+
+
+@pytest.mark.asyncio
+async def test_posts_a_review():
+    transport, requests = json_api((200, {"html_url": "https://github.com/owner/repo/pull/7#pullrequestreview-1"}))
+    review = {"commit_id": "abc", "event": "COMMENT", "body": "b", "comments": []}
+
+    url = await post_review(PR, review, token="ghp_x", transport=transport)
+
+    assert url.endswith("#pullrequestreview-1")
+    [request] = requests
+    assert request.method == "POST"
+    assert str(request.url) == "https://api.github.com/repos/owner/repo/pulls/7/reviews"
+    assert json.loads(request.content) == review
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status, token, expected", [
+    (403, "ghp_x", "the token needs write access to pull requests (pull-requests: write)"),
+    (401, None, "posting needs a token"),
+    (422, "ghp_x", "GitHub rejected the review for owner/repo#7"),
+])
+async def test_posting_errors_say_what_to_do(status, token, expected):
+    transport, _ = json_api((status, {"message": "nope"}))
+
+    with pytest.raises(GitHubError, match=re.escape(expected)) as error:
+        await post_review(PR, {}, token=token, transport=transport)
+    assert error.value.status == status

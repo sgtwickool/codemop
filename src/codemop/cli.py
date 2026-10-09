@@ -3,6 +3,7 @@ The codemop command.
 
     codemop review owner/repo#123          review a pull request
     codemop review https://github.com/owner/repo/pull/123
+    codemop review owner/repo#123 --post   ...and post the review on it
     git diff main | codemop review -       review a local diff
 
 Exit status: 0 when every part of the diff was reviewed, 1 when some of it couldn't be
@@ -26,8 +27,10 @@ from codemop.config import (
     CONFIG_FILE, DEFAULT_MIN_CONFIDENCE, ConfigError, RepoConfig, load_config_file, parse_config,
 )
 from codemop.github.client import (
-    DEFAULT_API_URL, GitHubError, PullRequestRef, fetch_pr_diff, fetch_repo_file, parse_pr_reference,
+    DEFAULT_API_URL, GitHubError, PullRequestRef, fetch_pr_diff, fetch_pull_request, fetch_repo_file,
+    fetch_review_bodies, parse_pr_reference, post_review,
 )
+from codemop.github.review import already_reviewed, review_payload
 from codemop.providers import DEFAULT_MODELS, PROVIDERS, create_model
 from codemop.providers.base import DEFAULT_CHUNK_TOKENS, Usage
 from codemop.providers.pricing import PRICES_AS_OF
@@ -84,12 +87,17 @@ def build_parser() -> argparse.ArgumentParser:
                      help=f"drop suggestions the model is less sure of (0-1, default: {DEFAULT_MIN_CONFIDENCE})")
     how.add_argument("--chunk-tokens", type=int,
                      help=f"largest piece of diff sent in one request (default: {DEFAULT_CHUNK_TOKENS:,}; 8,000 for ollama)")
+    how.add_argument("--max-comments", type=int, metavar="N",
+                     help="with --post, the most inline comments (default: 10); the rest go in the summary")
     how.add_argument("--ignore", action="append", metavar="PATTERN",
                      help="another path pattern not to review (repeatable; added to the defaults: "
                           + " ".join(DEFAULT_IGNORED_PATHS) + ")")
 
     review.add_argument("--github-api-url", default=DEFAULT_API_URL, help="for GitHub Enterprise Server")
     review.add_argument("--json", action="store_true", help="print the report as JSON")
+    review.add_argument("--post", action="store_true",
+                        help="post the review on the pull request (needs a token with pull-requests: write); "
+                             "a commit CodeMop has already reviewed isn't reviewed again")
     return parser
 
 
@@ -189,6 +197,10 @@ async def run_review(args) -> int:
             print(f"codemop: {e}", file=sys.stderr)
             return 2
         token = github_token()
+    if args.post and (pr is None or not token):
+        problem = "a pull request to post on, not a diff" if pr is None else "a GitHub token: set GITHUB_TOKEN (or `gh auth login`)"
+        print(f"codemop: --post needs {problem}", file=sys.stderr)
+        return 2
 
     try:
         config, config_source = await load_config(args, pr, token)
@@ -196,11 +208,19 @@ async def run_review(args) -> int:
         print(f"codemop: {e}", file=sys.stderr)
         return 2 if isinstance(e, ConfigError) else 1
 
+    head_sha = None
     if pr is None:
         diff, target = sys.stdin.read(), "stdin"
     else:
         target = str(pr)
         try:
+            if args.post:
+                # The commit the review's line numbers will refer to, read before the diff
+                head_sha = (await fetch_pull_request(pr, token=token, api_url=args.github_api_url)).head_sha
+                reviews = await fetch_review_bodies(pr, token=token, api_url=args.github_api_url)
+                if already_reviewed(reviews, head_sha):
+                    print(f"CodeMop has already reviewed {target} at {head_sha[:7]}; nothing to do")
+                    return 0
             diff = await fetch_pr_diff(pr, token=token, api_url=args.github_api_url)
         except GitHubError as e:
             print(f"codemop: {e}", file=sys.stderr)
@@ -221,7 +241,32 @@ async def run_review(args) -> int:
         ignored_paths=[*DEFAULT_IGNORED_PATHS, *config.ignore, *(args.ignore or [])],
     )
     print(report_json(report, target, config_source) if args.json else report_text(report, target, config_source))
+    if args.post:
+        if report.stopped:
+            print(f"codemop: not posting a review: {report.stopped}", file=sys.stderr)
+            return 1
+        try:
+            url = await post(pr, report, head_sha, token, args.max_comments or config.max_comments, args.github_api_url)
+        except GitHubError as e:
+            print(f"codemop: {e}", file=sys.stderr)
+            return 1
+        print(f"Posted the review: {url}", file=sys.stderr if args.json else sys.stdout)
     return 0 if report.complete else 1
+
+
+async def post(pr: PullRequestRef, report: ReviewReport, head_sha: str, token: str, max_comments: int,
+               api_url: str) -> str:
+    """Post the review; if GitHub won't take the inline comments, the summary alone (it lists them all)"""
+    payload = review_payload(report, head_sha, format_cost(report.cost, report.usage), max_comments)
+    try:
+        return await post_review(pr, payload, token=token, api_url=api_url)
+    except GitHubError as e:
+        if e.status != 422 or not payload["comments"]:
+            raise
+    payload["body"] += ("\n\n⚠️ GitHub didn't accept the inline comments (has the PR changed since it was "
+                        "reviewed?), so they're only listed above.")
+    payload["comments"] = []
+    return await post_review(pr, payload, token=token, api_url=api_url)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
