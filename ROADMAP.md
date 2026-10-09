@@ -143,7 +143,7 @@ Extract the review logic into a package that has nothing to do with FastAPI or t
 - [x] Move to the target [repository structure](#repository-structure): the package at the root, `backend/` became `server/` and uses it
 - [x] In the server, stop running synchronous database work inside `async` handlers and the background job (make DB-only handlers plain `def`, or move to async SQLAlchemy); it blocks the event loop under load. (The suggestions endpoints are plain `def`; the webhook and the background review do their database work in the thread pool; tests check none of it runs on the event loop)
 - [x] Move the older integration tests' inline payloads and headers onto `tests/helpers.py` / the `post_webhook` fixture
-- [ ] Publish to PyPI
+- [x] Publish to PyPI: [codemop 0.1.0](https://pypi.org/project/codemop/) (2026-10-09), from `v*` tags by `release.yml` with trusted publishing; each release waits for approval in the `pypi` environment
 
 ### Model agnostic
 
@@ -165,7 +165,12 @@ so the core must not care which model it's talking to, and the choice of default
 - [x] Choose the default model from the eval. Start by comparing Claude Opus 5.5 (`claude-opus-5-5`) against cheaper options, Codestral (the current default) and a local model. (2026-10-08: Claude Opus 5.5 at high effort stays the default: 47/50 cases passed, best on complex changes, about $0.02 a review. Sonnet 5.5 matched it on simple changes for 40% of the cost; Haiku 4.5 got half its comments wrong. Codestral wasn't compared (no key); the local model is for demonstration only)
 
 **Done when:** `pipx run codemop review sgtwickool/codemop#N` prints useful suggestions
-with at least two providers, and the eval results are in the repo.
+with at least two providers, and the eval results are in the repo. *(Done 2026-10-09:
+0.1.0 from PyPI, run with `uvx`, reviewed PR #2 with Claude Opus 5.5 (22s, 2¢; nothing
+above the confidence threshold, correctly: the file's "intentional issues" are style) and
+with a local qwen2.5-coder:7b (9 minutes on a CPU; one false alarm, and fixes that replace
+the whole function, the case Phase 3's suggestion check is for). On commit 467452c it found
+both known bugs for 4¢. Tagged `phase-2`)*
 
 ## Phase 3: GitHub Action and dogfooding
 
