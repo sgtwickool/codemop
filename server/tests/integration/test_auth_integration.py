@@ -1,65 +1,24 @@
 """
 Integration tests for API authentication.
 """
-import pytest
 import json
+
+import pytest
+
+from tests.helpers import AUTH_HEADERS, pr_event
 
 
 class TestAuthenticationIntegration:
     """Integration tests for API authentication."""
 
-    def test_api_key_authentication_success(self, client):
-        """Test successful authentication with valid API key."""
-        # First create a PR via webhook
-        payload = {
-            "action": "opened",
-            "number": 123,
-            "pull_request": {
-                "title": "Test PR for auth",
-                "user": {"login": "testuser"},
-                "head": {"ref": "test-branch"},
-                "html_url": "https://github.com/testuser/testrepo/pull/123",
-                "diff_url": "https://github.com/testuser/testrepo/pull/123.diff"
-            },
-            "repository": {
-                "name": "testrepo",
-                "full_name": "testuser/testrepo"
-            }
-        }
+    def test_api_key_authentication_success(self, client, post_webhook):
+        """A valid API key reads a stored PR's suggestions."""
+        pr_id = post_webhook(pr_event(title="Test PR for auth")).json()["database_id"]
         
-        body = json.dumps(payload)
-        from app.config import settings
-        secret = settings.GITHUB_WEBHOOK_SECRET.encode()
-        import hmac
-        import hashlib
-        signature = "sha256=" + hmac.new(secret, body.encode(), hashlib.sha256).hexdigest()
-        
-        # Create the PR
-        response = client.post(
-            "/api/v1/github/webhook",
-            content=body,
-            headers={
-                "X-GitHub-Event": "pull_request",
-                "X-Hub-Signature-256": signature,
-                "Content-Type": "application/json"
-            }
-        )
+        response = client.get(f"/api/v1/pr/{pr_id}/suggestions", headers=AUTH_HEADERS)
         
         assert response.status_code == 200
-        pr_data = response.json()
-        pr_id = pr_data["database_id"]
-        
-        # Test suggestions endpoint with valid API key
-        response = client.get(
-            f"/api/v1/pr/{pr_id}/suggestions",
-            headers={
-                "Authorization": "Bearer test_api_key"
-            }
-        )
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["pr_id"] == pr_id
+        assert response.json()["pr_id"] == pr_id
 
     def test_api_key_authentication_missing(self, client):
         """Test authentication failure when API key is missing."""

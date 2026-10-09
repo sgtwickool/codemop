@@ -1,8 +1,11 @@
 """
 Integration tests for GitHub webhook endpoint.
 """
-import pytest
 import json
+
+import pytest
+
+from tests.helpers import pr_event
 
 
 class TestWebhookIntegration:
@@ -17,22 +20,9 @@ class TestWebhookIntegration:
     
     def test_webhook_without_signature(self, client):
         """Test webhook without signature (should fail)."""
-        payload = {
-            "action": "opened",
-            "number": 123,
-            "pull_request": {
-                "title": "Test PR",
-                "user": {"login": "testuser"},
-                "head": {"ref": "test-branch"}
-            },
-            "repository": {
-                "full_name": "testuser/testrepo"
-            }
-        }
-        
         response = client.post(
             "/api/v1/github/webhook",
-            content=json.dumps(payload),
+            content=json.dumps(pr_event()),
             headers={
                 "X-GitHub-Event": "pull_request",
                 "Content-Type": "application/json"
@@ -42,20 +32,8 @@ class TestWebhookIntegration:
         assert response.status_code == 401
         assert "detail" in response.json()
     
-    def test_webhook_with_valid_signature(self, client, github_webhook_payload, github_signature):
-        """Test webhook with valid signature."""
-        body = json.dumps(github_webhook_payload)
-        signature = github_signature(github_webhook_payload)
-        
-        response = client.post(
-            "/api/v1/github/webhook",
-            content=body,
-            headers={
-                "X-GitHub-Event": "pull_request",
-                "X-Hub-Signature-256": signature,
-                "Content-Type": "application/json"
-            }
-        )
+    def test_webhook_with_valid_signature(self, post_webhook, github_webhook_payload):
+        response = post_webhook(github_webhook_payload)
         
         assert response.status_code == 200
         data = response.json()
@@ -66,19 +44,9 @@ class TestWebhookIntegration:
         assert "database_id" in data
         assert "timestamp" in data
     
-    def test_webhook_non_pr_event(self, client, github_signature):
-        """Test webhook with non-PR event (should be ignored)."""
-        payload = {"ref": "refs/heads/main"}
-        
-        response = client.post(
-            "/api/v1/github/webhook",
-            content=json.dumps(payload),
-            headers={
-                "X-GitHub-Event": "push",
-                "X-Hub-Signature-256": github_signature(payload),
-                "Content-Type": "application/json"
-            }
-        )
+    def test_webhook_non_pr_event(self, post_webhook):
+        """Signed events other than pull_request are acknowledged and ignored."""
+        response = post_webhook({"ref": "refs/heads/main"}, event="push")
         
         assert response.status_code == 200
         data = response.json()
@@ -102,47 +70,15 @@ class TestWebhookIntegration:
         assert response.status_code == 401
         assert "detail" in response.json()
     
-    def test_webhook_pr_update(self, client, github_webhook_payload, github_signature):
-        """Test webhook for updating existing PR."""
-        # First webhook call (create PR)
-        body = json.dumps(github_webhook_payload)
-        signature = github_signature(github_webhook_payload)
+    def test_webhook_pr_update(self, post_webhook):
+        """A later event for the same PR updates the stored PR."""
+        database_id = post_webhook(pr_event("opened")).json()["database_id"]
         
-        response1 = client.post(
-            "/api/v1/github/webhook",
-            content=body,
-            headers={
-                "X-GitHub-Event": "pull_request",
-                "X-Hub-Signature-256": signature,
-                "Content-Type": "application/json"
-            }
-        )
+        response = post_webhook(pr_event("closed", title="Updated Test PR", state="closed"))
         
-        assert response1.status_code == 200
-        database_id = response1.json()["database_id"]
-        
-        # Second webhook call with updated data (same PR number)
-        updated_payload = github_webhook_payload.copy()
-        updated_payload["action"] = "closed"
-        updated_payload["pull_request"]["title"] = "Updated Test PR"
-        
-        updated_body = json.dumps(updated_payload)
-        updated_signature = github_signature(updated_payload)
-        
-        response2 = client.post(
-            "/api/v1/github/webhook",
-            content=updated_body,
-            headers={
-                "X-GitHub-Event": "pull_request",
-                "X-Hub-Signature-256": updated_signature,
-                "Content-Type": "application/json"
-            }
-        )
-        
-        assert response2.status_code == 200
-        assert response2.json()["action"] == "closed"
-        # Should have the same database ID (updated existing PR)
-        assert response2.json()["database_id"] == database_id
+        assert response.status_code == 200
+        assert response.json()["action"] == "closed"
+        assert response.json()["database_id"] == database_id
     
     def test_unsigned_non_pr_event_is_rejected(self, client):
         """Every event needs a valid signature, not just pull_request ones."""

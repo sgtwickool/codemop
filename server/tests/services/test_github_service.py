@@ -1,14 +1,13 @@
 """
 Unit tests for GitHub service functions: webhook signatures and pull_request payloads.
 """
-import hashlib
-import hmac
 import json
 
 import pytest
 from fastapi import HTTPException
 
 from app.services.github import parse_pull_request_event, validate_github_webhook_signature
+from tests.helpers import sign_body
 
 
 def parse(payload, content_type="application/json"):
@@ -21,41 +20,23 @@ class TestGitHubService:
 
     @pytest.mark.asyncio
     async def test_validate_github_webhook_signature_valid(self):
-        """Test valid GitHub webhook signature validation."""
-        # Use the actual secret from settings
-        from app.config import settings
+        body = json.dumps({"action": "opened", "number": 123}).encode()
         
-        payload = {"action": "opened", "number": 123}
-        body = json.dumps(payload)
-        secret = settings.GITHUB_WEBHOOK_SECRET
-        signature = "sha256=" + hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()
-        
-        # Should not raise an exception
-        await validate_github_webhook_signature(body.encode(), signature)
+        await validate_github_webhook_signature(body, sign_body(body))  # doesn't raise
     
     @pytest.mark.asyncio
     async def test_validate_github_webhook_signature_invalid(self):
-        """Test invalid GitHub webhook signature validation."""
-        payload = {"action": "opened", "number": 123}
-        body = json.dumps(payload)
+        body = json.dumps({"action": "opened", "number": 123}).encode()
         
-        # Should raise HTTPException for invalid signature
-        with pytest.raises(Exception) as exc_info:
-            await validate_github_webhook_signature(body.encode(), "invalid_signature")
-        
-        assert "Invalid signature" in str(exc_info.value)
+        with pytest.raises(HTTPException, match="Invalid signature"):
+            await validate_github_webhook_signature(body, "invalid_signature")
     
     @pytest.mark.asyncio
     async def test_validate_github_webhook_signature_missing(self):
-        """Test missing GitHub webhook signature validation."""
-        payload = {"action": "opened", "number": 123}
-        body = json.dumps(payload)
+        body = json.dumps({"action": "opened", "number": 123}).encode()
         
-        # Should raise HTTPException for missing signature
-        with pytest.raises(Exception) as exc_info:
-            await validate_github_webhook_signature(body.encode(), None)
-        
-        assert "Missing signature" in str(exc_info.value)
+        with pytest.raises(HTTPException, match="Missing signature"):
+            await validate_github_webhook_signature(body, None)
 
 
 class TestPullRequestEvent:

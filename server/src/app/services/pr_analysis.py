@@ -7,12 +7,14 @@ the webhook only stores the PR and queues the analysis.
 import logging
 from typing import Optional
 
+from fastapi.concurrency import run_in_threadpool
+
 from codemop.config import CONFIG_FILE, ConfigError, RepoConfig, parse_config
 from codemop.github.client import PullRequestRef, fetch_pr_diff, fetch_repo_file
 from codemop.providers import create_model
 from codemop.providers.base import ReviewModel
 from codemop.review.chunks import DEFAULT_IGNORED_PATHS
-from codemop.review.pipeline import review_diff
+from codemop.review.pipeline import ReviewReport, review_diff
 
 from app.config import settings
 from app.db.pr_repository import pr_repository
@@ -66,6 +68,23 @@ async def repo_config(repo_full_name: str) -> RepoConfig:
         return RepoConfig()
 
 
+def store_report(pr_id: int, label: str, head_sha: Optional[str], report: ReviewReport) -> bool:
+    """
+    Replace the PR's suggestions with the report's, unless the PR is gone or has newer
+    commits; returns whether they were stored. Synchronous database work, run in a thread.
+    """
+    with session_scope() as db:
+        pr = pr_repository.get(db, pr_id)
+        if pr is None:
+            logger.warning(f"{label} no longer exists; discarding its analysis")
+            return False
+        if head_sha is not None and pr.head_sha != head_sha:
+            logger.info(f"{label} has new commits since {head_sha[:7]} was analysed; discarding stale results")
+            return False
+        suggestion_service.replace_for_pr(db, pr, report.suggestions, head_sha)
+        return True
+
+
 async def analyze_pr_in_background(
     pr_id: int, repo_full_name: str, number: int, head_sha: Optional[str]
 ) -> None:
@@ -98,15 +117,8 @@ async def analyze_pr_in_background(
         logger.info(f"Skipped {skipped.path} in {label}: {skipped.reason}")
     
     try:
-        with session_scope() as db:
-            pr = pr_repository.get(db, pr_id)
-            if pr is None:
-                logger.warning(f"{label} no longer exists; discarding its analysis")
-                return
-            if head_sha is not None and pr.head_sha != head_sha:
-                logger.info(f"{label} has new commits since {head_sha[:7]} was analysed; discarding stale results")
-                return
-            suggestion_service.replace_for_pr(db, pr, report.suggestions, head_sha)
+        if not await run_in_threadpool(store_report, pr_id, label, head_sha, report):
+            return
         cost = f", about ${report.cost:.4f}" if report.cost else ""
         logger.info(
             f"💾 Stored {len(report.suggestions)} suggestions for {label} from {report.model} "

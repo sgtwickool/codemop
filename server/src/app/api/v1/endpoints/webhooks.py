@@ -1,17 +1,43 @@
-from fastapi import APIRouter, BackgroundTasks, Request, HTTPException, Header, Depends
+from dataclasses import dataclass
+from fastapi import APIRouter, BackgroundTasks, Request, HTTPException, Header
+from fastapi.concurrency import run_in_threadpool
 from typing import Optional
-from sqlalchemy.orm import Session
 from app.models.pr import pr_label
+from app.schemas.github_webhook import PullRequestEvent
 from app.services.github import validate_github_webhook_signature, parse_pull_request_event
 from app.services.pr_service import pr_service
 from app.services.pr_analysis import analyze_pr_in_background, skip_reason
-from app.db.session import get_db
+from app.db.session import session_scope
 from app.db.webhook_delivery_repository import webhook_delivery_repository
 import logging
 from datetime import datetime, timezone
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class StoredPR:
+    id: int
+    head_sha: Optional[str]
+    skip_reason: Optional[str]  # why it won't be analysed, or None if it will
+
+
+def store_event(event: PullRequestEvent, delivery_id: Optional[str], event_name: str) -> Optional[StoredPR]:
+    """
+    Store the PR and the delivery in one transaction, so if this fails a redelivery is
+    processed again. None if the delivery was already processed. Synchronous database
+    work: the handler runs it in a thread, so it doesn't block the event loop.
+    """
+    with session_scope() as db:
+        if delivery_id and not webhook_delivery_repository.record(db, delivery_id, event_name):
+            return None
+        # Read everything needed from the PR before the commit, which expires it
+        pr = pr_service.create_pr(db, event.pr_fields())
+        stored = StoredPR(pr.id, pr.head_sha, skip_reason(event.action, event.pull_request.draft, pr))
+        webhook_delivery_repository.prune(db)
+        return stored
+
 
 # Deliberately not rate limited: every delivery comes from GitHub's few IP addresses (or a
 # proxy's), so a limit would only drop real events, and GitHub doesn't retry a 429. Forged
@@ -23,7 +49,6 @@ async def handle_github_webhook(
     x_github_event: Optional[str] = Header(None),
     x_hub_signature_256: Optional[str] = Header(None),
     x_github_delivery: Optional[str] = Header(None),
-    db: Session = Depends(get_db)  # Proper dependency injection
 ):
     """
     Store the PR from a pull_request event and queue an AI analysis if the code changed.
@@ -47,44 +72,38 @@ async def handle_github_webhook(
     event = parse_pull_request_event(request.headers.get("content-type"), request_body)
     label = pr_label(event.repository.full_name, event.number)
     
-    # GitHub redelivers on timeouts and manual retries; only process each delivery once
-    if x_github_delivery and not webhook_delivery_repository.record(db, x_github_delivery, x_github_event):
-        logger.info(f"Ignoring redelivery {x_github_delivery} for {label}")
-        return {"status": "duplicate", "reason": f"delivery {x_github_delivery} was already processed"}
-    
     logger.info(f"Processing {label} - Action: {event.action}")
     logger.info(f"PR Title: {event.pull_request.title}")
     logger.info(f"Author: {event.pull_request.user.login}")
     logger.info(f"Branch: {event.pull_request.head.ref}")
     
-    # Store the PR and the delivery together: if this fails, a redelivery is processed again.
-    # Everything needed from the PR is read before the commit, which expires it.
     try:
-        pr_record = pr_service.create_pr(db, event.pr_fields())
-        pr_id, head_sha = pr_record.id, pr_record.head_sha
-        reason = skip_reason(event.action, event.pull_request.draft, pr_record)
-        webhook_delivery_repository.prune(db)
-        db.commit()
+        stored = await run_in_threadpool(store_event, event, x_github_delivery, x_github_event)
     except Exception as e:
         logger.error(f"Failed to store PR data: {str(e)}")
         raise HTTPException(status_code=500, detail="Database error while storing PR")
     
-    if reason is None:
+    # GitHub redelivers on timeouts and manual retries; each delivery is only processed once
+    if stored is None:
+        logger.info(f"Ignoring redelivery {x_github_delivery} for {label}")
+        return {"status": "duplicate", "reason": f"delivery {x_github_delivery} was already processed"}
+    
+    if stored.skip_reason is None:
         logger.info(f"Queueing AI analysis for {label}")
         background_tasks.add_task(
-            analyze_pr_in_background, pr_id, event.repository.full_name, event.number, head_sha
+            analyze_pr_in_background, stored.id, event.repository.full_name, event.number, stored.head_sha
         )
         analysis = {"analysis": "queued"}
     else:
-        logger.info(f"Not analysing {label}: {reason}")
-        analysis = {"analysis": "skipped", "reason": reason}
+        logger.info(f"Not analysing {label}: {stored.skip_reason}")
+        analysis = {"analysis": "skipped", "reason": stored.skip_reason}
     
     return {
         "status": "success",
         "pr_number": event.number,
         "action": event.action,
         "repository": event.repository.full_name,
-        "database_id": pr_id,
+        "database_id": stored.id,
         **analysis,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }

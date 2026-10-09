@@ -59,7 +59,7 @@ def _suggestions_response(db: Session, pr: PR) -> dict:
 
 @router.get("/repos/{owner}/{repo}/pulls/{number}/suggestions")
 @limiter.limit(RATE_LIMITS["suggestions"])
-async def get_suggestions_by_number(
+def get_suggestions_by_number(
     request: Request,
     owner: str = Path(pattern=GITHUB_NAME_PATTERN, max_length=100),
     repo: str = Path(pattern=GITHUB_NAME_PATTERN, max_length=100),
@@ -79,11 +79,11 @@ async def get_suggestions_by_number(
 
 @router.get("/pr/{pr_id}/suggestions")
 @limiter.limit(RATE_LIMITS["suggestions"])
-async def get_suggestions(
+def get_suggestions(
     request: Request,
     pr_id: int = Path(ge=1, le=MAX_DB_ID),
     api_key: str = Depends(get_api_key),
-    db: Session = Depends(get_db)  # Proper dependency injection
+    db: Session = Depends(get_db)
 ):
     """
     Get the suggestions for a PR by CodeMop's database ID (the webhook response's `database_id`)
