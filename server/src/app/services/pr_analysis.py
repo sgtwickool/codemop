@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi.concurrency import run_in_threadpool
 
 from codemop.config import CONFIG_FILE, ConfigError, RepoConfig, parse_config
-from codemop.github.client import PullRequestRef, fetch_pr_diff, fetch_repo_file
+from codemop.github.api import PullRequestRef, fetch_pr_diff, fetch_repo_file
 from codemop.providers import create_model
 from codemop.providers.base import ReviewModel
 from codemop.review.chunks import DEFAULT_IGNORED_PATHS

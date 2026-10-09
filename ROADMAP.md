@@ -56,18 +56,19 @@ deep tier.
 
 ## Repository structure
 
-The layout since Phase 2 (`action.yml` and `site/` arrive in Phases 3 and 5):
+The layout (`site/` arrives in Phase 5):
 
 ```
 codemop/
 ├── action.yml            # the GitHub Action (it must be at the root for `uses: sgtwickool/codemop@v1`)
 ├── pyproject.toml        # the `codemop` package (core + CLI), published to PyPI
 ├── src/codemop/
-│   ├── review/           # diff -> per-file chunks -> prompt -> validated suggestions
+│   ├── review/           # diff -> per-file chunks -> prompt -> validated suggestions; fixes, context, learned notes
 │   ├── providers/        # one module per model provider, behind one interface
-│   ├── github/           # GitHub API client: fetch diffs, post reviews
-│   └── cli.py
-├── tests/                # tests for the package, mirroring src/codemop/
+│   ├── github/           # GitHub: the API (api.py gathers the calls), inline comments, the summary, the merge check
+│   └── cli/              # the codemop command: a module per subcommand (review, apply, learn, check)
+├── tests/                # tests for the package, mirroring src/codemop/ (tests/cli: the commands, with a fake GitHub)
+├── evals/                # the review eval: does a model or prompt change make reviews better?
 ├── server/               # the optional self-hosted webhook server, using the package
 ├── site/                 # Astro + Starlight marketing and docs site (Phase 5)
 ├── docs/                 # design notes; docs/archive/ for superseded plans
@@ -200,7 +201,7 @@ core package. This phase includes what makes it worth choosing over Claude's own
 - [x] Remember it for the repository too: add it to a memory file in the PR branch, so it's visible in the diff, read from the default branch like the rest of the config (so a PR can't quietly teach it to ignore its own bug), and editable by hand. Only from people with write access. (Reply `/codemop learn <why>`: a note in `.codemop-learned.yml`, the thread resolved, and a reply saying what happened. The summary and every comment say how to respond)
 - [x] Re-reviews look at the new commits only, report important findings only after the first review, and resolve threads whose code has been fixed. (The summary keeps every finding with a status: open, applied, addressed or dismissed. A force-push or rebase gets a full review; files a merge of the base brought in are left out)
 
-- [ ] At the end of the phase, split `cli.py` (about 600 lines) into a package with a module per command, and `github/client.py` (about 470) by area; the CLI tests patch functions on `cli`, so they move with it
+- [x] At the end of the phase, split `cli.py` (about 600 lines) into a package with a module per command, and `github/client.py` (about 470) by area; the CLI tests patch functions on `cli`, so they move with it. (`codemop/cli/` has a module per command; `github/` has client (requests), pulls, conversation and commits, gathered in `github/api.py`, which is also what tests fake; the CLI tests are in `tests/cli/`)
 
 ### Merge check
 
