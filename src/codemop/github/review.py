@@ -261,11 +261,19 @@ def review_payload(inline: Sequence[ModelSuggestion], head_sha: str, issues: Seq
     }
 
 
+def trusted(author_is_bot: bool, author_association: str) -> bool:
+    """
+    Whether a comment that looks like CodeMop's can be taken as CodeMop's: posted by a bot (the
+    workflow's own token) or by someone with write access (a personal access token). Anyone
+    can comment on a public PR, including a copy of CodeMop's comments.
+    """
+    return author_is_bot or author_association in TRUSTED_ASSOCIATIONS
+
+
 def find_summary(comments: Sequence[IssueComment]) -> Optional[IssueComment]:
     """CodeMop's summary comment on the PR, if there is one by a bot or someone with write access"""
     return next((
-        c for c in reversed(comments)
-        if MARKER in c.body and (c.author_is_bot or c.author_association in TRUSTED_ASSOCIATIONS)
+        c for c in reversed(comments) if MARKER in c.body and trusted(c.author_is_bot, c.author_association)
     ), None)
 
 

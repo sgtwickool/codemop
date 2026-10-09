@@ -35,7 +35,7 @@ from codemop.github.client import (
 )
 from codemop.github.review import (
     find_summary, offered_fixes, parse_comment, record_applied, review_payload, reviewed_commit, split_inline,
-    stored_fixes, summary_body, ticked,
+    stored_fixes, summary_body, ticked, trusted,
 )
 from codemop.review.learned import (
     LEARNED_FILE, Dismissed, Learned, Settled, add_learned, learned_yaml, parse_learned,
@@ -350,7 +350,8 @@ async def load_settled(pr: Optional[PullRequestRef], token: Optional[str], api_u
         return Settled()
     resolved = []
     for thread in threads:
-        parsed = parse_comment(thread.first_comment_body) if thread.resolved and thread.first_comment_by_bot else None
+        is_codemops = trusted(thread.first_comment_by_bot, thread.first_comment_association)
+        parsed = parse_comment(thread.first_comment_body) if thread.resolved and is_codemops else None
         if parsed:
             resolved.append(Dismissed(thread.path, thread.line, parsed[0], parsed[1]))
     return Settled(learned=learned, dismissed=resolved)
@@ -383,7 +384,7 @@ async def run_learn(args) -> int:
         # The reply and what it replies to, read from GitHub (not trusted from the event)
         command = await fetch_review_comment(pr.repo, args.comment, **api)
         parent = await fetch_review_comment(pr.repo, command.in_reply_to, **api) if command and command.in_reply_to else None
-        parsed = parse_comment(parent.body) if parent and parent.author_is_bot else None
+        parsed = parse_comment(parent.body) if parent and trusted(parent.author_is_bot, parent.author_association) else None
         if not command or not command.body.strip().startswith(LEARN_COMMAND) or not parsed:
             print("Not a `/codemop learn` reply to one of CodeMop's comments; nothing to do")
             return 0

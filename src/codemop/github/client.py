@@ -320,6 +320,7 @@ class ReviewThread:
     first_comment_id: int
     first_comment_body: str
     first_comment_by_bot: bool
+    first_comment_association: str  # OWNER, MEMBER, COLLABORATOR, CONTRIBUTOR, NONE...
 
 
 _THREADS_QUERY = """
@@ -330,7 +331,7 @@ query($owner: String!, $name: String!, $number: Int!, $after: String) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id isResolved path line
-          comments(first: 1) { nodes { databaseId body author { __typename } } }
+          comments(first: 1) { nodes { databaseId body authorAssociation author { __typename } } }
         }
       }
     }
@@ -372,6 +373,7 @@ async def list_review_threads(
                 id=node["id"], resolved=node["isResolved"], path=node.get("path") or "", line=node.get("line"),
                 first_comment_id=first.get("databaseId") or 0, first_comment_body=first.get("body") or "",
                 first_comment_by_bot=(first.get("author") or {}).get("__typename") == "Bot",
+                first_comment_association=first.get("authorAssociation") or "NONE",
             ))
         if not page["pageInfo"]["hasNextPage"]:
             break
@@ -416,6 +418,7 @@ class ReviewComment:
     in_reply_to: Optional[int]  # the first comment of its thread, for a reply
     author: str
     author_is_bot: bool
+    author_association: str = "NONE"
 
 
 async def fetch_review_comment(
@@ -439,4 +442,5 @@ async def fetch_review_comment(
     return ReviewComment(
         id=data["id"], body=data.get("body") or "", path=data.get("path") or "", line=data.get("line"),
         in_reply_to=data.get("in_reply_to_id"), author=user.get("login", ""), author_is_bot=user.get("type") == "Bot",
+        author_association=data.get("author_association", "NONE"),
     )

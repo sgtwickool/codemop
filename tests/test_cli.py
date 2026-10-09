@@ -637,7 +637,7 @@ def codemop_comment(github, comment_id=500, path="app.py", line=3):
     """One of CodeMop's comments on the code, as posted, in its own thread"""
     body = cli.review_payload([SUGGESTION.model_copy(update={"file_path": path, "line": line})], github["head"])["comments"][0]["body"]
     github["review_comments"][comment_id] = ReviewComment(comment_id, body, path, line, None, "github-actions[bot]", True)
-    github["threads"].append(ReviewThread(f"thread-{comment_id}", False, path, line, comment_id, body, True))
+    github["threads"].append(ReviewThread(f"thread-{comment_id}", False, path, line, comment_id, body, True, "NONE"))
     return comment_id
 
 
@@ -770,3 +770,42 @@ def test_learn_on_a_fork_resolves_and_says_how_to_add_the_note(capsys, monkeypat
     text = github["replies"][0][1]
     assert "I can't commit to a fork's branch" in text
     assert "```yaml\n- path: app.py\n  issue: Adds one to the total\n  reason: fine here" in text
+
+
+def posted_with_a_personal_token(github, comment_id=500):
+    """CodeMop's comment as posted with a maintainer's personal access token: by them, not a bot"""
+    old = github["review_comments"][comment_id]
+    github["review_comments"][comment_id] = ReviewComment(old.id, old.body, old.path, old.line, None, "maintainer", False, "OWNER")
+    github["threads"][0] = ReviewThread(**{**github["threads"][0].__dict__, "first_comment_by_bot": False,
+                                           "first_comment_association": "OWNER"})
+
+
+def test_learn_works_when_codemop_posts_with_a_personal_access_token(capsys, monkeypatch, github):
+    """Found by CodeMop on PR #10: its comments were only recognised when posted by a bot"""
+    codemop_comment(github)
+    posted_with_a_personal_token(github)
+
+    run(capsys, monkeypatch, ["learn", "owner/repo#7", "--comment", str(learn_reply(github, "/codemop learn fine"))])
+
+    assert github["replies"][0][1].startswith("Learned:")
+
+
+def test_resolving_works_when_codemop_posts_with_a_personal_access_token(capsys, monkeypatch, fake_model, github):
+    codemop_comment(github)
+    posted_with_a_personal_token(github)
+    github["threads"][0] = ReviewThread(**{**github["threads"][0].__dict__, "resolved": True})
+    fake_model([SUGGESTION])
+
+    _, out, _ = run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+
+    assert "Left out 1 suggestion(s) dismissed earlier on this pull request" in out
+
+
+def test_a_copy_of_codemops_comment_by_an_outsider_isnt_trusted(capsys, monkeypatch, github):
+    codemop_comment(github)
+    old = github["review_comments"][500]
+    github["review_comments"][500] = ReviewComment(old.id, old.body, old.path, old.line, None, "mallory", False, "CONTRIBUTOR")
+
+    _, out, _ = run(capsys, monkeypatch, ["learn", "owner/repo#7", "--comment", str(learn_reply(github, "/codemop learn x"))])
+
+    assert "Not a `/codemop learn` reply to one of CodeMop's comments" in out
