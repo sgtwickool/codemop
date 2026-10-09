@@ -14,6 +14,10 @@ For each problem:
 - suggested_code, if you have a concrete fix, replaces lines line..end_line exactly: the
   complete new code for those lines, with no "+"/"-" markers and no line numbers
 - confidence is how sure you are the problem is real
+- group: when several problems are the same mistake in different places, or fixing one
+  problem takes changes in more than one place, report each place separately (with its own
+  suggested_code) and give them all the same short group label, like "unclosed-sessions".
+  Otherwise null
 
 Only report problems you are confident about. If the changes look fine, return no suggestions.
 

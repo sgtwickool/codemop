@@ -294,7 +294,8 @@ async def post(pr: PullRequestRef, report: ReviewReport, head_sha: str, summary_
     review_url, rejected = None, False
     if inline:
         try:
-            review_url = await post_review(pr, review_payload(inline, head_sha), token=token, api_url=api_url)
+            review_url = await post_review(pr, review_payload(inline, head_sha, report.suggestions), token=token,
+                                           api_url=api_url)
         except GitHubError as e:
             if e.status != 422:
                 raise

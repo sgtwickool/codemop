@@ -44,6 +44,8 @@ VARIANTS = {
     "v2": {"model": "claude-sonnet-5-5", "effort": "high", "label": "Sonnet 5.5, high effort"},
     "v3": {"model": "claude-sonnet-5-5", "effort": "low", "label": "Sonnet 5.5, low effort"},
     "v4": {"model": "claude-haiku-4-5", "effort": None, "label": "Haiku 4.5"},
+    # The default again, after the instructions gained grouping (2026-10-09): did quality hold?
+    "v5": {"model": "claude-opus-5-5", "effort": "high", "label": "Opus 5.5, high effort, with grouping"},
 }
 
 JUDGE_MODEL = "claude-opus-4-8"  # not one of the models being compared
