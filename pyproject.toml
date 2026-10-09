@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "codemop"
-version = "0.1.0.dev0"
+dynamic = ["version"]  # from src/codemop/__init__.py
 description = "AI code review for pull requests, with the model of your choice"
 readme = "README.md"
 license = "MIT"
@@ -40,6 +40,9 @@ dev = [
     "pytest-asyncio>=1.4",
     "pytest-cov>=7.1",
 ]
+
+[tool.hatch.version]
+path = "src/codemop/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/codemop"]

@@ -112,6 +112,7 @@ def test_an_incomplete_review_exits_1_and_says_why(capsys, monkeypatch, fake_mod
     assert "Stopped early: Anthropic rejected the API key: check ANTHROPIC_API_KEY (not reviewed: app.py)" in out
     assert out.count("rejected the API key") == 1
     assert "No issues found in the parts that were reviewed." in out
+    assert "0 input / 0 output tokens · nothing spent" in out  # not "no cost (local model)"
 
 
 def test_reviews_a_pull_request(capsys, monkeypatch, fake_model):
