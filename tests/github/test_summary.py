@@ -198,11 +198,31 @@ def test_a_finding_raised_again_stays_one_finding_with_the_new_location():
     state, _ = reviewed(suggestion())
 
     new, addressed = update_earlier(state, [suggestion(line=5, code="x = 2")], set(),
-                                    {"app.py": "changed\n"}, SHOWN, LATER)
+                                    {"app.py": "changed\n"}, SHOWN, LATER)  # same title, two lines on
 
     assert new == [] and addressed == []
     finding = state.findings[0]
     assert (finding.status, finding.line, finding.code, finding.original) == (OPEN, 5, "x = 2", ["x = 1"])
+
+
+def test_a_finding_raised_again_with_a_reworded_title_is_still_the_same_finding():
+    state, _ = reviewed(suggestion())
+
+    new, _ = update_earlier(state, [suggestion(line=5, title="The total adds one", code="x = 2")], set(),
+                            {"app.py": "changed\n"}, SHOWN, LATER)
+
+    assert new == [] and len(state.findings) == 1
+
+
+def test_a_different_issue_nearby_is_a_new_finding():
+    """Found by CodeMop on PR #12: a different bug a line away was merged into the old finding"""
+    state, _ = reviewed(suggestion())
+    other = suggestion(line=5, title="Unvalidated input reaches the query", code="x = 2")
+
+    new, _ = update_earlier(state, [other], set(), {"app.py": HEAD_TEXT}, SHOWN, LATER)
+
+    assert new == [other]
+    assert (state.findings[0].line, state.findings[0].code) == (3, "    return result")  # untouched
 
 
 def test_a_finding_whose_conversation_was_resolved_is_dismissed():
