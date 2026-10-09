@@ -898,3 +898,15 @@ def test_only_files_in_keeps_the_prs_files():
     other = "diff --git a/other.py b/other.py\n--- a/other.py\n+++ b/other.py\n@@ -1 +1 @@\n-a\n+b\n"
 
     assert cli.only_files_in(NEWER + other, pr_diff) == NEWER
+
+
+def test_a_summary_too_long_for_github_gives_up_fixes_before_lines(capsys, monkeypatch, fake_model, github):
+    """Found by CodeMop on PR #12: the fallback cleared the lines that tell later reviews a finding was addressed"""
+    fake_model([SUGGESTION.model_copy(update={"suggested_code": "x" * 70_000})])
+
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+
+    [finding] = cli.read_state(summary_of(github)).findings
+    assert finding.code is None  # no checkbox: the fix was too big to keep
+    assert finding.original == ["    return result + 1"]  # but a later review can still tell if it's addressed
+    assert len(summary_of(github)) <= cli.MAX_COMMENT_CHARS
