@@ -151,6 +151,8 @@ def report_text(report: ReviewReport, target: str, config_source: str) -> str:
         notes.append(f"Set aside {len(report.unplaced)} suggestion(s) that pointed at lines outside the diff")
     if report.below_confidence:
         notes.append(f"Dropped {report.below_confidence} suggestion(s) below the confidence threshold")
+    for dropped in report.dropped_fixes:
+        notes.append(f"Left out the suggested fix for {dropped.file_path}:{dropped.line}: {dropped.reason}")
     if notes:
         lines += notes + [""]
 

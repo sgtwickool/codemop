@@ -13,9 +13,6 @@ backend/src/main.py:19  [bug, confidence 1.00]  Database session not properly re
     will create a new session that is not closed properly, leading to a resource leak.
     The `get_db` function should be used as a context manager with `with` to ensure the
     session is properly managed.
-    Suggested change:
-      with next(get_db()) as db:
-          init_db()
 
 backend/src/main.py:106  [bug, confidence 1.00]  Potential SQL Injection
     The 'database_id' parameter from `pr_record.id` is directly included in the payload.
@@ -23,5 +20,7 @@ backend/src/main.py:106  [bug, confidence 1.00]  Potential SQL Injection
     SQL injection.
     Suggested change:
       database_id=db.engine.execute('SELECT id FROM pr_record WHERE record_id = :id', {'id': pr_record.id}).scalar()
+
+Left out the suggested fix for backend/src/main.py:19: it repeats a nearby line ('init_db()'), which applying it would duplicate
 
 3 suggestion(s) · 3 chunk(s) · 4,237 input / 771 output tokens · no cost (local model)
