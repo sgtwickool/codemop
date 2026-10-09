@@ -40,9 +40,10 @@ deep tier.
 
 ## How we work
 
-- **Commit straight to `master`** while it's a solo project; CI must be green after every push.
-  Our own PRs start after Phase 4 or 5, once the product is in better shape. Dependabot's
-  monthly update PRs are the exception: review and merge them as they come.
+- **Every change is a pull request** (since 2026-10-09; before that, commits went straight to
+  `master`). CodeMop's own workflow reviews each one, so working on CodeMop is also using it.
+  Merge when CI is green and the review's real findings are dealt with. Dependabot's monthly
+  update PRs are reviewed and merged as they come.
 - **`/simplify` at the end of every phase**, over that phase's diff (`git diff phase-N-1..HEAD`).
   Also run it on any single change of more than about 300 lines. Then tag the end of the phase
   (`phase-N`) so the next pass has a clean starting point.
@@ -210,7 +211,7 @@ core package. This phase includes what makes it worth choosing over Claude's own
 
 ### Dogfooding
 
-- [ ] Run it on CodeMop's own PRs for at least two weeks
+- [ ] Run it on CodeMop's own PRs for at least two weeks (the workflow is in place, 2026-10-09: `.github/workflows/codemop.yml`, its first review on PR #2; the two weeks start once our work goes through PRs)
 - [ ] Tag `v1`; list on the GitHub Marketplace
 
 **Done when:** someone else installs it from the README alone and it reviews their PR.
