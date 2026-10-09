@@ -38,6 +38,14 @@ class RepoConfig(BaseModel):
         default=10, ge=1, le=50,
         description="Most inline comments in a posted review; the rest are listed in its summary",
     )
+    merge_check: bool = Field(
+        default=False,
+        description="Set a CodeMop commit status that fails while bugs or security issues are open, for branch protection",
+    )
+    merge_check_confidence: float = Field(
+        default=0.8, ge=0, le=1,
+        description="How sure CodeMop must be of a bug or security issue for it to fail the merge check",
+    )
 
 
 def parse_config(text: str, source: str = CONFIG_FILE) -> RepoConfig:

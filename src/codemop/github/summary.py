@@ -48,6 +48,7 @@ class Finding:
     code: Optional[str] = None  # its fix, if it has one
     status: str = OPEN
     note: str = ""  # how it was closed, e.g. "applied in abc1234"
+    confidence: float = 0.0  # how sure the model was (0 for findings from before this was kept)
 
     @property
     def fix(self) -> Optional[Fix]:
@@ -79,7 +80,7 @@ class SummaryState:
             original = [shown.get(s.file_path, {}).get(line) for line in range(s.line, end + 1)]
             added.append(Finding(
                 next_id + n, s.severity.value, s.file_path, s.line, end, s.title, commit, s.group,
-                original if None not in original else None, s.suggested_code,
+                original if None not in original else None, s.suggested_code, confidence=s.confidence,
             ))
         self.findings += added
         return added
@@ -105,12 +106,29 @@ def _same_issue(s: ModelSuggestion, f: "Finding") -> bool:
     return s.title == f.title or (abs(s.line - f.line) <= NEAR_LINES and _similar(s.title, f.title))
 
 
-def update_earlier(state: SummaryState, new: Sequence[ModelSuggestion], resolved: Set[Tuple[str, str]],
-                   head_files: Dict[str, Optional[str]], shown: Dict[str, Dict[int, str]],
-                   head: str) -> Tuple[List[ModelSuggestion], List[Finding]]:
+def sync_threads(state: SummaryState, threads: Sequence[Tuple[str, str, bool]]) -> bool:
     """
-    Bring the open findings from earlier reviews up to date with commit `head`:
-    - dismissed, if their conversation has been resolved (`resolved`: (path, title) pairs)
+    Match findings to their conversations ((path, title, resolved) for each of CodeMop's
+    threads): resolved dismisses an open finding, and unresolving reopens a dismissed one.
+    Returns whether anything changed.
+    """
+    changed = False
+    for path, title, resolved in threads:
+        for f in state.findings:
+            if (f.path, f.title) != (path, title):
+                continue
+            if resolved and f.status == OPEN:
+                f.status, f.note, changed = DISMISSED, "dismissed: its conversation was resolved", True
+            elif not resolved and f.status == DISMISSED:
+                f.status, f.note, changed = OPEN, "", True
+    return changed
+
+
+def update_earlier(state: SummaryState, new: Sequence[ModelSuggestion], head_files: Dict[str, Optional[str]],
+                   shown: Dict[str, Dict[int, str]], head: str) -> Tuple[List[ModelSuggestion], List[Finding]]:
+    """
+    Bring the open findings from earlier reviews up to date with commit `head` (after
+    sync_threads has dismissed the ones whose conversations were resolved):
     - still open, if this review raised them again (the earlier finding takes the new
       location and fix, rather than being listed twice)
     - addressed, if the lines they were about have gone from the file (`head_files`: path:
@@ -121,9 +139,6 @@ def update_earlier(state: SummaryState, new: Sequence[ModelSuggestion], resolved
     new = list(new)
     addressed = []
     for f in [f for f in state.open if f.found_in != head]:
-        if (f.path, f.title) in resolved:
-            f.status, f.note = DISMISSED, "dismissed: its conversation was resolved"
-            continue
         again = next((s for s in new if _same_issue(s, f)), None)
         if again:
             new.remove(again)
@@ -205,7 +220,7 @@ def _done_items(findings: Sequence[Finding]) -> List[str]:
     return [f"- {icons[f.status]} {_label(f)} `{f.location}`: {f.title} · {f.note}" for f in findings]
 
 
-def _how_to_respond(checklist: bool, teachable: bool) -> List[str]:
+def _how_to_respond(checklist: bool, teachable: bool, merge_check: bool) -> List[str]:
     fix = ("- **Fix it:** tick its box above and CodeMop commits the fix to this branch (ticked fixes are "
            "committed together), or use \"Commit suggestion\" on its comment." if checklist else
            "- **Fix it:** use \"Commit suggestion\" on its comment, where there is one.")
@@ -219,12 +234,17 @@ def _how_to_respond(checklist: bool, teachable: bool) -> List[str]:
     else:
         lines.append("- **Not a problem anywhere in this repository:** CodeMop can't commit to a fork's branch, so "
                      "add a note to `.codemop-learned.yml` on the default branch (its header says how).")
+    if merge_check:
+        lines.append("- **The merge check** (the \"CodeMop\" status) fails while bugs or security issues are open. "
+                     "It's updated on every push; after resolving a conversation, comment `/codemop check` to "
+                     "update it straight away.")
     return lines
 
 
 def summary_body(state: SummaryState, report: ReviewReport, cost: str, *, review_url: Optional[str] = None,
                  inline_rejected: bool = False, checklist: bool = False, teachable: bool = True,
-                 since: Optional[str] = None, less_important: int = 0, not_commented: int = 0) -> str:
+                 since: Optional[str] = None, less_important: int = 0, not_commented: int = 0,
+                 merge_check: bool = False) -> str:
     """
     The summary for `state` (whose commit is the one just reviewed), with what this review
     (`report`) found. `since`: the commit a re-review looked at the changes after
@@ -259,7 +279,7 @@ def summary_body(state: SummaryState, report: ReviewReport, cost: str, *, review
         lines += ["", f"<details><summary>Done ({len(done)})</summary>", ""] + _done_items(done) + ["", "</details>"]
     if state.open:
         lines += ["", "<details><summary>How to respond to CodeMop</summary>", ""]
-        lines += _how_to_respond(checklist, teachable) + ["", "</details>"]
+        lines += _how_to_respond(checklist, teachable, merge_check) + ["", "</details>"]
 
     notes = [f"Skipped `{s.path}`: {s.reason}" for s in report.skipped]
     if report.unplaced:

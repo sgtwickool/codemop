@@ -42,13 +42,14 @@ on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
   issue_comment:
-    types: [edited]  # someone ticked fixes in CodeMop's summary
+    types: [edited, created]  # fixes ticked in CodeMop's summary; `/codemop check`
   pull_request_review_comment:
     types: [created]  # someone replied `/codemop learn <why>` to a comment
 
 permissions:
   contents: write  # to commit ticked fixes and learned notes
   pull-requests: write
+  statuses: write  # for the merge check, if you turn it on
 
 # Reviews: a new push replaces one still running. Commits (fixes, notes) wait their turn
 concurrency:
@@ -57,10 +58,12 @@ concurrency:
 
 jobs:
   codemop:
-    # On comments, only edits of CodeMop's summary, and `/codemop learn` replies (not on forks' PRs)
+    # On comments, only edits of CodeMop's summary, `/codemop check`, and `/codemop learn` replies (not on forks' PRs)
     if: >-
       github.event_name == 'pull_request_target' ||
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, 'codemop-summary')) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && (
+        (github.event.action == 'edited' && contains(github.event.comment.body, 'codemop-summary')) ||
+        (github.event.action == 'created' && startsWith(github.event.comment.body, '/codemop check')))) ||
       (github.event_name == 'pull_request_review_comment' && startsWith(github.event.comment.body, '/codemop learn') && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
@@ -106,6 +109,34 @@ one-click suggestions) and `/codemop learn` doesn't work: resolve the conversati
 and add a note to `.codemop-learned.yml` on your default branch yourself. Resolving
 conversations works everywhere. `checklist: false` turns
 the checkboxes off.
+
+### Blocking merges on what CodeMop finds
+
+CodeMop never approves or blocks a pull request by itself. To let it block merges, turn on
+its merge check in `.codemop.yml` on your default branch:
+
+```yaml
+merge_check: true
+merge_check_confidence: 0.8  # how sure it must be of an issue to block on it (default 0.8)
+```
+
+CodeMop then sets a commit status called **CodeMop** on each pull request's latest commit:
+
+| Status | When |
+|---|---|
+| Pending | While it reviews, so nothing is merged mid-review |
+| Failure | While any bug or security issue it's at least that sure of is open |
+| Success | Once those are fixed, applied, addressed or dismissed; style, performance and maintainability issues never block |
+| Error | When it couldn't review (an expired API key, say); the description says why |
+
+To make it required, add **CodeMop** as a required status check in the branch's protection
+rules (Settings → Branches). A pull request too large to review (`max-changed-lines`)
+passes, with a description saying so, rather than being blocked forever.
+
+The check is updated on every push, and on CodeMop's own commits (ticked fixes and learned
+notes). GitHub runs no workflow when a conversation is resolved, so after dismissing an
+issue that way, comment `/codemop check` on the pull request to update it straight away
+(CodeMop reacts 👍 when it has). Anyone can ask; it only recalculates.
 
 **Pull requests from forks are reviewed too, safely.** `pull_request_target` gives the
 workflow your secret even for a fork's PR, which is only safe because CodeMop never checks
