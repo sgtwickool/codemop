@@ -30,6 +30,9 @@ TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 _COMMIT = re.compile(r"<!-- codemop-commit: ([0-9a-f]{7,40}) -->")
 _STATE = re.compile(r"<!-- codemop-state: ([A-Za-z0-9+/=]+) -->")
 _ITEM = re.compile(r"^- \[([ xX])\] (.*) <!-- codemop-fix:([\d,]+) -->$", re.M)
+# Ticking fixes only selects them; ticking this commits them, so several go in one commit
+COMMIT_BOX = "- [ ] **Commit the ticked fixes** <!-- codemop-commit-ticked -->"
+_COMMIT_BOX = re.compile(r"^- \[([ xX])\] \*\*Commit the ticked fixes\*\* <!-- codemop-commit-ticked -->$", re.M)
 
 OPEN, APPLIED, ADDRESSED, DISMISSED = "open", "applied", "addressed", "dismissed"
 
@@ -221,8 +224,9 @@ def _done_items(findings: Sequence[Finding]) -> List[str]:
 
 
 def _how_to_respond(checklist: bool, teachable: bool, merge_check: bool) -> List[str]:
-    fix = ("- **Fix it:** tick its box above and CodeMop commits the fix to this branch (ticked fixes are "
-           "committed together), or use \"Commit suggestion\" on its comment." if checklist else
+    fix = ("- **Fix it:** tick its box above, and when you've ticked all you want, tick **Commit the ticked "
+           "fixes**: CodeMop commits them to this branch as one commit. Or use \"Commit suggestion\" on its "
+           "comment." if checklist else
            "- **Fix it:** use \"Commit suggestion\" on its comment, where there is one.")
     lines = [fix, "- **Not a problem here:** resolve the comment's conversation. CodeMop won't raise it again on "
                   "this pull request."]
@@ -260,9 +264,12 @@ def summary_body(state: SummaryState, report: ReviewReport, cost: str, *, review
     new = [f for f in state.findings if f.found_in == head]
     if state.open:
         where = f" ([comments on the code]({review_url}))" if review_url and new else ""
-        tick = " Tick the fixes you want, and CodeMop commits them to this branch together." if checklist else ""
+        tick = (" Tick the fixes you want, then tick **Commit the ticked fixes** at the end, and CodeMop commits them "
+                "to this branch as one commit." if checklist else "")
         lines += [f"{len(state.open)} open issue(s){where}.{tick}", ""]
         lines += _open_items(state.open, checklist, head if since else None)
+        if checklist:
+            lines += ["", COMMIT_BOX]
     elif not report.too_large:
         reviewed = "the parts that were reviewed" if not report.complete else ("these changes" if since else "")
         lines.append(f"No issues found in {reviewed}." if reviewed else "No issues found.")
@@ -312,11 +319,22 @@ def ticked(body: str) -> Set[int]:
     return {int(i) for box, _, ids in _ITEM.findall(_lf(body)) if box.lower() == "x" for i in ids.split(",")}
 
 
+def commit_requested(body: str) -> bool:
+    """Whether "Commit the ticked fixes" is ticked"""
+    match = _COMMIT_BOX.search(_lf(body))
+    return bool(match) and match.group(1).lower() == "x"
+
+
+def untick_commit(body: str) -> str:
+    """The summary with "Commit the ticked fixes" unticked, ready for next time"""
+    return _COMMIT_BOX.sub(COMMIT_BOX, _lf(body))
+
+
 def record_applied(body: str, commit: str, applied: Sequence[Fix], skipped: Sequence[Tuple[Fix, str]]) -> str:
     """
     The summary with the applied fixes marked as done in `commit` (in its checklist now, and
-    in its findings, so the next review lists them under Done), and the skipped ones
-    unticked, saying why
+    in its findings, so the next review lists them under Done), the skipped ones unticked,
+    saying why, and "Commit the ticked fixes" unticked
     """
     done = {f.id for f in applied}
     why = {f.id: reason for f, reason in skipped}
@@ -335,7 +353,7 @@ def record_applied(body: str, commit: str, applied: Sequence[Fix], skipped: Sequ
             return f"- [ ] {text} · ⚠️ not applied: {reasons[0]} {marker}"
         return match.group(0)
 
-    body = _ITEM.sub(item, _lf(body))
+    body = untick_commit(_ITEM.sub(item, _lf(body)))
     state = read_state(body)
     for f in state.findings:
         if f.id in done:

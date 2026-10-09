@@ -5,10 +5,12 @@ from codemop.cli.common import WRITE_PERMISSIONS, github_token, record_commit
 from codemop.github import api
 from codemop.github.api import GitHubError, PullRequest, parse_pr_reference
 from codemop.github.summary import (
+    commit_requested,
     find_summary,
     record_applied,
     stored_fixes,
     ticked,
+    untick_commit,
 )
 from codemop.review.fixes import apply_fixes
 
@@ -26,14 +28,19 @@ async def run_apply(args) -> int:
         return 2
     auth = dict(token=token, api_url=args.github_api_url)
     try:
+        summary = find_summary(await api.list_issue_comments(pr, **auth))
+        if not summary or not commit_requested(summary.body):
+            # Ticking a fix only selects it; nothing happens until "Commit the ticked fixes" is ticked
+            print(f"\"Commit the ticked fixes\" isn't ticked on {pr}; nothing to do")
+            return 0
         if args.by and await api.user_permission(pr.repo, args.by, **auth) not in WRITE_PERMISSIONS:
             print(f"Not applying fixes for {args.by}: only people with write access to {pr.repo} can")
             return 0
-        summary = find_summary(await api.list_issue_comments(pr, **auth))
-        fixes = stored_fixes(summary.body) if summary else {}
-        wanted = [fixes[i] for i in sorted(ticked(summary.body)) if i in fixes] if summary else []
+        fixes = stored_fixes(summary.body)
+        wanted = [fixes[i] for i in sorted(ticked(summary.body)) if i in fixes]
         if not wanted:
             print(f"No ticked fixes to apply on {pr}")
+            await api.post_issue_comment(pr, untick_commit(summary.body), comment_id=summary.id, **auth)
             return 0
 
         for attempt in range(2):  # again if the branch moves on while this runs

@@ -1,7 +1,7 @@
 from codemop.github.api import IssueComment
 from codemop.github.summary import (
     ADDRESSED, APPLIED, DISMISSED, MARKER, OPEN, SummaryState, find_summary, read_state, record_applied,
-    stored_fixes, summary_body, sync_threads, ticked, update_earlier,
+    commit_requested, stored_fixes, summary_body, sync_threads, ticked, untick_commit, update_earlier,
 )
 from codemop.providers.base import Usage
 from codemop.review.chunks import Skipped
@@ -48,7 +48,9 @@ def test_a_checklist_has_a_box_for_each_issue_with_a_fix():
     _, body = reviewed(suggestion(), suggestion(line=5, end_line=7, code=None, title="No fix"), checklist=True)
 
     assert body.startswith(MARKER)
-    assert "2 open issue(s). Tick the fixes you want, and CodeMop commits them to this branch together." in body
+    assert ("2 open issue(s). Tick the fixes you want, then tick **Commit the ticked fixes** at the end, and CodeMop "
+            "commits them to this branch as one commit.") in body
+    assert body.count("- [ ] **Commit the ticked fixes** <!-- codemop-commit-ticked -->") == 1
     assert "- [ ] 🐛 Bug `app.py:3`: Adds one to the total <!-- codemop-fix:1 -->" in body
     assert "- 🐛 Bug `app.py:5-7`: No fix" in body
 
@@ -258,3 +260,17 @@ def test_a_re_review_lists_open_issues_marks_new_ones_and_folds_away_the_done():
     assert "<summary>Done (1)</summary>" in body
     assert "- ✅ 🐛 Bug `app.py:3`: Adds one to the total · addressed in def5678" in body
     assert "Left out 2 less important suggestion(s): re-reviews only raise bugs and security issues" in body
+
+
+def test_the_commit_box_says_when_to_commit():
+    _, body = reviewed(suggestion(), checklist=True)
+
+    assert not commit_requested(body)
+    ticked_box = body.replace("- [ ] **Commit the ticked fixes**", "- [x] **Commit the ticked fixes**").replace("\n", "\r\n")
+    assert commit_requested(ticked_box)  # from the web page, too
+    assert not commit_requested(untick_commit(ticked_box))
+    assert "- [ ] **Commit the ticked fixes**" in record_applied(ticked_box, "a" * 40, [], [])
+
+
+def test_no_commit_box_without_a_checklist():
+    assert "Commit the ticked fixes" not in reviewed(suggestion())[1]
