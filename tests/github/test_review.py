@@ -158,6 +158,17 @@ def test_reads_which_fixes_are_ticked():
     assert ticked(body.replace("- [ ] 🐛 Bug `app.py:6`", "- [x] 🐛 Bug `app.py:6`")) == {2}
 
 
+def test_ticks_saved_from_githubs_web_page_are_read():
+    """Ticking a box in the browser saves the comment with \\r\\n line endings (found by CodeMop on PR #5)"""
+    s1 = suggestion(line=3)
+    fixes = offered_fixes([s1], SHOWN)
+    body = summary_body(report(s1), [s1], [], "c", SHA, fixes=fixes, checklist=True)
+    from_browser = body.replace("- [ ]", "- [x]").replace("\n", "\r\n")
+
+    assert ticked(from_browser) == {1}
+    assert "· ✅ applied in" in record_applied(from_browser, "a" * 40, [fixes[1]], [])
+
+
 def test_records_which_fixes_were_applied_and_which_skipped():
     s1, s2 = suggestion(line=3), suggestion(line=6, title="Other")
     fixes = offered_fixes([s1, s2], SHOWN)
