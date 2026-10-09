@@ -11,6 +11,7 @@ from codemop.providers.base import NoReview, NoReviewKind, ReviewModel, Usage
 from codemop.review.chunks import DEFAULT_IGNORED_PATHS, Skipped, plan_chunks
 from codemop.review.diff import parse_diff
 from codemop.review.fixes import file_lines, fit_fix
+from codemop.review.learned import Settled
 from codemop.review.placement import Unplaced, place_suggestions
 from codemop.review.prompt import SYSTEM_PROMPT
 from codemop.review.schema import ModelSuggestion
@@ -39,6 +40,7 @@ class ReviewReport:
     suggestions: List[ModelSuggestion] = field(default_factory=list)
     unplaced: List[Unplaced] = field(default_factory=list)  # suggestions on lines GitHub can't comment on
     below_confidence: int = 0  # suggestions dropped by min_confidence
+    already_dismissed: int = 0  # suggestions dropped because someone dismissed them earlier on the PR
     dropped_fixes: List[DroppedFix] = field(default_factory=list)  # fixes that would have duplicated code
     skipped: List[Skipped] = field(default_factory=list)  # parts of the diff not reviewed
     failed: List[FailedChunk] = field(default_factory=list)  # chunks the model gave no review for
@@ -63,12 +65,15 @@ async def review_diff(
     ignored_paths: Sequence[str] = DEFAULT_IGNORED_PATHS,
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
     max_changed_lines: Optional[int] = None,
+    settled: Settled = Settled(),
 ) -> ReviewReport:
     """
     Review a unified diff with `model` (chunk_tokens defaults to the model's own chunk size).
     With max_changed_lines, a diff with more added and removed lines to review than that
-    isn't sent to the model at all (a cost limit).
+    isn't sent to the model at all (a cost limit). `settled` is what the model is told not to
+    raise again (and dismissed issues it raises anyway are dropped).
     """
+    instructions = SYSTEM_PROMPT + settled.instructions()
     plan = plan_chunks(parse_diff(diff), chunk_tokens or model.chunk_tokens, ignored_paths=ignored_paths)
     report = ReviewReport(model=model.name, skipped=list(plan.skipped), chunks=len(plan.chunks))
     changed = sum(
@@ -88,7 +93,7 @@ async def review_diff(
                 report.failed.append(FailedChunk(paths, f"not reviewed: {report.stopped}", "not_reviewed"))
                 return
             try:
-                review, usage = await model.review(SYSTEM_PROMPT, chunk.text)
+                review, usage = await model.review(instructions, chunk.text)
             except NoReview as e:
                 report.usage += e.usage
                 report.failed.append(FailedChunk(paths, e.reason, e.kind))
@@ -102,6 +107,9 @@ async def review_diff(
             for suggestion in placement.placed:
                 if suggestion.confidence < min_confidence:
                     report.below_confidence += 1
+                    continue
+                if settled.dismisses(suggestion):
+                    report.already_dismissed += 1
                     continue
                 fix, problem = fit_fix(suggestion, shown[suggestion.file_path])
                 if problem:

@@ -309,3 +309,134 @@ async def commit_files(
     commit = await call("POST", "commits", {"message": message, "tree": tree["sha"], "parents": [parent_sha]})
     await call("PATCH", f"refs/heads/{branch}", {"sha": commit["sha"], "force": False})
     return commit["sha"]
+
+
+@dataclass(frozen=True)
+class ReviewThread:
+    id: str  # GraphQL node id, for resolving it
+    resolved: bool
+    path: str
+    line: Optional[int]
+    first_comment_id: int
+    first_comment_body: str
+    first_comment_by_bot: bool
+
+
+_THREADS_QUERY = """
+query($owner: String!, $name: String!, $number: Int!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id isResolved path line
+          comments(first: 1) { nodes { databaseId body author { __typename } } }
+        }
+      }
+    }
+  }
+}
+"""
+
+
+async def _graphql(query: str, variables: dict, token: Optional[str], api_url: str,
+                   transport: Optional[httpx.AsyncBaseTransport]) -> dict:
+    # GitHub Enterprise Server serves GraphQL at /api/graphql next to /api/v3
+    url = api_url.rstrip("/").removesuffix("/v3") + "/graphql"
+    response = await _request("POST", url, JSON, token, transport, json={"query": query, "variables": variables})
+    data = response.json() if response.status_code == 200 else {}
+    if response.status_code != 200 or data.get("errors"):
+        detail = "; ".join(e.get("message", "") for e in data.get("errors", [])) or str(response.status_code)
+        raise GitHubError(f"GitHub's GraphQL API failed: {detail}", response.status_code)
+    return data["data"]
+
+
+async def list_review_threads(
+    pr: PullRequestRef,
+    *,
+    token: Optional[str] = None,
+    api_url: str = DEFAULT_API_URL,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> List[ReviewThread]:
+    """The PR's review threads (conversations on its code), with whether each is resolved"""
+    owner, name = pr.repo.split("/")
+    threads: List[ReviewThread] = []
+    after = None
+    for _ in range(MAX_COMMENT_PAGES):
+        data = await _graphql(_THREADS_QUERY, {"owner": owner, "name": name, "number": pr.number, "after": after},
+                              token, api_url, transport)
+        page = data["repository"]["pullRequest"]["reviewThreads"]
+        for node in page["nodes"]:
+            first = (node["comments"]["nodes"] or [{}])[0]
+            threads.append(ReviewThread(
+                id=node["id"], resolved=node["isResolved"], path=node.get("path") or "", line=node.get("line"),
+                first_comment_id=first.get("databaseId") or 0, first_comment_body=first.get("body") or "",
+                first_comment_by_bot=(first.get("author") or {}).get("__typename") == "Bot",
+            ))
+        if not page["pageInfo"]["hasNextPage"]:
+            break
+        after = page["pageInfo"]["endCursor"]
+    return threads
+
+
+async def resolve_thread(
+    thread_id: str,
+    *,
+    token: Optional[str] = None,
+    api_url: str = DEFAULT_API_URL,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> None:
+    await _graphql("mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { id } } }",
+                   {"id": thread_id}, token, api_url, transport)
+
+
+async def reply_to_review_comment(
+    pr: PullRequestRef,
+    comment_id: int,
+    body: str,
+    *,
+    token: Optional[str] = None,
+    api_url: str = DEFAULT_API_URL,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> str:
+    """Reply in the thread of a comment on the PR's code; the reply's URL"""
+    url = f"{api_url.rstrip('/')}/repos/{pr.repo}/pulls/{pr.number}/comments/{comment_id}/replies"
+    response = await _request("POST", url, JSON, token, transport, json={"body": body})
+    if response.status_code != 201:
+        raise _write_error(response, pr, token, "replying to a comment")
+    return response.json().get("html_url", "")
+
+
+@dataclass(frozen=True)
+class ReviewComment:
+    id: int
+    body: str
+    path: str
+    line: Optional[int]
+    in_reply_to: Optional[int]  # the first comment of its thread, for a reply
+    author: str
+    author_is_bot: bool
+
+
+async def fetch_review_comment(
+    repo: str,
+    comment_id: int,
+    *,
+    token: Optional[str] = None,
+    api_url: str = DEFAULT_API_URL,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> Optional[ReviewComment]:
+    """A comment on a pull request's code, or None if there's no such comment"""
+    url = f"{api_url.rstrip('/')}/repos/{repo}/pulls/comments/{comment_id}"
+    response = await _request("GET", url, JSON, token, transport)
+    if response.status_code == 404:
+        return None
+    if response.status_code != 200:
+        raise GitHubError(f"GitHub returned {response.status_code} reading comment {comment_id} on {repo}",
+                          response.status_code)
+    data = response.json()
+    user = data.get("user") or {}
+    return ReviewComment(
+        id=data["id"], body=data.get("body") or "", path=data.get("path") or "", line=data.get("line"),
+        in_reply_to=data.get("in_reply_to_id"), author=user.get("login", ""), author_is_bot=user.get("type") == "Bot",
+    )

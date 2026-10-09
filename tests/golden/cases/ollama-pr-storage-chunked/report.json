@@ -40,6 +40,7 @@
   ],
   "unplaced": [],
   "below_confidence": 0,
+  "already_dismissed": 0,
   "dropped_fixes": [
     {
       "file_path": "backend/src/main.py",

@@ -196,8 +196,8 @@ core package. This phase includes what makes it worth choosing over Claude's own
 
 ### Learns from you
 
-- [ ] Reply "intentional" (or 👎) to a comment: CodeMop resolves it and doesn't raise it again on this PR
-- [ ] Remember it for the repository too: add it to a memory file in the PR branch, so it's visible in the diff, read from the default branch like the rest of the config (so a PR can't quietly teach it to ignore its own bug), and editable by hand. Only from people with write access
+- [x] Reply "intentional" (or 👎) to a comment: CodeMop resolves it and doesn't raise it again on this PR. (Done as resolving the conversation instead: it's GitHub's own gesture, needs no syntax, works on forks' PRs, and GitHub sends no event for reactions. The next review reads which threads are resolved)
+- [x] Remember it for the repository too: add it to a memory file in the PR branch, so it's visible in the diff, read from the default branch like the rest of the config (so a PR can't quietly teach it to ignore its own bug), and editable by hand. Only from people with write access. (Reply `/codemop learn <why>`: a note in `.codemop-learned.yml`, the thread resolved, and a reply saying what happened. The summary and every comment say how to respond)
 - [ ] Re-reviews look at the new commits only, report important findings only after the first review, and resolve threads whose code has been fixed
 
 ### Merge check

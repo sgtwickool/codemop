@@ -6,7 +6,8 @@ import pytest
 
 from codemop.github.client import (
     GitHubError, PullRequestRef, commit_files, fetch_pr_diff, fetch_pull_request, fetch_repo_file,
-    list_issue_comments, parse_pr_reference, post_issue_comment, post_review, user_permission,
+    list_issue_comments, list_review_threads, parse_pr_reference, post_issue_comment, post_review,
+    reply_to_review_comment, resolve_thread, user_permission,
 )
 
 PR = PullRequestRef("owner/repo", 7)
@@ -301,3 +302,48 @@ async def test_a_dropped_connection_is_retried():
 
     assert (await fetch_pr_diff(PR, transport=httpx.MockTransport(handler))).startswith("diff --git")
     assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_lists_review_threads_page_by_page():
+    def page(nodes, more):
+        return (200, {"data": {"repository": {"pullRequest": {"reviewThreads": {
+            "pageInfo": {"hasNextPage": more, "endCursor": "c1" if more else None}, "nodes": nodes}}}}})
+    node = {"id": "T1", "isResolved": True, "path": "app.py", "line": 3,
+            "comments": {"nodes": [{"databaseId": 9, "body": "b", "author": {"__typename": "Bot"}}]}}
+    transport, requests = json_api(page([node], True), page([{**node, "id": "T2", "isResolved": False}], False))
+
+    threads = await list_review_threads(PR, transport=transport)
+
+    assert [(t.id, t.resolved, t.path, t.line, t.first_comment_id, t.first_comment_by_bot) for t in threads] == [
+        ("T1", True, "app.py", 3, 9, True), ("T2", False, "app.py", 3, 9, True),
+    ]
+    assert str(requests[0].url) == "https://api.github.com/graphql"
+    assert json.loads(requests[1].content)["variables"]["after"] == "c1"
+
+
+@pytest.mark.asyncio
+async def test_graphql_errors_are_raised():
+    transport, _ = json_api((200, {"errors": [{"message": "Resource not accessible by integration"}]}))
+
+    with pytest.raises(GitHubError, match="Resource not accessible by integration"):
+        await resolve_thread("T1", transport=transport)
+
+
+@pytest.mark.asyncio
+async def test_graphql_on_github_enterprise_server_is_next_to_the_rest_api():
+    transport, requests = json_api((200, {"data": {}}))
+
+    await resolve_thread("T1", api_url="https://github.example.com/api/v3", transport=transport)
+
+    assert str(requests[0].url) == "https://github.example.com/api/graphql"
+
+
+@pytest.mark.asyncio
+async def test_replies_in_a_comments_thread():
+    transport, requests = json_api((201, {"html_url": "https://github.com/r"}))
+
+    await reply_to_review_comment(PR, 55, "Learned", token="ghp_x", transport=transport)
+
+    assert str(requests[0].url) == "https://api.github.com/repos/owner/repo/pulls/7/comments/55/replies"
+    assert json.loads(requests[0].content) == {"body": "Learned"}

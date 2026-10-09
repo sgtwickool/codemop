@@ -32,9 +32,9 @@ requests.
 
 ## GitHub Action
 
-Reviews every pull request, and commits the fixes you tick. Add your provider's API key as a
-repository secret (Settings → Secrets and variables → Actions, e.g. `ANTHROPIC_API_KEY`),
-then add `.github/workflows/codemop.yml`:
+Reviews every pull request, commits the fixes you tick, and learns what isn't a problem in
+your repository. Add your provider's API key as a repository secret (Settings → Secrets and
+variables → Actions, e.g. `ANTHROPIC_API_KEY`), then add `.github/workflows/codemop.yml`:
 
 ```yaml
 name: CodeMop
@@ -43,19 +43,25 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   issue_comment:
     types: [edited]  # someone ticked fixes in CodeMop's summary
+  pull_request_review_comment:
+    types: [created]  # someone replied `/codemop learn <why>` to a comment
 
 permissions:
-  contents: write  # to commit ticked fixes (read is enough without them)
+  contents: write  # to commit ticked fixes and learned notes
   pull-requests: write
 
-concurrency:  # a new push replaces a review still running; fixes wait their turn
-  group: codemop-${{ github.event_name == 'issue_comment' && 'fixes' || 'review' }}-${{ github.event.pull_request.number || github.event.issue.number }}
-  cancel-in-progress: ${{ github.event_name != 'issue_comment' }}
+# Reviews: a new push replaces one still running. Commits (fixes, notes) wait their turn
+concurrency:
+  group: codemop-${{ github.event_name == 'pull_request_target' && 'review' || 'changes' }}-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
 
 jobs:
   codemop:
-    # On comment edits, only CodeMop's own summary on a pull request
-    if: github.event_name != 'issue_comment' || (github.event.issue.pull_request && contains(github.event.comment.body, 'codemop-summary'))
+    # On comments, only edits of CodeMop's summary, and `/codemop learn` replies (not on forks' PRs)
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, 'codemop-summary')) ||
+      (github.event_name == 'pull_request_review_comment' && startsWith(github.event.comment.body, '/codemop learn') && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
       - uses: sgtwickool/codemop@v1
@@ -66,15 +72,32 @@ jobs:
           # max-changed-lines: 3000  # don't review (or pay for) PRs bigger than this
 ```
 
-The summary comment lists what CodeMop found, with a checkbox for each issue that has a
-fix. Tick the ones you want and CodeMop commits them to the PR's branch as one commit:
-only for people with write access to the repository, and only where the code they replace
-hasn't changed since the review (the summary says which were applied, and why any weren't).
+### Responding to CodeMop
+
+CodeMop comments on each issue it finds, and keeps one summary comment in the PR's
+conversation. For each issue, you can:
+
+| You want to | Do this | What happens |
+|---|---|---|
+| Fix it | Tick its box in the summary (or use "Commit suggestion" on its comment) | The ticked fixes are committed to the PR's branch as one commit, and marked as applied in the summary |
+| Say it isn't a problem here | Resolve the comment's conversation | CodeMop won't raise it again on this pull request |
+| Say it isn't a problem anywhere in the repository | Reply `/codemop learn <why it's fine>` to the comment | CodeMop adds a note to `.codemop-learned.yml` on the PR's branch, resolves the conversation, and replies to confirm. Once the PR is merged, it won't raise it again in the repository |
+
+Ticking fixes and `/codemop learn` work for people with write access to the repository
+(CodeMop replies to anyone else saying so). A fix is only applied where the code it replaces
+hasn't changed since the review; the summary says which were applied, and why any weren't.
+`.codemop-learned.yml` is an ordinary file: read it, edit it, delete notes that are too
+broad. It's read from your default branch, so a pull request can't teach CodeMop to ignore
+its own bug.
+
 GitHub doesn't run other workflows for a commit made with the workflow's own token, so CI
-doesn't run on a fix commit: its checks show as failed to start ("a workflow file issue").
-To have CI run on fix commits, pass a personal access token (contents and pull requests:
-write) as `github-token`. Pull requests from forks get no checkboxes, since their branches can't be
-committed to; their comments still have one-click suggestions. `checklist: false` turns
+doesn't run on CodeMop's commits (their checks show as failed to start). To have CI run on
+them, pass a personal access token (contents and pull requests: write) as `github-token`.
+On pull requests from forks, CodeMop can't commit to the branch, and GitHub doesn't let
+workflows act on replies there, so there are no checkboxes (the comments still have
+one-click suggestions) and `/codemop learn` doesn't work: resolve the conversation instead,
+and add a note to `.codemop-learned.yml` on your default branch yourself. Resolving
+conversations works everywhere. `checklist: false` turns
 the checkboxes off.
 
 **Pull requests from forks are reviewed too, safely.** `pull_request_target` gives the

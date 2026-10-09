@@ -27,6 +27,7 @@ _COMMIT = re.compile(r"<!-- codemop-commit: ([0-9a-f]{7,40}) -->")
 _FIXES = re.compile(r"<!-- codemop-fixes: ([A-Za-z0-9+/=]+) -->")
 _ITEM = re.compile(r"^- \[([ xX])\] (.*) <!-- codemop-fix:([\d,]+) -->$", re.M)
 TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+COMMENT_FOOTER = "<sub>CodeMop · confidence"
 DEFAULT_MAX_COMMENTS = RepoConfig().max_comments
 
 # Most important first: what goes inline when there are more issues than max_comments
@@ -37,6 +38,9 @@ SEVERITY_LABELS = {
     Severity.performance: "⚡ Performance",
     Severity.maintainability: "🧹 Maintainability",
 }
+
+
+_COMMENT_TITLE = re.compile(r"^\*\*(" + "|".join(map(re.escape, SEVERITY_LABELS.values())) + r"): (.+)\*\*$", re.M)
 
 
 def ranked(suggestions: Sequence[ModelSuggestion]) -> List[ModelSuggestion]:
@@ -57,8 +61,19 @@ def comment_body(s: ModelSuggestion, same_group: Sequence[ModelSuggestion] = ())
         fence = "`" * max(3, max(map(len, re.findall(r"`+", s.suggested_code)), default=0) + 1)
         # An empty suggestion deletes the lines; an empty line in the block would replace them with one
         parts += ["", f"{fence}suggestion", *([s.suggested_code] if s.suggested_code else []), fence]
-    parts += ["", f"<sub>CodeMop · confidence {s.confidence:.2f}</sub>"]
+    parts += ["", f"{COMMENT_FOOTER} {s.confidence:.2f} · Not a problem? Resolve this conversation and "
+                  "CodeMop won't raise it again on this PR, or reply `/codemop learn <why>` to teach it for the "
+                  "whole repository.</sub>"]
     return "\n".join(parts)
+
+
+def parse_comment(body: str) -> Optional[Tuple[Severity, str]]:
+    """The severity and title of one of CodeMop's comments on the code, or None if it isn't one"""
+    match = _COMMENT_TITLE.match(body)
+    if not match or COMMENT_FOOTER not in body:
+        return None
+    severity = next(sev for sev, label in SEVERITY_LABELS.items() if label == match.group(1))
+    return severity, match.group(2)
 
 
 def group_of(s: ModelSuggestion, issues: Sequence[ModelSuggestion]) -> List[ModelSuggestion]:
@@ -112,7 +127,7 @@ def _items(numbered: Sequence[Tuple[int, ModelSuggestion]], fixes: Dict[int, Fix
 
 def summary_body(report: ReviewReport, inline: Sequence[ModelSuggestion], not_inline: Sequence[ModelSuggestion],
                  cost: str, head_sha: str, review_url: Optional[str] = None, inline_rejected: bool = False,
-                 fixes: Optional[Dict[int, Fix]] = None, checklist: bool = False) -> str:
+                 fixes: Optional[Dict[int, Fix]] = None, checklist: bool = False, teachable: bool = True) -> str:
     """
     With a checklist, issues that have a fix (in `fixes`, numbered by position in inline then
     not_inline) get a checkbox, and the fixes are kept in the comment for `codemop apply`
@@ -143,9 +158,15 @@ def summary_body(report: ReviewReport, inline: Sequence[ModelSuggestion], not_in
         lines += ["", "⚠️ Some of this PR wasn't reviewed:", ""]
         lines += [f"- {', '.join(f'`{path}`' for path in f.paths)}: {f.reason}" for f in report.failed]
 
+    if report.suggestions:
+        lines += ["", "<details><summary>How to respond to CodeMop</summary>", ""] + _how_to_respond(checklist, teachable) + [
+            "", "</details>"]
+
     notes = [f"Skipped `{s.path}`: {s.reason}" for s in report.skipped]
     if report.unplaced:
         notes.append(f"Set aside {len(report.unplaced)} suggestion(s) that pointed at lines outside the diff")
+    if report.already_dismissed:
+        notes.append(f"Left out {report.already_dismissed} suggestion(s) dismissed earlier on this pull request")
     notes += [f"Left out the suggested fix for `{d.file_path}:{d.line}`: {d.reason}" for d in report.dropped_fixes]
     if notes:
         lines += ["", "<details><summary>Notes</summary>", ""] + [f"- {note}" for note in notes] + ["", "</details>"]
@@ -156,6 +177,23 @@ def summary_body(report: ReviewReport, inline: Sequence[ModelSuggestion], not_in
     if checklist:
         lines.append(_fixes_data(head_sha, fixes.values(), applied=set()))
     return "\n".join(lines)
+
+
+def _how_to_respond(checklist: bool, teachable: bool) -> List[str]:
+    fix = ("- **Fix it:** tick its box above and CodeMop commits the fix to this branch (ticked fixes are "
+           "committed together), or use \"Commit suggestion\" on its comment." if checklist else
+           "- **Fix it:** use \"Commit suggestion\" on its comment, where there is one.")
+    lines = [fix, "- **Not a problem here:** resolve the comment's conversation. CodeMop won't raise it again on "
+                  "this pull request."]
+    if teachable:
+        lines.append("- **Not a problem anywhere in this repository:** reply `/codemop learn <why it's fine>` to the "
+                     "comment. CodeMop adds a note to `.codemop-learned.yml` on this branch, resolves the "
+                     "conversation and replies to confirm; once this PR is merged, it won't raise it again in this "
+                     "repository. Only people with write access can teach it.")
+    else:
+        lines.append("- **Not a problem anywhere in this repository:** CodeMop can't commit to a fork's branch, so "
+                     "add a note to `.codemop-learned.yml` on the default branch (its header says how).")
+    return lines
 
 
 def _fixes_data(commit: str, fixes, applied: Set[int]) -> str:

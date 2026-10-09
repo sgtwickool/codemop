@@ -25,7 +25,9 @@ def report(*suggestions, **fields):
 def test_a_comment_with_a_fix_has_a_suggestion_block():
     assert comment_body(suggestion()) == (
         "**🐛 Bug: Adds one to the total**\n\nThe +1 looks accidental.\n\n"
-        "```suggestion\n    return result\n```\n\n<sub>CodeMop · confidence 0.90</sub>"
+        "```suggestion\n    return result\n```\n\n<sub>CodeMop · confidence 0.90 · Not a problem? Resolve this "
+        "conversation and CodeMop won't raise it again on this PR, or reply `/codemop learn <why>` to teach it "
+        "for the whole repository.</sub>"
     )
 
 
