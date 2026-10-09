@@ -1,10 +1,13 @@
 name: CodeMop
 
-# CodeMop reviewing its own pull requests, with the action as it is on master. Also runs by
-# hand (Actions → CodeMop → Run workflow) for any PR number.
+# CodeMop reviewing its own pull requests, and committing the fixes ticked in its summary,
+# with the action as it is on master. Also reviews by hand (Actions → CodeMop → Run
+# workflow) for any PR number.
 on:
   pull_request_target:
     types: [ opened, synchronize, reopened, ready_for_review ]
+  issue_comment:
+    types: [ edited ]
   workflow_dispatch:
     inputs:
       pr:
@@ -12,17 +15,21 @@ on:
         required: true
 
 permissions:
-  contents: read
+  contents: write  # to commit ticked fixes
   pull-requests: write
 
 concurrency:
-  group: codemop-${{ github.event.pull_request.number || inputs.pr }}
-  cancel-in-progress: true
+  group: codemop-${{ github.event_name == 'issue_comment' && 'fixes' || 'review' }}-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}
+  cancel-in-progress: ${{ github.event_name != 'issue_comment' }}
 
 jobs:
   review:
-    # Dependabot's runs don't get Actions secrets, so they'd have no key
-    if: github.actor != 'dependabot[bot]'
+    # Dependabot's runs don't get Actions secrets, so they'd have no key; on comment edits,
+    # only CodeMop's own summary on a pull request
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'issue_comment' ||
+       (github.event.issue.pull_request && contains(github.event.comment.body, 'codemop-summary')))
     runs-on: ubuntu-latest
     steps:
     # Never check out the PR here: this job holds the API key (see the README)

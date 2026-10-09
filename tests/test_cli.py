@@ -282,10 +282,32 @@ def github(monkeypatch):
     A fake GitHub for --post: one open PR at commit abc..., the reviews posted to it, and its
     conversation comments (by id)
     """
-    state = {"head": "abc1234" + "0" * 33, "reviews": [], "comments": {}, "reject_inline": False}
+    state = {
+        "head": "abc1234" + "0" * 33, "head_repo": "owner/repo", "reviews": [], "comments": {}, "reject_inline": False,
+        "files": {"app.py": "def total(items):\n    result = sum(items)\n    return result + 1\n"},
+        "commits": [], "permissions": {"maintainer": "write", "visitor": "read"}, "branch_moves": 0,
+    }
 
     async def fetch_pull_request(pr, token=None, api_url=None):
-        return PullRequest(head_sha=state["head"], state="open", draft=False)
+        return PullRequest(head_sha=state["head"], state="open", draft=False, head_ref="feature",
+                           head_repo=state["head_repo"])
+
+    async def fetch_repo_file(repo, path, ref=None, token=None, api_url=None):
+        return state["files"].get(path) if ref else None  # no .codemop.yml on the default branch
+
+    async def user_permission(repo, user, token=None, api_url=None):
+        return state["permissions"].get(user, "none")
+
+    async def commit_files(repo, branch, parent_sha, files, message, token=None, api_url=None):
+        if state["branch_moves"]:
+            state["branch_moves"] -= 1
+            state["head"] = "moved00" + "0" * 33
+            raise GitHubError("the branch moved", 422)
+        assert (repo, branch, parent_sha) == (state["head_repo"], "feature", state["head"])
+        state["files"].update(files)
+        state["commits"].append(message)
+        state["head"] = "c0ffee0" + "0" * 33
+        return state["head"]
 
     async def list_issue_comments(pr, token=None, api_url=None):
         return [IssueComment(id=i, body=body, author=author, author_is_bot=author.endswith("[bot]"),
@@ -308,7 +330,8 @@ def github(monkeypatch):
 
     for name, fake in [("fetch_pull_request", fetch_pull_request), ("list_issue_comments", list_issue_comments),
                        ("fetch_pr_diff", fetch_pr_diff), ("post_review", post_review),
-                       ("post_issue_comment", post_issue_comment)]:
+                       ("post_issue_comment", post_issue_comment), ("fetch_repo_file", fetch_repo_file),
+                       ("user_permission", user_permission), ("commit_files", commit_files)]:
         monkeypatch.setattr(cli, name, fake)
     monkeypatch.setenv("GITHUB_TOKEN", "ghp_test")
     return state
@@ -435,3 +458,96 @@ def test_post_says_when_a_pr_was_too_large_to_review(capsys, monkeypatch, fake_m
     assert code == 0
     assert github["reviews"] == []
     assert "Not reviewed: this PR has 3 changed lines to review, more than the limit of 1 set for CodeMop here." in summary_of(github)
+
+
+def tick_all(github):
+    [(cid, (body, author, association))] = [(i, c) for i, c in github["comments"].items() if "codemop-summary" in c[0]]
+    github["comments"][cid] = (body.replace("- [ ]", "- [x]"), author, association)
+
+
+def test_post_checklist_offers_each_fix_to_tick(capsys, monkeypatch, fake_model, github):
+    fake_model([SUGGESTION])
+
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+
+    assert "- [ ] 🐛 Bug `app.py:3`: Adds one to the total <!-- codemop-fix:1 -->" in summary_of(github)
+    assert "<!-- codemop-fixes: " in summary_of(github)
+
+
+def test_no_checklist_on_a_pr_from_a_fork(capsys, monkeypatch, fake_model, github):
+    """CodeMop can't commit to a fork's branch, so there's nothing to tick"""
+    fake_model([SUGGESTION])
+    github["head_repo"] = "someone/fork"
+
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+
+    assert "- [ ]" not in summary_of(github)
+
+
+def test_apply_commits_the_ticked_fixes_and_marks_them(capsys, monkeypatch, fake_model, github):
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+    tick_all(github)
+
+    code, out, _ = run(capsys, monkeypatch, ["apply", "owner/repo#7", "--by", "maintainer"])
+
+    assert code == 0
+    assert github["files"]["app.py"] == "def total(items):\n    result = sum(items)\n    return result\n"
+    [message] = github["commits"]
+    assert message.startswith("Apply CodeMop's suggested fixes\n\n- app.py:3: Adds one to the total")
+    assert "Ticked by @maintainer in CodeMop's summary on #7." in message
+    assert "· ✅ applied in c0ffee0" in summary_of(github)
+    assert "Committed c0ffee0 to feature" in out
+
+    # Run again (another edit of the comment): nothing new to apply
+    _, out, _ = run(capsys, monkeypatch, ["apply", "owner/repo#7", "--by", "maintainer"])
+    assert "No ticked fixes to apply on owner/repo#7" in out
+    assert len(github["commits"]) == 1
+
+
+def test_apply_ignores_ticks_by_people_without_write_access(capsys, monkeypatch, fake_model, github):
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+    tick_all(github)
+
+    code, out, _ = run(capsys, monkeypatch, ["apply", "owner/repo#7", "--by", "visitor"])
+
+    assert code == 0
+    assert "only people with write access to owner/repo can" in out
+    assert github["commits"] == []
+
+
+def test_apply_skips_a_fix_whose_code_has_changed(capsys, monkeypatch, fake_model, github):
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+    tick_all(github)
+    github["files"]["app.py"] = github["files"]["app.py"].replace("result + 1", "result + 2")
+
+    code, out, _ = run(capsys, monkeypatch, ["apply", "owner/repo#7", "--by", "maintainer"])
+
+    assert code == 0
+    assert github["commits"] == []
+    assert "- [ ] 🐛 Bug `app.py:3`: Adds one to the total · ⚠️ not applied: the code it replaces has changed" in summary_of(github)
+    assert "Not applied app.py:3: the code it replaces has changed since it was reviewed" in out
+
+
+def test_apply_tries_again_if_the_branch_moves_meanwhile(capsys, monkeypatch, fake_model, github):
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+    tick_all(github)
+    github["branch_moves"] = 1
+
+    code, _, _ = run(capsys, monkeypatch, ["apply", "owner/repo#7", "--by", "maintainer"])
+
+    assert code == 0
+    assert len(github["commits"]) == 1
+
+
+def test_apply_with_no_summary_or_nothing_ticked(capsys, monkeypatch, fake_model, github):
+    _, out, _ = run(capsys, monkeypatch, ["apply", "owner/repo#7"])
+    assert "No ticked fixes to apply on owner/repo#7" in out
+
+    fake_model([SUGGESTION])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post", "--checklist"])
+    _, out, _ = run(capsys, monkeypatch, ["apply", "owner/repo#7"])
+    assert "No ticked fixes to apply on owner/repo#7" in out

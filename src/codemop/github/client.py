@@ -7,7 +7,7 @@ write access to pull requests.
 """
 import re
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import httpx
 
@@ -101,18 +101,20 @@ async def fetch_repo_file(
     repo: str,
     path: str,
     *,
+    ref: Optional[str] = None,
     token: Optional[str] = None,
     api_url: str = DEFAULT_API_URL,
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> Optional[str]:
     """
-    A file's contents on the repository's default branch, or None if there's no such file.
+    A file's contents at `ref`, by default on the repository's default branch, or None if
+    there's no such file.
 
-    (The default branch, not the PR's: a pull request mustn't be able to change how it's
-    reviewed.) A 404 also covers a private repository read without access; fetching its diff
-    reports that properly.
+    (Settings come from the default branch, not the PR's: a pull request mustn't be able to
+    change how it's reviewed.) A 404 also covers a private repository read without access;
+    fetching its diff reports that properly.
     """
-    url = f"{api_url.rstrip('/')}/repos/{repo}/contents/{path}"
+    url = f"{api_url.rstrip('/')}/repos/{repo}/contents/{path}" + (f"?ref={ref}" if ref else "")
     response = await _request("GET", url, "application/vnd.github.raw+json", token, transport)
     if response.status_code == 404:
         return None
@@ -126,6 +128,8 @@ class PullRequest:
     head_sha: str  # the commit a review's line numbers refer to
     state: str  # open or closed
     draft: bool
+    head_ref: str = ""  # the PR's branch
+    head_repo: str = ""  # where that branch is: a fork's, for a PR from a fork
 
 
 async def fetch_pull_request(
@@ -140,7 +144,10 @@ async def fetch_pull_request(
     if response.status_code != 200:
         raise GitHubError(_error_message(response.status_code, response.text, pr, bool(token)), response.status_code)
     data = response.json()
-    return PullRequest(head_sha=data["head"]["sha"], state=data["state"], draft=bool(data.get("draft")))
+    return PullRequest(
+        head_sha=data["head"]["sha"], state=data["state"], draft=bool(data.get("draft")),
+        head_ref=data["head"].get("ref", ""), head_repo=((data["head"].get("repo") or {}).get("full_name") or ""),
+    )
 
 
 @dataclass(frozen=True)
@@ -229,3 +236,61 @@ async def post_review(
     if response.status_code == 200:
         return response.json().get("html_url", "")
     raise _write_error(response, pr, token, "posting the review")
+
+
+async def user_permission(
+    repo: str,
+    user: str,
+    *,
+    token: Optional[str] = None,
+    api_url: str = DEFAULT_API_URL,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> str:
+    """A user's permission on the repository: admin, maintain, write, triage, read or none"""
+    url = f"{api_url.rstrip('/')}/repos/{repo}/collaborators/{user}/permission"
+    response = await _request("GET", url, JSON, token, transport)
+    if response.status_code == 404:
+        return "none"
+    if response.status_code != 200:
+        raise GitHubError(f"GitHub returned {response.status_code} checking {user}'s permission on {repo}",
+                          response.status_code)
+    return response.json().get("permission", "none")
+
+
+async def commit_files(
+    repo: str,
+    branch: str,
+    parent_sha: str,
+    files: Dict[str, str],
+    message: str,
+    *,
+    token: Optional[str] = None,
+    api_url: str = DEFAULT_API_URL,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> str:
+    """
+    Commit new contents for `files` (path: text) on top of `parent_sha` as one commit, and
+    move `branch` to it; the new commit's sha. Through the API, so nothing is checked out.
+    Fails (status 422) if the branch has moved on from parent_sha meanwhile.
+    """
+    base = f"{api_url.rstrip('/')}/repos/{repo}/git"
+
+    async def call(method: str, path: str, body: Optional[dict] = None) -> dict:
+        response = await _request(method, f"{base}/{path}", JSON, token, transport, json=body)
+        if response.status_code not in (200, 201):
+            hint = (": the token needs write access to contents (contents: write)"
+                    if response.status_code in (403, 404) else "")
+            raise GitHubError(f"GitHub returned {response.status_code} committing to {repo}{hint}", response.status_code)
+        return response.json()
+
+    tree_sha = (await call("GET", f"commits/{parent_sha}"))["tree"]["sha"]
+    # Keep each file's mode (an executable script stays executable)
+    modes = {entry["path"]: entry["mode"] for entry in (await call("GET", f"trees/{tree_sha}?recursive=1"))["tree"]}
+    tree = await call("POST", "trees", {
+        "base_tree": tree_sha,
+        "tree": [{"path": path, "mode": modes.get(path, "100644"), "type": "blob", "content": text}
+                 for path, text in files.items()],
+    })
+    commit = await call("POST", "commits", {"message": message, "tree": tree["sha"], "parents": [parent_sha]})
+    await call("PATCH", f"refs/heads/{branch}", {"sha": commit["sha"], "force": False})
+    return commit["sha"]

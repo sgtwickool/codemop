@@ -32,26 +32,30 @@ requests.
 
 ## GitHub Action
 
-Reviews every pull request. Add your provider's API key as a repository secret
-(Settings → Secrets and variables → Actions, e.g. `ANTHROPIC_API_KEY`), then add
-`.github/workflows/codemop.yml`:
+Reviews every pull request, and commits the fixes you tick. Add your provider's API key as a
+repository secret (Settings → Secrets and variables → Actions, e.g. `ANTHROPIC_API_KEY`),
+then add `.github/workflows/codemop.yml`:
 
 ```yaml
 name: CodeMop
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [edited]  # someone ticked fixes in CodeMop's summary
 
 permissions:
-  contents: read
+  contents: write  # to commit ticked fixes (read is enough without them)
   pull-requests: write
 
-concurrency:  # a new push replaces a review still running for the old one
-  group: codemop-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+concurrency:  # a new push replaces a review still running; fixes wait their turn
+  group: codemop-${{ github.event_name == 'issue_comment' && 'fixes' || 'review' }}-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: ${{ github.event_name != 'issue_comment' }}
 
 jobs:
-  review:
+  codemop:
+    # On comment edits, only CodeMop's own summary on a pull request
+    if: github.event_name != 'issue_comment' || (github.event.issue.pull_request && contains(github.event.comment.body, 'codemop-summary'))
     runs-on: ubuntu-latest
     steps:
       - uses: sgtwickool/codemop@v1
@@ -61,6 +65,16 @@ jobs:
           # model: codestral-latest
           # max-changed-lines: 3000  # don't review (or pay for) PRs bigger than this
 ```
+
+The summary comment lists what CodeMop found, with a checkbox for each issue that has a
+fix. Tick the ones you want and CodeMop commits them to the PR's branch as one commit:
+only for people with write access to the repository, and only where the code they replace
+hasn't changed since the review (the summary says which were applied, and why any weren't).
+Commits made with the workflow's own token don't start other workflows, so CI won't run on
+a fix commit unless you pass a personal access token (contents and pull requests: write) as
+`github-token`. Pull requests from forks get no checkboxes, since their branches can't be
+committed to; their comments still have one-click suggestions. `checklist: false` turns
+the checkboxes off.
 
 **Pull requests from forks are reviewed too, safely.** `pull_request_target` gives the
 workflow your secret even for a fork's PR, which is only safe because CodeMop never checks
