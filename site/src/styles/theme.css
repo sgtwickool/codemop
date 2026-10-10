@@ -75,11 +75,12 @@ starlight-tabs,
 .sl-link-button {
   font-family: var(--font-sans);
 }
-.sl-markdown-content :is(h2, h3) {
+/* (Not the home page's two-ink headings, whose passes have to match exactly) */
+.sl-markdown-content :is(h2, h3):not(:where(.not-content *)) {
   font-weight: 800;
   letter-spacing: -0.01em;
 }
-h1#_top {
+h1#_top:not(.type-hero) {
   font-weight: 800;
   letter-spacing: -0.02em;
 }
