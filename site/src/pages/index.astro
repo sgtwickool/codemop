@@ -3,29 +3,34 @@ import { Code } from "@astrojs/starlight/components";
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
 import Print from "../components/Print.astro";
 import PrintFilters from "../components/PrintFilters.astro";
+import SectionHeading from "../components/SectionHeading.astro";
 import SummaryDemo from "../components/SummaryDemo.astro";
-import { mascotHtml } from "../lib/mascot";
 import "../styles/mascot.css";
 
 const github = "https://github.com/sgtwickool/codemop";
 const tagline =
   "AI code review for pull requests, with the model of your choice. Tick the fixes you want and it commits them.";
 const reviewStep = "- uses: sgtwickool/codemop@v1\n  with:\n    api-key: ${{ secrets.ANTHROPIC_API_KEY }}";
+
+// The loop's steps, each labelled with when it happens (as gregkemp.dev labels its work with dates)
 const loop = [
   {
     print: "mop",
+    when: "On every push",
     title: "Review",
-    text: "Every push to a pull request gets a review: a comment on each issue, with a one-click fix where there is one. It reads the code around each change too, and where the changed code is used, because a change can be right in itself and break what calls it.",
+    text: "A comment on each issue, with a one-click fix where there is one. It reads the code around each change too, and where the changed code is used, because a change can be right in itself and break what calls it.",
     link: "/quickstart/",
   },
   {
     print: "respond",
+    when: "In the summary",
     title: "Respond",
     text: "One summary lists every issue. Tick the fixes you want, then Commit the ticked fixes, and they land as one commit. Resolve a conversation to dismiss it, or reply /codemop learn to teach the whole repository.",
     link: "/responding/",
   },
   {
     print: "gate",
+    when: "Before merging",
     title: "Merge",
     text: "An optional merge check fails while bugs or security issues are open, and passes once they're fixed or dismissed. Make it required, and a known bug doesn't merge unnoticed.",
     link: "/merge-check/",
@@ -42,38 +47,45 @@ const loop = [
       title: "CodeMop",
       tagline,
       actions: [
-        { text: "Quick start", link: "/quickstart/", icon: "right-arrow", variant: "primary" },
-        { text: "GitHub", link: github, icon: "external", variant: "minimal" },
+        { text: "Quick start", link: "/quickstart/" },
+        { text: "Source on GitHub", link: github },
       ],
-      image: { html: mascotHtml },
     },
   }}
 >
   <PrintFilters />
 
-  <section class="not-content loop" aria-labelledby="loop">
-    <h2 id="loop">The review loop</h2>
-    <div class="steps">
+  <section class="not-content" aria-labelledby="loop">
+    <SectionHeading id="loop" text="The review loop" />
+    <ol class="steps">
       {
         loop.map((step) => (
-          <a class="step" href={step.link}>
-            <Print name={step.print} />
-            <h3>{step.title}</h3>
-            <p>{step.text}</p>
-          </a>
+          <li>
+            <a class="step" href={step.link}>
+              <Print name={step.print} />
+              <p class="label">{step.when}</p>
+              <h3>{step.title}</h3>
+              <p class="step-text">{step.text}</p>
+            </a>
+          </li>
         ))
       }
-    </div>
+    </ol>
   </section>
 
   <section class="not-content" aria-labelledby="real">
-    <h2 id="real">A real review</h2>
+    <SectionHeading id="real" text="A real review" />
+    <p class="intro">
+      CodeMop's review of its own <a href={`${github}/pull/20`}>pull request #20</a>, a 1,450-line refactor (a typical
+      pull request costs a few cents). Tick the fix, then <strong>Commit the ticked fixes</strong>.
+    </p>
     <SummaryDemo />
   </section>
 
   <section class="not-content" aria-labelledby="why">
-    <h2 id="why">Why CodeMop</h2>
-    <dl class="why">
+    <SectionHeading id="why" text="Why CodeMop" />
+    <!-- Each over a rule in one of the inks, as gregkemp.dev's product lists -->
+    <dl class="reasons">
       <div>
         <dt>Safe on any pull request</dt>
         <dd>
@@ -84,8 +96,8 @@ const loop = [
       <div>
         <dt>Cheap enough for every push</dt>
         <dd>
-          A few cents and a few seconds a review with the default model, which was chosen by
-          an <a href={`${github}/blob/master/evals/review/README.md`}>eval</a>: 99% of its comments were right.
+          A few cents and a few seconds a review with the default model, chosen by
+          an <a href={`${github}/blob/master/evals/review/README.md`}>eval</a> in which 99% of its comments were right.
         </dd>
       </div>
       <div>
@@ -105,9 +117,9 @@ const loop = [
     </dl>
   </section>
 
-  <section class="not-content setup" aria-labelledby="setup">
-    <h2 id="setup">Set up in two minutes</h2>
-    <ol>
+  <section class="not-content" aria-labelledby="setup">
+    <SectionHeading id="setup" text="Set up in two minutes" />
+    <ol class="setup">
       <li>Add your model provider's API key as a repository secret, e.g. <code>ANTHROPIC_API_KEY</code>.</li>
       <li>
         Add CodeMop's workflow, <code>.github/workflows/codemop.yml</code>, from
@@ -115,7 +127,7 @@ const loop = [
         <Code code={reviewStep} lang="yaml" />
       </li>
     </ol>
-    <p>The next pull request gets a review.</p>
+    <p class="intro">The next pull request gets a review.</p>
   </section>
 
   <p class="not-content credit">
@@ -131,69 +143,88 @@ const loop = [
 
 <style>
   section {
-    margin-top: 4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+    margin-top: clamp(5rem, 10vw, 8rem);
   }
-  h2 {
-    font-weight: 800;
-    font-size: 1.7rem;
-    letter-spacing: -0.015em;
-    margin-bottom: 1.25rem;
-    color: var(--ink);
+  .intro {
+    margin: 0;
+    max-width: 36em;
+    font-size: 1.1rem;
+    color: var(--ink-soft);
   }
   .steps {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-    gap: 2rem;
+    gap: 2.5rem 2rem;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    list-style: none;
   }
   .step {
-    display: grid;
-    align-content: start;
+    display: flex;
+    flex-direction: column;
     gap: 0.6rem;
     color: inherit;
     text-decoration: none;
   }
-  .step h3 {
-    font-weight: 800;
-    font-size: 1.2rem;
-    margin: 0.4rem 0 0;
-    color: var(--ink);
+  .step :global(.print) {
+    margin-bottom: 0.4rem;
   }
-  .step p {
+  .step h3 {
     margin: 0;
-    color: var(--ink-soft);
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--ink);
   }
   .step:hover h3 {
     color: var(--link);
   }
-  .why {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
-    gap: 1.5rem 2.5rem;
+  .step-text {
     margin: 0;
+    font-size: 0.95rem;
+    color: var(--ink-soft);
   }
-  .why dt {
+  .reasons {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+    gap: 2rem 3rem;
+    margin: 0.5rem 0 0;
+  }
+  .reasons div {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding-top: 0.75rem;
+    border-top: 2px solid var(--ink-strong);
+  }
+  .reasons div:nth-child(even) {
+    border-top-color: var(--ink-line);
+  }
+  .reasons dt {
     font-family: var(--font-sans);
-    font-weight: 700;
+    font-weight: 800;
     color: var(--ink);
-    margin-bottom: 0.3rem;
   }
-  .why dd {
+  .reasons dd {
     margin: 0;
     color: var(--ink-soft);
+  }
+  .setup {
+    display: grid;
+    gap: 0.8rem;
+    margin: 0.5rem 0 0;
+    padding-left: 1.3rem;
   }
   .setup li {
     min-width: 0;
   }
-  .setup ol {
-    padding-left: 1.3rem;
-    display: grid;
-    gap: 0.8rem;
-  }
-  .setup li :global(.expressive-code) {
+  .setup :global(.expressive-code) {
     margin-top: 0.6rem;
   }
   .credit {
-    margin: 5rem 0 1rem;
+    margin: clamp(5rem, 10vw, 8rem) 0 1rem;
     text-align: center;
     color: var(--muted);
     font-size: 0.9rem;
