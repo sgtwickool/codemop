@@ -139,7 +139,7 @@ knows why it matters.
 
 ### Tiered review
 
-As in the roadmap's Phase 6: rules skip only what's certainly trivial; a quick, cheap triage
+As in the roadmap's Phase 8: rules skip only what's certainly trivial; a quick, cheap triage
 picks CodeMop's review (2–3¢) or Claude Code's `/code-review` at low or high effort (dollars,
 reads the whole repository) for changes that are risky or reach widely; the summary says which
 tier reviewed it and why.
@@ -154,7 +154,7 @@ tier reviewed it and why.
 
 ### Cross-repository review
 
-As in the roadmap's Phase 6: PRs in different repositories that ship together, linked by the
+As in the roadmap's Phase 9: PRs in different repositories that ship together, linked by the
 same branch name or a `Ships with: org/backend#42` line, reviewed as one change for the bugs
 that come from mismatches (request and response shapes, field names, the order they deploy in).
 
