@@ -7,8 +7,6 @@
 import { gate, mop, respond } from "./prints/review-loop";
 import type { Print } from "./types";
 
-export type * from "./types";
-
 /** Every print, in the order they appear on the home page. */
 export const prints = {
   mop: mop(),

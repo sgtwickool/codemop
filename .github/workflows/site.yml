@@ -40,8 +40,9 @@ jobs:
     - name: Check
       run: npm run check
 
+    # The docs pages were written by the check
     - name: Build
-      run: npm run build
+      run: npx astro build
 
     - uses: actions/upload-pages-artifact@v5
       if: github.event_name != 'pull_request'
