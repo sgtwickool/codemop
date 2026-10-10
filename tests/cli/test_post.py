@@ -5,10 +5,11 @@ import pytest
 from codemop import providers
 from codemop.cli import common
 from codemop.cli.post import only_files_in
+from codemop.github import api
 from codemop.review.diff import parse_diff
 from codemop.github.summary import MAX_COMMENT_CHARS, read_state
 from codemop.providers.base import NoReview
-from codemop.review.schema import Severity
+from codemop.review.schema import OutsideDiff, Severity
 from cli_support import (  # noqa: F401
     DIFF, SUGGESTION, FakeModel, run, RecordingModel, TWO_FILE_DIFF, summary_of, tick_all, _async, codemop_comment, learn_reply, posted_with_a_personal_token, new_commit, NEWER, merge_check_on,
 )
@@ -204,6 +205,28 @@ def test_a_fixed_issue_is_marked_addressed_and_its_conversation_resolved(capsys,
     assert "No issues found in these changes." in summary_of(github)
     assert "- ✅ 🐛 Bug `app.py:3`: Adds one to the total · addressed in def5678" in summary_of(github)
     assert github["resolved"] == ["thread-500"]
+
+
+def test_a_finding_that_shows_up_outside_the_diff_is_addressed_when_that_code_is_fixed(capsys, monkeypatch, fake_model,
+                                                                                         github):
+    """Seen on PR #23: the stale line was outside the diff, so fixing it didn't count"""
+    github["files"]["shop.py"] = "from app import total\nprint(total([1]) - 1)\n"
+    fake_model([SUGGESTION.model_copy(update={"suggested_code": None,
+                                              "outside_diff": OutsideDiff(file_path="shop.py", line=2)})])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+    assert read_state(summary_of(github)).findings[0].outside == {
+        "path": "shop.py", "line": 2, "end_line": 2, "original": ["print(total([1]) - 1)"]}
+
+    # The caller is fixed; the changed line the comment is on stays as it was
+    shop_fix = ("diff --git a/shop.py b/shop.py\n--- a/shop.py\n+++ b/shop.py\n@@ -1,2 +1,2 @@\n"
+                " from app import total\n-print(total([1]) - 1)\n+print(total([1]))\n")
+    monkeypatch.setattr(api, "fetch_pr_diff", lambda *a, **k: _async(DIFF + shop_fix))
+    new_commit(github, files={"shop.py": "from app import total\nprint(total([1]))\n"}, newer_diff=shop_fix)
+    fake_model([])
+    run(capsys, monkeypatch, ["review", "owner/repo#7", "--post"])
+
+    assert "- ✅ 🐛 Bug `app.py:3`: Adds one to the total · addressed in def5678" in summary_of(github)
+    assert read_state(summary_of(github)).findings[0].outside["original"] is None  # done: not kept
 
 
 def test_only_files_in_keeps_the_prs_files():

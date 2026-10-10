@@ -111,11 +111,16 @@ async def post(pr: PullRequestRef, pull: PullRequest, report: ReviewReport, stat
     shown = {f.path: f.new_lines() for f in files}
     # An earlier finding can only have been addressed in a file that's changed since it was found
     changed = {f.path for f in parse_diff(reviewed_diff)} if reviewed_diff is not None else None
-    paths = sorted({f.path for f in state.open if f.found_in != head and f.original
-                    and (changed is None or f.path in changed)})
+    earlier = [(f.path, f.original) for f in state.open if f.found_in != head]
+    earlier += [(f.outside["path"], f.outside["original"]) for f in state.open if f.found_in != head and f.outside]
+    paths = {path for path, original in earlier if original and (changed is None or path in changed)}
+    # ...and the files this review's issues show up in outside the diff, for their lines there
+    paths |= {s.outside_diff.file_path for s in report.suggestions if s.outside_diff}
+    paths = sorted(paths)
     texts = await asyncio.gather(*(api.fetch_repo_file(pull.head_repo, path, ref=head, **auth) for path in paths))
-    new, addressed = update_earlier(state, report.suggestions, dict(zip(paths, texts)), shown, head)
-    added = state.add(new, shown, head)
+    head_files = dict(zip(paths, texts))
+    new, addressed = update_earlier(state, report.suggestions, head_files, shown, head)
+    added = state.add(new, shown, head, head_files)
     state.commit = head
 
     inline = ranked(new)[:max_comments]  # most important first, in the same order as `added`

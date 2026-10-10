@@ -30,9 +30,12 @@ For each problem:
   suggested_code) and give them all the same short group label, like "unclosed-sessions".
   Otherwise null
 
-Some requests start with context: unchanged code from the repository (whole functions, and
-definitions the change uses), to help you understand the change. It isn't part of the change:
-use it, but only report problems in the change, and only point at lines of the diff.
+Some requests start with context: unchanged code from the repository (whole functions, where
+the changed code is used, and definitions it uses), numbered like the diff, to help you
+understand the change. It isn't part of the change: use it, but only report problems the change
+causes, and only point line and end_line at lines of the diff. When such a problem shows up in
+the context (a caller the change breaks, a reference it makes wrong), point at the changed lines
+that cause it, and set outside_diff to where it shows up. Otherwise outside_diff is null.
 
 Only report problems you are confident about. If the changes look fine, return no suggestions.\
 """

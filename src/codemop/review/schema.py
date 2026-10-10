@@ -26,6 +26,13 @@ def location_text(path: str, line: int, end_line: Optional[int] = None) -> str:
     return f"{path}:{line}" + (f"-{end_line}" if end_line and end_line != line else "")
 
 
+class OutsideDiff(BaseModel):
+    """Where a problem shows up in code outside the diff, shown as context"""
+    file_path: str = Field(description="Path of the file, as in the context's #### heading")
+    line: int = Field(ge=1, description="Line number where the problem shows up, as numbered in the context")
+    end_line: Optional[int] = Field(default=None, ge=1, description="Its last line, if it spans several")
+
+
 class ModelSuggestion(BaseModel):
     """One issue, as the model reports it"""
     file_path: str = Field(description="Path of the file, exactly as shown in the diff")
@@ -44,6 +51,10 @@ class ModelSuggestion(BaseModel):
     group: Optional[str] = Field(
         default=None,
         description="A short label shared by suggestions that fix one problem in several places, or null",
+    )
+    outside_diff: Optional[OutsideDiff] = Field(
+        default=None,
+        description="Where the problem shows up, when that's in the context rather than the diff, or null",
     )
 
 

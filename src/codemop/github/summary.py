@@ -18,7 +18,7 @@ import dataclasses
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 from codemop.config import CONFIG_FILE
 from codemop.github.conversation import IssueComment
@@ -58,6 +58,9 @@ class Finding:
     status: str = OPEN
     note: str = ""  # how it was closed, e.g. "applied in abc1234"
     confidence: float = 0.0  # how sure the model was
+    # Where it shows up outside the diff, if it does (a caller the change breaks): path, line,
+    # end_line, and original, those lines as reviewed. Changing them can address it too
+    outside: Optional[dict] = None
 
     @property
     def fix(self) -> Optional[Fix]:
@@ -79,17 +82,34 @@ class SummaryState:
     def open(self) -> List[Finding]:
         return [f for f in self.findings if f.status == OPEN]
 
-    def add(self, suggestions: Sequence[ModelSuggestion], shown: Dict[str, Dict[int, str]], commit: str) -> List[Finding]:
-        """New findings for a review's suggestions, most important first (so ids are in that order); returns them"""
+    def add(self, suggestions: Sequence[ModelSuggestion], shown: Dict[str, Dict[int, str]], commit: str,
+            files: Mapping[str, Optional[str]] = {}) -> List[Finding]:
+        """
+        New findings for a review's suggestions, most important first (so ids are in that
+        order); returns them. (`files`: the text at `commit` of the files they show up in
+        outside the diff, for the lines they're about there.)
+        """
         next_id = max((f.id for f in self.findings), default=0) + 1
         added = [
             Finding(next_id + n, s.severity.value, s.file_path, s.line, s.end_line or s.line, s.title, commit, s.group,
                     lines_between(shown.get(s.file_path, {}), s.line, s.end_line or s.line), s.suggested_code,
-                    confidence=s.confidence)
+                    confidence=s.confidence, outside=outside_of(s, files))
             for n, s in enumerate(ranked(suggestions))
         ]
         self.findings += added
         return added
+
+
+def outside_of(s: ModelSuggestion, files: Mapping[str, Optional[str]]) -> Optional[dict]:
+    """Where a suggestion shows up outside the diff, with those lines from the file, if it says"""
+    if s.outside_diff is None:
+        return None
+    place = s.outside_diff
+    end_line = place.end_line or place.line
+    text = files.get(place.file_path)
+    lines = text.splitlines() if text is not None else []
+    original = lines[place.line - 1:end_line] if text is not None and end_line <= len(lines) else None
+    return {"path": place.file_path, "line": place.line, "end_line": end_line, "original": original}
 
 
 def sync_threads(state: SummaryState, threads: Sequence[Tuple[Optional[int], str, str, bool]]) -> None:
@@ -128,11 +148,16 @@ def update_earlier(state: SummaryState, new: Sequence[ModelSuggestion], head_fil
             new.remove(again)
             f.line, f.end_line, f.code = again.line, again.end_line or again.line, again.suggested_code
             f.original = lines_between(shown.get(f.path, {}), f.line, f.end_line)
+            f.outside = outside_of(again, head_files)
             continue
-        if f.original is None or f.path not in head_files:
-            continue  # can't tell whether its lines are still there, or its file hasn't changed
-        text = head_files[f.path]
-        if text is None or not still_there(text, f.line, f.original):
+        # Its lines in the diff, and where it shows up outside it: changing either can address it
+        # (whichever we can tell about: lines we have, in a file that's changed since)
+        places = [(f.path, f.line, f.original)]
+        if f.outside:
+            places.append((f.outside["path"], f.outside["line"], f.outside["original"]))
+        known = [(path, line, original) for path, line, original in places if original is not None and path in head_files]
+        if any(head_files[path] is None or not still_there(head_files[path], line, original)
+               for path, line, original in known):
             f.status, f.note = ADDRESSED, f"addressed in {head[:7]}"
             addressed.append(f)
     return new, addressed
@@ -160,6 +185,8 @@ def _state_data(state: SummaryState) -> str:
         data = dataclasses.asdict(f)
         if f.status != OPEN:  # done: its fix and lines aren't needed any more
             data.update(code=None, original=None)
+            if f.outside:
+                data["outside"] = {**f.outside, "original": None}
         findings.append(data)
     # Base64, so nothing in the code can end the HTML comment it's kept in
     data = {"commit": state.commit, "findings": findings}

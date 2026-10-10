@@ -92,7 +92,10 @@ class Snippet:
     code: str
 
     def render(self) -> str:
-        return f"#### {self.path}, lines {self.start}-{self.end} ({self.what})\n{self.code}"
+        """Its heading, then its lines numbered as the diff's are, so a problem in it can be pointed at"""
+        width = len(str(self.end))
+        numbered = (f"  {str(n).rjust(width)} | {text}" for n, text in enumerate(self.code.split("\n"), self.start))
+        return f"#### {self.path}, lines {self.start}-{self.end} ({self.what})\n" + "\n".join(numbered)
 
     def in_diff(self, shown: Set[int]) -> bool:
         """Whether the diff already shows all of it (so it needn't be sent again)"""
@@ -273,5 +276,4 @@ async def build_context(files: Iterable[FileDiff], source: FileSource,
         seen.add((snippet.path, snippet.start, snippet.end))
     if not parts:
         return ""
-    return ("### Context: unchanged code from the repository, for reference (not part of the change; "
-            "don't comment on it)\n\n" + "\n\n".join(parts))
+    return "### Context: unchanged code from the repository, for reference (not part of the change)\n\n" + "\n\n".join(parts)

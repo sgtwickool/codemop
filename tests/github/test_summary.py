@@ -8,7 +8,7 @@ from codemop.providers.base import Usage
 from codemop.review.chunks import Skipped
 from codemop.review.fixes import Fix
 from codemop.review.pipeline import DroppedFix, FailedChunk, ReviewReport
-from codemop.review.schema import ModelSuggestion
+from codemop.review.schema import ModelSuggestion, OutsideDiff
 
 SHA = "abc1234" + "0" * 33
 LATER = "def5678" + "0" * 33
@@ -181,6 +181,29 @@ def test_a_finding_whose_lines_are_still_there_stays_open():
     _, addressed = update_earlier(state, [], {"app.py": "# moved down\n" + HEAD_TEXT}, SHOWN, LATER)
 
     assert addressed == [] and state.findings[0].status == OPEN
+
+
+CALLER = "from app import total\nprint(total([1]) - 1)\n"
+
+
+def test_where_a_finding_shows_up_outside_the_diff_counts_too():
+    """Its lines in the diff are unchanged, but the caller it was about has been fixed"""
+    state = SummaryState(commit=SHA)
+    outside = suggestion().model_copy(update={"outside_diff": OutsideDiff(file_path="shop.py", line=2)})
+    [finding] = state.add([outside], SHOWN, SHA, {"shop.py": CALLER})
+    assert finding.outside == {"path": "shop.py", "line": 2, "end_line": 2, "original": ["print(total([1]) - 1)"]}
+
+    _, addressed = update_earlier(state, [], {"app.py": HEAD_TEXT, "shop.py": CALLER}, SHOWN, LATER)
+    assert addressed == []  # neither has changed
+    _, addressed = update_earlier(state, [], {"shop.py": CALLER.replace(" - 1", "")}, SHOWN, LATER)
+    assert addressed == [finding]
+
+
+def test_lines_outside_the_diff_that_arent_in_the_file_arent_kept():
+    outside = suggestion().model_copy(update={"outside_diff": OutsideDiff(file_path="shop.py", line=9)})
+    [finding] = SummaryState().add([outside], SHOWN, SHA, {"shop.py": CALLER})
+
+    assert finding.outside["original"] is None
 
 
 def test_a_finding_in_a_deleted_file_is_addressed():
