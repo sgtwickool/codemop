@@ -75,7 +75,7 @@ async def test_the_whole_changed_function_then_what_it_uses():
 
 @pytest.mark.asyncio
 async def test_the_budget_keeps_the_most_useful_first():
-    context = await build_context(parse_diff(DIFF), Files({"app.py": APP, "app/db.py": DB}), budget_tokens=80)
+    context = await build_context(parse_diff(DIFF), Files({"app.py": APP, "app/db.py": DB}), budget_tokens=100)
 
     assert "def handler" in context and "defines LIMIT" in context
     assert "defines get_db" not in context
@@ -216,7 +216,7 @@ async def test_a_changed_field_is_found_where_its_set_and_short_names_arent_sear
     context = await build_context(parse_diff(diff), Files({"db.py": model, "store.py": store}))
 
     # The field is directly in the class, so the class counts as changed too
-    assert "#### store.py, lines 4-5 (uses PullRequest)\ndef save(event):\n    return PullRequest(number=" in context
+    assert "#### store.py, lines 4-5 (uses PullRequest)\n  4 | def save(event):\n  5 |     return PullRequest(number=" in context
     assert context.count("####") == 1 and "(uses id)" not in context
 
 

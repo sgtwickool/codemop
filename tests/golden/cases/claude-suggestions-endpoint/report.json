@@ -13,7 +13,8 @@
       "explanation": "`/home/sgtwickool/...` only exists on one developer's machine. In any other environment the .env file is silently not loaded, so config like API_KEY will be missing.",
       "suggested_code": "load_dotenv()",
       "confidence": 0.85,
-      "group": null
+      "group": null,
+      "outside_diff": null
     },
     {
       "file_path": "backend/src/main.py",
@@ -24,7 +25,8 @@
       "explanation": "API_KEY defaults to an empty string. A header such as `Authorization: Bearer ` is non-empty, so it passes the missing-header check, then strips to \"\" and matches the empty key, granting access. The `!=` comparison is also not constant-time.",
       "suggested_code": "    if not API_KEY or not api_key or not hmac.compare_digest(api_key, API_KEY):\n        raise HTTPException(\n            status_code=401,\n            detail=\"Invalid API key\"\n        )",
       "confidence": 0.85,
-      "group": null
+      "group": null,
+      "outside_diff": null
     },
     {
       "file_path": "backend/src/main.py",
@@ -35,7 +37,8 @@
       "explanation": "The broad `except Exception` also catches the HTTPException raised for a missing PR. Clients get a 500 'Error retrieving suggestions: ...' instead of a 404.",
       "suggested_code": "    except HTTPException:\n        raise\n    except Exception as e:\n        logger.error(f\"Error fetching suggestions for PR {pr_id}: {str(e)}\")\n        raise HTTPException(\n            status_code=500,\n            detail=\"Error retrieving suggestions\"\n        )",
       "confidence": 0.95,
-      "group": null
+      "group": null,
+      "outside_diff": null
     }
   ],
   "unplaced": [],

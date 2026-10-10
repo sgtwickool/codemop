@@ -56,6 +56,10 @@ VARIANTS = {
     # ones, whose bugs are only bugs because of code in other files
     "v7": {"model": "claude-opus-5-5", "effort": "high", "label": "Opus 5.5, high effort, with context and uses",
            "context": True},
+    # And with the context numbered and outside_diff in the instructions (2026-10-10), so a finding
+    # can say where it shows up outside the diff: did the review hold?
+    "v8": {"model": "claude-opus-5-5", "effort": "high", "label": "Opus 5.5, high effort, context numbered, outside_diff",
+           "context": True},
 }
 
 JUDGE_MODEL = "claude-opus-4-8"  # not one of the models being compared

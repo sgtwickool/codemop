@@ -13,7 +13,8 @@
       "explanation": "The function `update_pr_status` currently retrieves the PR record using `get_pr_by_github_id` and then updates it. This is unnecessary because the PR record has already been retrieved in the `db_pr` variable. Removing the call to `get_pr_by_github_id` will simplify the function and reduce the number of database queries.",
       "suggested_code": null,
       "confidence": 1.0,
-      "group": null
+      "group": null,
+      "outside_diff": null
     },
     {
       "file_path": "backend/src/main.py",
@@ -24,7 +25,8 @@
       "explanation": "The `get_db` function likely uses context management (e.g., `yield`) to create and close the database session. Using `next(get_db())` directly in the startup handler will create a new session that is not closed properly, leading to a resource leak. The `get_db` function should be used as a context manager with `with` to ensure the session is properly managed.",
       "suggested_code": null,
       "confidence": 1.0,
-      "group": null
+      "group": null,
+      "outside_diff": null
     },
     {
       "file_path": "backend/src/main.py",
@@ -35,7 +37,8 @@
       "explanation": "The 'database_id' parameter from `pr_record.id` is directly included in the payload. If `pr_record.id` contains user input or is not properly sanitized, it could lead to SQL injection.",
       "suggested_code": "database_id=db.engine.execute('SELECT id FROM pr_record WHERE record_id = :id', {'id': pr_record.id}).scalar()",
       "confidence": 1.0,
-      "group": null
+      "group": null,
+      "outside_diff": null
     }
   ],
   "unplaced": [],
