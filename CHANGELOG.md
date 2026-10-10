@@ -27,8 +27,9 @@ To be 1.0.0, the first release of the GitHub Action.
   fails while bugs or security issues are open, for branch protection to require;
   `/codemop check` updates it (`codemop check`)
 - **Repository context, on by default:** the whole of each changed function, where the changed
-  code is used in other files, and the definitions it uses (Python). `--no-context`, or the
-  Action's `context: false`, turns it off
+  code is used in other files, and the definitions it uses, for Python, TypeScript and
+  JavaScript. A finding can say where it shows up outside the diff, and changing it there counts
+  as addressing it. `--no-context`, or the Action's `context: false`, turns it off
 - `--max-changed-lines N`: doesn't review a diff larger than this (a cost limit)
 - Each suggested fix is checked to fit the lines it replaces, and left out if it doesn't
 

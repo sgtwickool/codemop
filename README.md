@@ -159,10 +159,10 @@ The Action's inputs:
 | `github-token` | the workflow's | A personal access token, so CI runs on CodeMop's commits |
 
 **Context.** As well as the diff, CodeMop sends the whole of each changed function, where the
-changed code is used in other files, and the definitions it uses (for Python today; other
-languages get the lines around each change). A change can be right in itself and break the code
-that calls it: in the eval, context took those bugs from 4/10 found to 10/10, for about 13% more
-per review. The repository is read in one download, kept in memory, and never checked out or run.
+changed code is used in other files, and the definitions it uses: for Python, TypeScript and
+JavaScript, while other languages get the lines around each change. A change can be right in
+itself and break the code that calls it: in the eval, context took those bugs from 6/16 found to
+16/16, for about 13% more per review. The repository is read in one download, kept in memory, and never checked out or run.
 
 <!-- page: models | Choosing a model | The providers and models CodeMop supports, and which the eval recommends. -->
 ## Choosing a model

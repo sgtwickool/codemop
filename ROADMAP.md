@@ -248,10 +248,12 @@ core package. This phase includes what makes it worth choosing over Claude's own
 After v1. The order of Phases 6–9, and what each is for, come from the
 [product design](docs/product.md).
 
-- [ ] Repository context for TypeScript and JavaScript, then Go: the function around a change,
+- [x] Repository context for TypeScript and JavaScript, then Go: the function around a change,
   what the change defines and where it's used, with `tree-sitter` and its prebuilt grammars
-  behind the same steps as Python
-- [ ] Cross-file eval cases in TypeScript, like the Python ones
+  behind the same steps as Python. (2026-10-10: TypeScript and JavaScript, with JSX, path aliases
+  like Next.js's `@/…`, and ESM imports; `codemop.review.code` has a reader per language. Go later)
+- [x] Cross-file eval cases in TypeScript, like the Python ones (3 bugs and a clean change: with
+  context 8/8, without 4/8, and the two TypeScript bugs only found with it)
 - [ ] `codemop stats owner/repo`: from the summaries on recent PRs, the share of findings acted on
   (applied or addressed) against dismissed, by severity, and what reviews cost. Read from the PRs;
   nothing is sent anywhere

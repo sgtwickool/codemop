@@ -42,12 +42,12 @@ def test_the_oracle_passes_every_case(case_id):
 
 
 def test_the_null_review_fails_every_buggy_case_and_passes_every_clean_one():
-    """Saying nothing scores 9/32 (the clean cases): the floor every model must beat"""
+    """Saying nothing scores 10/36 (the clean cases): the floor every model must beat"""
     results = {case_id: grade(case, [], None)[0]["case_pass"] for case_id, case in CASES.items()}
 
     assert all(results[c] == 0 for c in CASES if CASES[c]["issues"])
     assert all(results[c] == 1 for c in CASES if not CASES[c]["issues"])
-    assert sum(results.values()) == 9
+    assert sum(results.values()) == 10
 
 
 def test_the_right_issue_in_the_wrong_place_isnt_found():

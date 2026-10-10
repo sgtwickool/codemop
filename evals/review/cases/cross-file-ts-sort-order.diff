@@ -1,0 +1,13 @@
+diff --git a/src/lib/invoices.ts b/src/lib/invoices.ts
+--- a/src/lib/invoices.ts
++++ b/src/lib/invoices.ts
+@@ -5,7 +5,7 @@
+   paid: boolean;
+ }
+ 
+-/** Unpaid invoices, soonest due first */
++/** Unpaid invoices, latest first, for the invoices list */
+ export function unpaidInvoices(invoices: Invoice[]): Invoice[] {
+-  return invoices.filter((i) => !i.paid).sort((a, b) => a.dueOn.localeCompare(b.dueOn));
++  return invoices.filter((i) => !i.paid).sort((a, b) => b.dueOn.localeCompare(a.dueOn));
+ }

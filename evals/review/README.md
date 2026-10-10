@@ -1,13 +1,14 @@
 # Review eval
 
-Compares models on the same 32 pull request diffs, each with a hand-written answer key, by running
+Compares models on the same 36 pull request diffs, each with a hand-written answer key, by running
 CodeMop's real review pipeline and grading every comment. It chose the default model, and can be
 rerun when the prompt or the models change.
 
 - [`cases.yml`](cases.yml): the cases and their known issues; the diffs are in `cases/`, and
   [`CASES.md`](CASES.md) shows them together (`render_cases.py`). 9 are real bugs from CodeMop's own
-  history, 9 have a seeded bug, 5 have a seeded bug that only shows in other files (`cross-file`, with
-  the repository in `repos/`), 9 are clean (2 of them cross-file); 15 are tagged simple and 17 complex
+  history, 9 have a seeded bug, 8 have a seeded bug that only shows in other files (`cross-file`, with
+  the repository in `repos/`; 3 of them in TypeScript or JavaScript), 10 are clean (3 of them
+  cross-file); 15 are tagged simple and 21 complex
 - [`run.py`](run.py): reviews every case with one configuration and grades it. A comment counts as
   finding a known issue when it's within 3 lines of it and a judge model (Claude Opus 4.8, not one of
   those compared) agrees it describes that issue and its claims hold up. Any other comment is judged
@@ -159,3 +160,22 @@ each twice:
 With the fix the model raises the CORS bug in both runs again, once at 0.40, just under the 0.5
 threshold: back to the same borderline it had without context. real-ai-analysis fails in every
 configuration (see the limits above). No new false alarms; about 2.6¢ a review.
+
+## TypeScript and JavaScript, 2026-10-10
+
+Context now reads TypeScript and JavaScript too (with tree-sitter), so their changes get the
+same context as Python's: the function around each change, where the changed code is used in
+files that import it (through relative paths or aliases like `@/lib/…`), and definitions it
+uses. Four cases were added, with bugs a TypeScript compiler doesn't catch: a constant changed
+from minutes to seconds, a sort order reversed under a caller that takes the first result, a
+function made async under a JSX caller that doesn't await it, and a clean change (an optional
+prop) that only looks risky. Each twice, with the current instructions:
+
+| | With context | Without |
+|---|---|---|
+| The two TypeScript bugs | **4/4** | 0/4 (not mentioned) |
+| The JavaScript bug | 2/2 | 2/2 (the diff shows `async`) |
+| The clean change | 2/2, no false alarms | 2/2 |
+
+The Python cases' context is unchanged (checked against the previous version, case by case).
+
