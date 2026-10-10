@@ -47,6 +47,8 @@ each file saying so: change both together.
   `src/styles/mascot.css`). He was designed on a canvas:
   https://claude.ai/artifact/7cb2xzBSeYCZrxw3uCiuCp
 - Both stand still for anyone who prefers reduced motion
+- **Headings** are printed in two inks, slightly out of register (Overprint.astro), in wide
+  black Archivo, with gregkemp.dev's button, link and small labels (all in `theme.css`)
 - Colour tokens are in `src/styles/theme.css`, mapped onto Starlight's variables for both
   themes
 
@@ -58,8 +60,10 @@ scripts/sync-docs.mjs      Writes the docs pages from the repository's markdown.
 public/                    Static files served as-is (the favicon).
 src/pages/index.astro      The home page, including all of its copy.
 src/content/docs/          The docs pages, written by sync-docs.mjs (not committed).
-src/components/            Print and the filters the prints share, and SummaryDemo: a real
-                           review from PR #20 whose boxes you can tick.
+src/components/            Print and the filters the prints share; Overprint and SectionHeading,
+                           the two-ink headings; Hero, the home page's (in place of Starlight's);
+                           HeaderLinks, the header's Docs link; and SummaryDemo, a real review
+                           from PR #20 whose boxes you can tick.
 src/lib/art/               The prints, as on gregkemp.dev:
   index.ts                   every print, in page order
   prints/review-loop.ts      the prints for the review loop: mop, respond, gate
