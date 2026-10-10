@@ -4,7 +4,7 @@ What CodeMop is, who it's for, the rules it doesn't break, and how every idea fo
 judged. The [roadmap](../ROADMAP.md) says what's being built and when; this says why, and is
 what an idea has to fit before it becomes a phase.
 
-Draft, 2026-10-10. The decisions marked **Decide** at the end are open.
+Agreed 2026-10-10 (the [decisions](#decided-2026-10-10) are at the end).
 
 ## In one line
 
@@ -22,7 +22,7 @@ product, however good it is.
 |---|---|---|
 | **Open-source maintainers** | A first review of every PR, most of them from forks by people they don't know, without paying much or risking their key | Claude's Action reviews forks only when a maintainer asks, because it runs tools on the PR's code. CodeMop never does, so it can review every fork PR automatically |
 | **Small teams** | Review on every PR with a merge check, on the provider and plan they already have (another provider, zero data retention, Bedrock) | Anthropic's managed Code Review is for Team and Enterprise plans, costs about $15–25 a review and takes about 20 minutes, and its check is always neutral. CodeMop costs about 2–3¢, takes seconds, and its check can block a merge |
-| **Solo builders working with agents** (**Decide**: a target or not) | To notice what their agents got wrong, and to understand the code they're shipping | Claude reviews the code. Nothing yet explains it to the person who has to own it |
+| **Solo builders working with agents** | To notice what their agents got wrong, and to understand the code they're shipping | Claude reviews the code. Nothing yet explains it to the person who has to own it |
 
 Not for: organisations that want a deep audit of the whole repository on every change (that's
 what Anthropic's Code Review and Claude Code's `/code-review` are for, and tiered review hands
@@ -84,7 +84,7 @@ the changes that need it to them), or anyone who wants an agent that writes the 
 |---|---|---|---|---|
 | Context for more languages | Review | Everyone | **Core** | S–M |
 | Measuring it in use | All | Us, and teams | **Core** | S |
-| `/codemop explain` (teaching mode) | Respond | Solo builders, and newcomers on any team | **Core, if solo builders are a target** | S–M |
+| `/codemop explain` (teaching mode) | Respond | Solo builders, and newcomers on any team | **Core** | S–M |
 | Tiered review | Review | Teams, maintainers | **Core** | L |
 | Cross-repository review | Review | Teams with several repositories | **Core** | L |
 | GitLab, Gitea/Forgejo | All | New users | Distribution: when someone asks | M each |
@@ -179,12 +179,12 @@ After v1 (the end of dogfooding, about 2026-10-23), smallest and widest first, s
 are chosen with real users' numbers:
 
 1. **v1.1, everyone's reviews:** context for TypeScript/JavaScript, and `codemop stats`
-2. **v1.2, explain:** `/codemop explain`, if solo builders are a target
+2. **v1.2, explain:** `/codemop explain`
 3. **v1.3, tiered review**
 4. **v1.4, cross-repository review**
 5. GitLab, Gitea/Forgejo and the self-hosted App when people ask for them
 
-Each becomes a roadmap phase with its own "done when", and goes through the eval before it ships.
+Each is a roadmap phase (Phases 6–9) with its own "done when", and goes through the eval before it ships.
 
 ## How we'll know it's working
 
@@ -195,15 +195,12 @@ Each becomes a roadmap phase with its own "done when", and goes through the eval
 - **Adoption:** someone installs it from the README alone in a few minutes; other people's
   repositories run it; issues come from people we don't know
 
-## Decide
+## Decided, 2026-10-10
 
-1. **Are solo builders working with agents a target?** If yes, `/codemop explain` is v1.2; if
-   not, it waits, and the product stays aimed at maintainers and teams. (Recommended: yes. It's
-   small, nobody else does it, and the on-demand design costs the other users nothing)
-2. **Cut multi-repository workspaces?** (Recommended: yes, from CodeMop; it could be its own
-   project)
-3. **Tiered review before cross-repository review?** (Recommended: yes. It improves every
-   review, where cross-repository review serves fewer people and needs a GitHub App or token
-   first)
-4. **The rules:** anything to add, or that's too strict? Rule 1 is the one most likely to be
-   tested: by tiered review, and by any idea that wants to run the code
+1. **Solo builders working with agents are a target**, so `/codemop explain` is v1.2. It's
+   small, nobody else does it, and on demand it costs the other users nothing
+2. **Multi-repository workspaces are cut** from CodeMop; they could be their own project
+3. **Tiered review comes before cross-repository review:** it improves every review, where
+   cross-repository review serves fewer people and needs a GitHub App or token first
+4. **The rules stand as written.** Rule 1 is the one most likely to be tested, by tiered review
+   and by any idea that wants to run the code
