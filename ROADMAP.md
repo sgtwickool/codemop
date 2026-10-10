@@ -237,7 +237,7 @@ core package. This phase includes what makes it worth choosing over Claude's own
 - [x] Astro + Starlight site in `site/`, so the docs are versioned with the code. (2026-10-10: the docs pages are written at build time from the README's sections, `docs/self-hosting.md`, `SECURITY.md`, `CHANGELOG.md` and `CONTRIBUTING.md`, so there's one copy; the Site workflow builds it on every PR that touches them)
 - [x] Match the look of kempgt.com (fonts, palette) and reuse the animated `mop()` print. (It's gregkemp.dev now: its fonts, paper and inks, and its art library, with two new prints for the review loop; a real review from PR #20 you can tick)
 - [x] Pages: landing (pitch, demo GIF of a real review, two-minute setup), Quickstart (the Action), Configuration, Supported models, Privacy (exactly what code is sent where), Self-hosting, Changelog. (The demo is a live, tickable copy of a real review rather than a GIF; also Responding, Blocking merges, the CLI, Security and Contributing)
-- [ ] Deploy at `codemop.com` (GitHub Pages, from the Site workflow); link it from the CodeMop card on gregkemp.dev
+- [x] Deploy at `codemop.com` (GitHub Pages, from the Site workflow); link it from the CodeMop card on gregkemp.dev. (2026-10-10: live at [codemop.com](https://codemop.com) with HTTPS; the card links to it from kempgt.com#3, the first PR CodeMop reviewed outside this repository)
 
 **Done when:** the gregkemp.dev card links to a live site with a working quickstart.
 
