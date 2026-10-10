@@ -1,0 +1,218 @@
+---
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import Print from "../components/Print.astro";
+import PrintFilters from "../components/PrintFilters.astro";
+import SummaryDemo from "../components/SummaryDemo.astro";
+import { printSvg } from "../lib/art/svg";
+
+const github = "https://github.com/sgtwickool/codemop";
+const loop = [
+  {
+    print: "mop",
+    title: "Review",
+    text: "Every push to a pull request gets a review: a comment on each issue, with a one-click fix where there is one. It reads the code around each change too, and where the changed code is used, because a change can be right in itself and break what calls it.",
+    link: "/quickstart/",
+  },
+  {
+    print: "respond",
+    title: "Respond",
+    text: "One summary lists every issue. Tick the fixes you want, then Commit the ticked fixes, and they land as one commit. Resolve a conversation to dismiss it, or reply /codemop learn to teach the whole repository.",
+    link: "/responding/",
+  },
+  {
+    print: "gate",
+    title: "Merge",
+    text: "An optional merge check fails while bugs or security issues are open, and passes once they're fixed or dismissed. Make it required, and a known bug doesn't merge unnoticed.",
+    link: "/merge-check/",
+  },
+] as const;
+---
+
+<StarlightPage
+  frontmatter={{
+    title: "CodeMop: AI code review for pull requests",
+    description:
+      "AI code review for pull requests, with the model of your choice. Tick the fixes you want and it commits them.",
+    template: "splash",
+    hero: {
+      title: "CodeMop",
+      tagline:
+        "AI code review for pull requests, with the model of your choice. Tick the fixes you want and it commits them.",
+      actions: [
+        { text: "Quick start", link: "/quickstart/", icon: "right-arrow", variant: "primary" },
+        { text: "GitHub", link: github, icon: "external", variant: "minimal" },
+      ],
+      image: { html: printSvg("mop") },
+    },
+  }}
+>
+  <PrintFilters />
+
+  <section class="not-content loop" aria-labelledby="loop">
+    <h2 id="loop">The review loop</h2>
+    <div class="steps">
+      {
+        loop.map((step) => (
+          <a class="step" href={step.link}>
+            <Print name={step.print} />
+            <h3>{step.title}</h3>
+            <p>{step.text}</p>
+          </a>
+        ))
+      }
+    </div>
+  </section>
+
+  <section class="not-content" aria-labelledby="real">
+    <h2 id="real">A real review</h2>
+    <SummaryDemo />
+  </section>
+
+  <section class="not-content" aria-labelledby="why">
+    <h2 id="why">Why CodeMop</h2>
+    <dl class="why">
+      <div>
+        <dt>Safe on any pull request</dt>
+        <dd>
+          It reads the diff through GitHub's API and never checks out or runs the pull request's code, so it can hold
+          your key on a fork's PR, from anyone. Agents that run tools on the code can't.
+        </dd>
+      </div>
+      <div>
+        <dt>Cheap enough for every push</dt>
+        <dd>
+          A few cents and a few seconds a review with the default model, which was chosen by
+          an <a href={`${github}/blob/master/evals/review/README.md`}>eval</a>: 99% of its comments were right.
+        </dd>
+      </div>
+      <div>
+        <dt>Your model, your key</dt>
+        <dd>
+          Anthropic, Mistral, OpenAI, OpenRouter, any OpenAI-compatible endpoint, or a local model. No CodeMop server:
+          your code goes only to the provider you choose.
+        </dd>
+      </div>
+      <div>
+        <dt>It learns, and you can see what</dt>
+        <dd>
+          What it's taught goes in a file in your repository, which you can read and edit. Re-reviews look at the new
+          commits only, and resolve conversations once the code is fixed.
+        </dd>
+      </div>
+    </dl>
+  </section>
+
+  <section class="not-content setup" aria-labelledby="setup">
+    <h2 id="setup">Set up in two minutes</h2>
+    <ol>
+      <li>Add your model provider's API key as a repository secret, e.g. <code>ANTHROPIC_API_KEY</code>.</li>
+      <li>
+        Add CodeMop's workflow, <code>.github/workflows/codemop.yml</code>, from
+        the <a href="/quickstart/">quick start</a>. Its review step is just:
+        <pre><code>- uses: sgtwickool/codemop@v1
+  with:
+    api-key: $&#123;&#123; secrets.ANTHROPIC_API_KEY &#125;&#125;</code></pre>
+      </li>
+    </ol>
+    <p>The next pull request gets a review.</p>
+  </section>
+
+  <p class="not-content credit">
+    Made by <a href="https://gregkemp.dev">Greg Kemp</a>. MIT licensed, on <a href={github}>GitHub</a>.
+  </p>
+</StarlightPage>
+
+<style>
+  section {
+    margin-top: 4rem;
+  }
+  h2 {
+    font-family: var(--font-sans);
+    font-weight: 800;
+    font-size: 1.7rem;
+    letter-spacing: -0.015em;
+    margin-bottom: 1.25rem;
+    color: var(--ink);
+  }
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 2rem;
+  }
+  .step {
+    display: grid;
+    align-content: start;
+    gap: 0.6rem;
+    color: inherit;
+    text-decoration: none;
+  }
+  .step h3 {
+    font-family: var(--font-sans);
+    font-weight: 800;
+    font-size: 1.2rem;
+    margin: 0.4rem 0 0;
+    color: var(--ink);
+  }
+  .step p {
+    margin: 0;
+    color: var(--ink-soft);
+  }
+  .step:hover h3 {
+    color: var(--link);
+  }
+  .why {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+    gap: 1.5rem 2.5rem;
+    margin: 0;
+  }
+  .why dt {
+    font-family: var(--font-sans);
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 0.3rem;
+  }
+  .why dd {
+    margin: 0;
+    color: var(--ink-soft);
+  }
+  a:not(.step) {
+    color: var(--link);
+  }
+  .setup li {
+    min-width: 0;
+  }
+  .setup code {
+    overflow-wrap: anywhere;
+  }
+  .setup ol {
+    padding-left: 1.3rem;
+    display: grid;
+    gap: 0.8rem;
+  }
+  .setup code {
+    font-family: var(--sl-font-system-mono);
+    font-size: 0.85em;
+    background: var(--plate);
+    border-radius: 3px;
+    padding: 0.05em 0.3em;
+  }
+  .setup pre {
+    margin-top: 0.6rem;
+    padding: 0.8rem 1rem;
+    background: var(--plate);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    overflow-x: auto;
+  }
+  .setup pre code {
+    background: none;
+    padding: 0;
+  }
+  .credit {
+    margin: 5rem 0 1rem;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+</style>

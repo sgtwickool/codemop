@@ -58,7 +58,7 @@ deep tier.
 
 ## Repository structure
 
-The layout (`site/` arrives in Phase 5):
+The layout:
 
 ```
 codemop/
@@ -72,7 +72,7 @@ codemop/
 ├── tests/                # tests for the package, mirroring src/codemop/ (tests/cli: the commands, with a fake GitHub)
 ├── evals/                # the review eval: does a model or prompt change make reviews better?
 ├── server/               # the optional self-hosted webhook server, using the package
-├── site/                 # Astro + Starlight marketing and docs site (Phase 5)
+├── site/                 # the website, codemop.com: Astro + Starlight; its docs pages are written from the markdown here
 ├── docs/                 # design notes; docs/archive/ for superseded plans
 └── scripts/              # developer scripts
 ```
@@ -234,12 +234,12 @@ core package. This phase includes what makes it worth choosing over Claude's own
 
 ## Phase 5: Website (marketing and docs)
 
-- [ ] Astro + Starlight site in `site/`, so the docs are versioned with the code
-- [ ] Match the look of kempgt.com (fonts, palette) and reuse the animated `mop()` print
-- [ ] Pages: landing (pitch, demo GIF of a real review, two-minute setup), Quickstart (the Action), Configuration, Supported models, Privacy (exactly what code is sent where), Self-hosting, Changelog
-- [ ] Deploy at `codemop.kempgt.com` (Vercel or GitHub Pages); link it from the CodeMop card on kempgt.com
+- [x] Astro + Starlight site in `site/`, so the docs are versioned with the code. (2026-10-10: the docs pages are written at build time from the README's sections, `docs/self-hosting.md`, `SECURITY.md`, `CHANGELOG.md` and `CONTRIBUTING.md`, so there's one copy; the Site workflow builds it on every PR that touches them)
+- [x] Match the look of kempgt.com (fonts, palette) and reuse the animated `mop()` print. (It's gregkemp.dev now: its fonts, paper and inks, and its art library, with two new prints for the review loop; a real review from PR #20 you can tick)
+- [x] Pages: landing (pitch, demo GIF of a real review, two-minute setup), Quickstart (the Action), Configuration, Supported models, Privacy (exactly what code is sent where), Self-hosting, Changelog. (The demo is a live, tickable copy of a real review rather than a GIF; also Responding, Blocking merges, the CLI, Security and Contributing)
+- [ ] Deploy at `codemop.com` (GitHub Pages, from the Site workflow); link it from the CodeMop card on gregkemp.dev
 
-**Done when:** the kempgt.com card links to a live site with a working quickstart.
+**Done when:** the gregkemp.dev card links to a live site with a working quickstart.
 
 ## Phase 6: v1.1, everyone's reviews
 

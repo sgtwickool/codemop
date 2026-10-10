@@ -1,0 +1,23 @@
+---
+// One risograph print from src/lib/art, drawn as inline SVG (src/lib/art/svg.ts). Its motion
+// is worked out in src/lib/art/style.ts and driven by src/scripts/scroll-prints.ts.
+import type { PrintName } from "../lib/art/prints";
+import { printSvg } from "../lib/art/svg";
+
+interface Props {
+  name: PrintName;
+  /** Small prints sit on a slightly darker paper stock. */
+  plate?: boolean;
+  class?: string;
+}
+
+const { name, plate = true, class: className } = Astro.props;
+---
+
+<Fragment set:html={printSvg(name, { plate, className })} />
+
+<script>
+  import { bindScrollPrints } from "../scripts/scroll-prints";
+
+  bindScrollPrints();
+</script>
