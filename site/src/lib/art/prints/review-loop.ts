@@ -1,9 +1,9 @@
-// CodeMop's prints, one for each step of the review loop. mop() is the CodeMop card's print
-// on gregkemp.dev (src/lib/art/prints/side-projects.ts there); respond() and gate() are drawn
-// for this site in the same style.
-import { draw, fade, follow, small, stamp } from "./build";
-import { arcFractions, circle, path, rect } from "./geometry";
-import type { Layer, Print, Pt } from "./types";
+// The review loop, a print for each step. mop() is the CodeMop card's print on gregkemp.dev
+// (src/lib/art/prints/side-projects.ts there); respond() and gate() are drawn for this site in
+// the same style.
+import { draw, fade, follow, small, stamp } from "../build";
+import { arcFractions, circle, path, rect } from "../geometry";
+import type { Layer, Print, Pt } from "../types";
 
 export function mop(): Print {
   // CodeMop. A pull request diff appears, the mop sweeps back and forth down
@@ -122,6 +122,3 @@ export function gate(): Print {
     { d: circle(172, 112, 5), ink: "strong", width: 2.4, knockout: true, motion: stamp(2.45, 0.2) },
   ]);
 }
-
-export const prints = { mop: mop(), respond: respond(), gate: gate() } satisfies Record<string, Print>;
-export type PrintName = keyof typeof prints;
