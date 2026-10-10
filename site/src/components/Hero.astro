@@ -1,0 +1,60 @@
+---
+// The home page's hero, in place of Starlight's (only pages with `hero` in their frontmatter
+// have one): the title printed in two inks like gregkemp.dev's headings, the tagline, the
+// actions as gregkemp.dev's button and link, and Moppy.
+import { mascotHtml } from "../lib/mascot";
+import Overprint from "./Overprint.astro";
+
+const { data } = Astro.locals.starlightRoute.entry;
+const { title = data.title, tagline, actions = [] } = data.hero ?? {};
+---
+
+<div class="hero">
+  <div class="copy">
+    <Overprint as="h1" id="_top" class="type-hero" data-page-title>{title}</Overprint>
+    {tagline && <p class="tagline" set:html={tagline} />}
+    <div class="actions">
+      {actions.map((action, i) => (
+        <a href={action.link} class={i === 0 ? "button" : "link"}>
+          {action.text}
+        </a>
+      ))}
+    </div>
+  </div>
+  <Fragment set:html={mascotHtml} />
+</div>
+
+<style>
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    align-items: center;
+    gap: 2.5rem 3rem;
+    padding-block: 3rem 1rem;
+  }
+  .copy {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  .tagline {
+    margin: 0;
+    max-width: 30em;
+    font-size: 1.2rem;
+    line-height: 1.6;
+    color: var(--ink-soft);
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.5rem;
+    font-family: var(--font-sans);
+  }
+  @media (max-width: 50rem) {
+    .hero {
+      grid-template-columns: minmax(0, 1fr);
+      padding-block: 1.5rem 0;
+    }
+  }
+</style>

@@ -88,6 +88,73 @@ h1#_top {
   background-color: color-mix(in oklab, var(--ink-line) 35%, transparent);
 }
 
+/* The site's name in the header, set wide and black, as gregkemp.dev's is */
+.site-title {
+  font-stretch: 125%;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+/* Two-ink headings (Overprint.astro): the home page's title, and its sections' headings */
+.type-hero,
+.type-section {
+  font-family: var(--font-sans);
+  font-weight: 900;
+  font-stretch: 125%;
+  text-wrap: balance;
+}
+.type-hero {
+  font-size: clamp(3rem, 7.5vw, 5.5rem);
+  white-space: nowrap;
+  line-height: 0.9;
+  letter-spacing: -0.035em;
+}
+.type-section {
+  font-size: clamp(2.4rem, 6.2vw, 4rem);
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+}
+
+/* gregkemp.dev's button and link (src/styles/global.css there), and its small labels */
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-radius: 4px;
+  padding: 0.7rem 1.15rem;
+  background-color: var(--ink);
+  color: var(--paper);
+  text-decoration: none;
+  transition: background-color 150ms;
+}
+.button:hover {
+  background-color: color-mix(in oklab, var(--ink) 85%, var(--ink-strong));
+  color: var(--paper);
+}
+.link {
+  color: var(--link);
+  font-weight: 600;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.2em;
+  text-decoration-color: color-mix(in oklab, var(--link) 45%, transparent);
+  transition: text-decoration-color 150ms;
+}
+.link:hover {
+  text-decoration-color: currentColor;
+}
+.label {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--link);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Code and links outside the docs' own content (the home page, its demo) */
 .not-content code {
   font-family: var(--sl-font-system-mono);
@@ -97,7 +164,7 @@ h1#_top {
   padding: .05em .3em;
   overflow-wrap: anywhere;
 }
-.not-content a {
+.not-content a:not(.button) {
   color: var(--link);
 }
 

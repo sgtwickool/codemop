@@ -11,9 +11,14 @@ export default defineConfig({
       title: "CodeMop",
       description: "AI code review for pull requests, with the model of your choice. Tick the fixes you want and it commits them.",
       favicon: "/favicon.svg",
+      // The home page's hero (two-ink title and Moppy), and a Docs link in the header
+      components: {
+        Hero: "./src/components/Hero.astro",
+        SocialIcons: "./src/components/HeaderLinks.astro",
+      },
       social: [{ icon: "github", label: "GitHub", href: "https://github.com/sgtwickool/codemop" }],
       customCss: [
-        "@fontsource-variable/archivo",
+        "@fontsource-variable/archivo/wdth.css",
         "@fontsource-variable/source-serif-4/opsz.css",
         "@fontsource-variable/source-serif-4/opsz-italic.css",
         "./src/styles/theme.css",

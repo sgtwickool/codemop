@@ -1,0 +1,42 @@
+---
+// Type printed in two inks, slightly out of register: a pink pass sits behind and the blue
+// pass overprints it. Only the blue pass is read out. gregkemp.dev's component
+// (src/components/Overprint.astro there), with plain CSS; its type styles are in theme.css.
+interface Props {
+  as?: "h1" | "h2";
+  id?: string;
+  /** Type styles, shared by both passes. */
+  class?: string;
+  [attribute: `data-${string}`]: unknown;
+}
+
+const { as: Heading = "h2", id, class: type, ...attributes } = Astro.props;
+const html = await Astro.slots.render("default");
+---
+
+<div class="overprint">
+  <p aria-hidden="true" class:list={[type, "ink pass-line"]} set:html={html} />
+  <Heading id={id} class:list={[type, "ink pass-strong"]} set:html={html} {...attributes} />
+</div>
+
+<style>
+  .overprint {
+    position: relative;
+  }
+  .pass-line {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    transform: translate(max(2.5px, 0.025em), max(2px, 0.02em));
+    color: var(--ink-line);
+    opacity: 0.85;
+  }
+  .pass-strong {
+    position: relative;
+    margin: 0;
+    color: var(--ink-strong);
+  }
+  :global(:root[data-theme="dark"]) .ink {
+    mix-blend-mode: normal;
+  }
+</style>

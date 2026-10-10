@@ -2,7 +2,6 @@
 // A real review: CodeMop's inline comment and summary on its own pull request #20, as posted
 // (github.com/sgtwickool/codemop/pull/20). The boxes work: tick the fix, then "Commit the
 // ticked fixes", and the summary shows what happened on the PR.
-const pr = "https://github.com/sgtwickool/codemop/pull/20";
 ---
 
 <div class="demo not-content">
@@ -63,10 +62,6 @@ const pr = "https://github.com/sgtwickool/codemop/pull/20";
       <p class="footer">anthropic/claude-opus-5-5 · 63,417 input / 5,327 output tokens · about $0.36</p>
     </div>
   </article>
-  <p class="caption">
-    From CodeMop's review of its own <a href={pr}>pull request #20</a>, a 1,450-line refactor (a typical pull
-    request costs a few cents). Try it: tick the fix, then <strong>Commit the ticked fixes</strong>.
-  </p>
 </div>
 
 <script>
@@ -205,11 +200,5 @@ const pr = "https://github.com/sgtwickool/codemop/pull/20";
   .status {
     color: var(--ink-strong);
     font-weight: 600;
-  }
-  .caption {
-    margin: 0;
-    color: var(--muted);
-    font-size: 0.85rem;
-    text-align: center;
   }
 </style>

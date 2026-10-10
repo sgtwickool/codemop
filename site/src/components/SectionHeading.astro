@@ -1,0 +1,13 @@
+---
+// A section's heading, in two inks, as on gregkemp.dev (src/components/SectionHeading.astro there)
+import Overprint from "./Overprint.astro";
+
+interface Props {
+  text: string;
+  id: string;
+}
+
+const { text, id } = Astro.props;
+---
+
+<Overprint as="h2" id={id} class="type-section">{text}</Overprint>
