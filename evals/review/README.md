@@ -133,3 +133,29 @@ case twice:
 - Limits: the cross-file cases were written for this, so they show what context can do rather
   than how often real PRs need it; dogfooding will say more
 
+
+## Where a problem shows up outside the diff, 2026-10-10
+
+Two changes, found while dogfooding and by the eval:
+
+- **The context is numbered like the diff, and a finding can say where it shows up outside the
+  diff** (`outside_diff`: a caller the change breaks, a reference it makes wrong). The comment
+  still goes on the changed lines; the finding remembers both places, and changing either
+  counts as addressing it. (On PR #23 the stale line was outside the diff, so fixing it didn't
+  count.) The model used it in every cross-file case, each time pointing at the caller.
+- **Context never repeats code the diff shows.** Code added in one file was coming back, as
+  "unchanged" context, as a definition another file imports. In real-security-config that was
+  the CORS settings, and the model stopped mentioning the wildcard-with-credentials bug in them
+  (it had passed 2 of 6 runs with context, against 4 of 4 without).
+
+On the 16 cases that get context (the other 16 have the same input whatever the configuration),
+each twice:
+
+| | Without context | Context | Numbered, with outside_diff | **And without the diff's code** |
+|---|---|---|---|---|
+| Cases passed | 24/32 | 29/32 | 27/31 | **29/32** |
+| real-security-config | 2/2 | 1/2 | 0/2 | 1/2 |
+
+With the fix the model raises the CORS bug in both runs again, once at 0.40, just under the 0.5
+threshold: back to the same borderline it had without context. real-ai-analysis fails in every
+configuration (see the limits above). No new false alarms; about 2.6¢ a review.

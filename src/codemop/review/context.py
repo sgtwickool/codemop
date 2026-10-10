@@ -22,7 +22,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Protocol, Sequence, Set, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Protocol, Sequence, Set, Tuple
 
 from codemop.review.chunks import estimate_tokens
 from codemop.review.diff import FileDiff
@@ -224,9 +224,16 @@ async def _imported_definitions(imported: Sequence[Tuple[str, str, str, int]], s
     return snippets
 
 
-async def build_context(files: Iterable[FileDiff], source: FileSource,
-                        budget_tokens: int = DEFAULT_CONTEXT_TOKENS) -> str:
-    """The context for the changed files, as text to put before their diff ("" if there's none)"""
+async def build_context(files: Iterable[FileDiff], source: FileSource, budget_tokens: int = DEFAULT_CONTEXT_TOKENS,
+                        in_diff: Optional[Mapping[str, Set[int]]] = None) -> str:
+    """
+    The context for the changed files, as text to put before their diff ("" if there's none).
+    Nothing the diff already shows is sent again (`in_diff`: the lines it shows, by file, for
+    all of it, not just these files): sent as context, changed code reads as unchanged.
+    """
+    files = list(files)
+    if in_diff is None:
+        in_diff = {file.path: file.commentable_lines() for file in files}
     snippets: List[Snippet] = []
     later: List[Snippet] = []  # same-file definitions, for step 3
     defined: Dict[str, Dict[str, str]] = {}  # what the change defines, by file, for step 2
@@ -240,10 +247,10 @@ async def build_context(files: Iterable[FileDiff], source: FileSource,
         changed, shown = changed_lines(file), file.commentable_lines()
         tree = python_tree(text) if file.path.endswith(".py") else None
         if tree is None:
-            snippets += [s for s in _around(text, file.path, changed) if not s.in_diff(shown)]
+            snippets += _around(text, file.path, changed)
             continue
         blocks = _enclosing(tree, text, file.path, changed)
-        snippets += [b for b in blocks if not b.in_diff(shown)]
+        snippets += blocks
         defined[file.path] = changed_definitions(tree, changed)
         seen_lines[file.path] = shown.union(*(range(b.start, b.end + 1) for b in blocks))
         used = _names_used(file, blocks)
@@ -253,9 +260,7 @@ async def build_context(files: Iterable[FileDiff], source: FileSource,
         for name in used:  # in order of importance
             node = definitions.get(name)
             if node and not any(b.start <= node.lineno <= b.end for b in blocks):
-                definition = _definition(node, name, text, file.path)
-                if not definition.in_diff(shown):
-                    later.append(definition)
+                later.append(_definition(node, name, text, file.path))
             elif name in imports:
                 imported.append((file.path, *imports[name]))
     # Imported definitions are read first: without a snapshot of the repository, reads are limited
@@ -265,7 +270,7 @@ async def build_context(files: Iterable[FileDiff], source: FileSource,
 
     parts, used_tokens, seen = [], 0, set()
     for snippet in snippets:
-        if (snippet.path, snippet.start, snippet.end) in seen:
+        if (snippet.path, snippet.start, snippet.end) in seen or snippet.in_diff(in_diff.get(snippet.path, set())):
             continue
         rendered = snippet.render()
         tokens = estimate_tokens(rendered)

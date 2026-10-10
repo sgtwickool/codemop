@@ -256,3 +256,23 @@ async def test_local_files_skip_hidden_and_installed_folders(tmp_path):
         (tmp_path / path).write_text("x = 1\n")
 
     assert await LocalFiles(tmp_path).paths() == ["app/main.py", "tests/test_a.py"]
+
+
+@pytest.mark.asyncio
+async def test_code_the_diff_shows_isnt_sent_again_as_context_even_from_another_file():
+    """Seen in the eval: CORS settings added in one file came back, as "unchanged" context, as
+    a definition another file imports, and the model stopped reporting the bug in them"""
+    settings = "CORS = {\n    \"allow_origins\": [\"*\"],\n    \"allow_credentials\": True,\n}\n"
+    main = "from settings import CORS\n\n\ndef make_app(app):\n    app.add(**CORS)\n    return app\n"
+    diff = ("diff --git a/settings.py b/settings.py\nnew file mode 100644\n--- /dev/null\n+++ b/settings.py\n"
+            "@@ -0,0 +1,4 @@\n" + "".join(f"+{line}\n" for line in settings.splitlines()) +
+            "diff --git a/main.py b/main.py\n--- a/main.py\n+++ b/main.py\n@@ -4,3 +4,3 @@\n def make_app(app):\n"
+            "-    app.add()\n+    app.add(**CORS)\n     return app\n")
+    files = Files({"settings.py": settings, "main.py": main})
+    main_only = [f for f in parse_diff(diff) if f.path == "main.py"]  # main.py's chunk
+
+    in_diff = {f.path: f.commentable_lines() for f in parse_diff(diff)}
+    context = await build_context(main_only, files, in_diff=in_diff)
+
+    assert "settings.py" not in context
+    assert "defines CORS" in await build_context(main_only, files)  # what happened without the whole diff
