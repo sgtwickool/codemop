@@ -21,18 +21,19 @@ export function bindMascot() {
   let onScreen = true;
 
   const show = (state: string) => {
+    const again = svg.classList.contains(state);
     svg.classList.remove(...STATES);
-    svg.getBoundingClientRect(); // so the same state's animation starts again
+    if (again) svg.getBoundingClientRect(); // so its animation starts over
     svg.classList.add(state);
   };
   const later = () => {
     window.clearTimeout(timer);
     timer = window.setTimeout(peek, QUIET[0] + Math.random() * (QUIET[1] - QUIET[0]));
   };
-  function peek() {
-    if (!onScreen || document.hidden || !svg!.classList.contains("m-away")) return later();
+  const peek = () => {
+    if (!onScreen || document.hidden || !svg.classList.contains("m-away")) return later();
     show(PEEKS[Math.floor(Math.random() * PEEKS.length)]);
-  }
+  };
 
   // The routine and each peek end with him away
   move.addEventListener("animationend", (event) => {

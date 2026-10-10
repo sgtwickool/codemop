@@ -30,6 +30,7 @@
   --sl-color-accent-high: #b3dcf7;
   --sl-color-text-accent: var(--link);
 
+  --eye-white: #f4f4f1; /* the mascot's eyes, light in both themes */
   --font-sans: "Archivo Variable", "Helvetica Neue", Arial, sans-serif;
   --font-serif: "Source Serif 4 Variable", Georgia, serif;
   --sl-font: var(--font-serif);
@@ -51,19 +52,14 @@
   --ink-glow: #ffe800;
   --print-blend: multiply;
 
-  --sl-color-black: var(--paper);
+  /* The rest follow from the tokens above, as set on :root */
   --sl-color-gray-7: #f0f0ec;
-  --sl-color-gray-6: var(--plate);
-  --sl-color-gray-5: var(--rule);
   --sl-color-gray-4: #8a8f9b;
   --sl-color-gray-3: var(--muted);
   --sl-color-gray-2: var(--ink-soft);
   --sl-color-gray-1: #2f3546;
-  --sl-color-white: var(--ink);
   --sl-color-accent-low: #cfe6f5;
-  --sl-color-accent: var(--ink-strong);
   --sl-color-accent-high: #005c94;
-  --sl-color-text-accent: var(--link);
 }
 
 /* Headings, navigation and buttons in the sans; reading text in the serif. */
@@ -90,6 +86,19 @@ h1#_top {
 
 ::selection {
   background-color: color-mix(in oklab, var(--ink-line) 35%, transparent);
+}
+
+/* Code and links outside the docs' own content (the home page, its demo) */
+.not-content code {
+  font-family: var(--sl-font-system-mono);
+  font-size: .85em;
+  background: var(--plate);
+  border-radius: 3px;
+  padding: .05em .3em;
+  overflow-wrap: anywhere;
+}
+.not-content a {
+  color: var(--link);
 }
 
 .sl-markdown-content a {

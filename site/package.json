@@ -13,13 +13,16 @@
     "@astrojs/starlight": "^0.42.6",
     "@fontsource-variable/archivo": "^5.3.0",
     "@fontsource-variable/source-serif-4": "^5.3.0",
-    "astro": "^7.3.8"
+    "astro": "^7.3.8",
+    "github-slugger": "^2.0.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "typescript": "^6.0.3"
   },
   "overrides": {
-    "postcss-selector-parser": "^7.1.6"
+    "postcss-nested": {
+      "postcss-selector-parser": "^7.1.6"
+    }
   }
 }

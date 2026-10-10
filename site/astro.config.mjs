@@ -13,7 +13,7 @@ export default defineConfig({
       favicon: "/favicon.svg",
       social: [{ icon: "github", label: "GitHub", href: "https://github.com/sgtwickool/codemop" }],
       customCss: [
-        "@fontsource-variable/archivo/wdth.css",
+        "@fontsource-variable/archivo",
         "@fontsource-variable/source-serif-4/opsz.css",
         "@fontsource-variable/source-serif-4/opsz-italic.css",
         "./src/styles/theme.css",

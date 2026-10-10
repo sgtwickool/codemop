@@ -1,4 +1,4 @@
-/* CodeMop's mascot (src/lib/mascot.ts): how he looks, and how he moves in each state, set as
+/* Moppy, CodeMop's mascot (src/lib/mascot.ts): how he looks, and how he moves in each state, set as
    a class on his <svg> by src/scripts/mascot.ts:
      m-intro     the routine, once, when the page loads: rushes in mopping, straightens the
                  picture with his handle, scurries back for a speck he missed, dashes off
@@ -8,6 +8,7 @@
    Without motion (no JavaScript, or reduced motion), he just stands in the clean scene. */
 
 .mascot-replay {
+  position: relative;
   display: block;
   width: 100%;
   max-width: 30rem;
@@ -25,6 +26,14 @@
   width: 100%;
   height: auto;
 }
+/* The grain, over him rather than in his SVG, so it isn't redrawn while he moves */
+.mascot-grain {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
 
 /* How he looks */
 .m-plate { fill: var(--plate) }
@@ -32,7 +41,6 @@
 .m-yellow { fill: var(--ink-glow) }
 .m-blue { fill: var(--ink-strong) }
 .m-pink { fill: var(--ink-line) }
-.m-ink { mix-blend-mode: var(--print-blend) }
 .m-handle { fill: none; stroke: var(--ink-strong); stroke-width: 6; stroke-linecap: round }
 .m-strand {
   fill: none;
@@ -40,14 +48,13 @@
   stroke-width: 7;
   stroke-linecap: round;
   stroke-linejoin: round;
-  mix-blend-mode: var(--print-blend);
   transform-box: fill-box;
   transform-origin: 50% 0%;
 }
 .m-strand.m-edge { stroke: var(--ink-strong); stroke-width: 1.2; opacity: .7 }
-.m-fuzz { fill: none; stroke: var(--ink-line); stroke-width: 1.4; stroke-linecap: round; mix-blend-mode: var(--print-blend) }
-.m-eye { fill: #f4f4f1; stroke: var(--ink-strong); stroke-width: 1.6 }
-.m-glint { fill: #f4f4f1 }
+.m-fuzz { fill: none; stroke: var(--ink-line); stroke-width: 1.4; stroke-linecap: round }
+.m-eye { fill: var(--eye-white); stroke: var(--ink-strong); stroke-width: 1.6 }
+.m-glint { fill: var(--eye-white) }
 .m-line { fill: none; stroke: var(--ink-strong); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round }
 .m-thin { stroke-width: 1.6 }
 .m-frame-box { fill: var(--paper); stroke: var(--ink-strong); stroke-width: 2.6; stroke-linejoin: round }
@@ -57,39 +64,47 @@
 .m-move { transform: translate(110px, 178px) }
 .m-away .m-move { transform: translate(300px, 178px) }
 .m-squash, .m-head { transform-box: fill-box; transform-origin: 50% 100% }
-.m-eyes, .m-dirt1, .m-dirt2, .m-dirt3, .m-dirt4, .m-spark { transform-box: fill-box; transform-origin: 50% 50% }
+.m-eyes, .m-dirt, .m-missed, .m-spark { transform-box: fill-box; transform-origin: 50% 50% }
 .m-puff-r { transform-box: fill-box; transform-origin: 0% 100% }
 .m-puff-l { transform-box: fill-box; transform-origin: 100% 100% }
 .m-frame { transform-box: view-box; transform-origin: 196px 46px }
-.m-dirt1, .m-dirt2, .m-dirt3, .m-dirt4, .m-spark, .m-speed-r, .m-speed-l, .m-puff-r, .m-puff-l,
+.m-dirt, .m-missed, .m-spark, .m-speed-r, .m-speed-l, .m-puff-r, .m-puff-l,
 .m-sweat, .m-shocked, .m-smile { opacity: 0 }
 
 :root:not(.motion) .mascot * { animation: none !important }
-:root:not(.motion) .mascot .m-move { transform: translate(110px, 178px) }
+
+/* Each state's animations share a length and fill; the rules below name each one's keyframes */
+.mascot .m-strand { animation-delay: var(--lag) }
+/* (longhands: a shorthand with no name is minified to "animation: none") */
+.m-intro * { animation-duration: 6s; animation-timing-function: ease-in-out; animation-fill-mode: both }
+:is(.m-peek-left, .m-peek-right, .m-peek-bottom) * {
+  animation-duration: 3.4s;
+  animation-timing-function: ease-in-out;
+  animation-fill-mode: both;
+}
 
 /* ---- The routine, once ---- */
 
-.m-intro .m-move { animation: m-in-move 6s both }
-.m-intro .m-hop { animation: m-in-hop 6s ease-in-out both }
-.m-intro .m-squash { animation: m-in-squash 6s ease-in-out both }
-.m-intro .m-strand { animation: m-in-drag 6s ease-in-out both; animation-delay: var(--lag) }
-.m-intro .m-head { animation: m-in-jiggle 6s ease-in-out both }
-.m-intro .m-pupils { animation: m-in-look 6s ease-in-out both }
-.m-intro .m-eyes { animation: m-in-widen 6s steps(1) both }
-.m-intro .m-worried { animation: m-in-worried 6s steps(1) both }
-.m-intro .m-shocked { animation: m-in-shocked 6s steps(1) both }
-.m-intro .m-smile { animation: m-in-smile 6s steps(1) both }
-.m-intro .m-sweat { animation: m-in-sweat 6s ease-in both }
-.m-intro .m-speed-r { animation: m-in-speed-r 6s steps(1) both }
-.m-intro .m-speed-l { animation: m-in-speed-l 6s steps(1) both }
-.m-intro .m-puff-r { animation: m-in-puff-r 6s ease-out both }
-.m-intro .m-puff-l { animation: m-in-puff-l 6s ease-out both }
-.m-intro .m-frame { animation: m-in-tilt 6s ease-in-out both }
-.m-intro .m-dirt1 { animation: m-in-dirt1 6s ease-out both }
-.m-intro .m-dirt2 { animation: m-in-dirt2 6s ease-out both }
-.m-intro .m-dirt3 { animation: m-in-dirt3 6s ease-out both }
-.m-intro .m-dirt4 { animation: m-in-dirt4 6s ease-out both }
-.m-intro .m-spark { animation: m-in-spark 6s ease-out both }
+.m-intro .m-move { animation-name: m-in-move }
+.m-intro .m-hop { animation-name: m-in-hop }
+.m-intro .m-squash { animation-name: m-in-squash }
+.m-intro .m-strand { animation-name: m-in-drag }
+.m-intro .m-head { animation-name: m-in-jiggle }
+.m-intro .m-pupils { animation-name: m-in-look }
+.m-intro .m-frame { animation-name: m-in-tilt }
+.m-intro .m-eyes { animation-name: m-in-widen; animation-timing-function: steps(1) }
+.m-intro .m-worried { animation-name: m-in-worried; animation-timing-function: steps(1) }
+.m-intro .m-shocked { animation-name: m-in-shocked; animation-timing-function: steps(1) }
+.m-intro .m-smile { animation-name: m-in-smile; animation-timing-function: steps(1) }
+.m-intro .m-speed-r { animation-name: m-in-speed-r; animation-timing-function: steps(1) }
+.m-intro .m-speed-l { animation-name: m-in-speed-l; animation-timing-function: steps(1) }
+.m-intro .m-sweat { animation-name: m-in-sweat; animation-timing-function: ease-in }
+.m-intro .m-puff-r { animation-name: m-in-puff-r; animation-timing-function: ease-out }
+.m-intro .m-puff-l { animation-name: m-in-puff-l; animation-timing-function: ease-out }
+.m-intro .m-missed { animation-name: m-in-missed; animation-timing-function: ease-out }
+.m-intro .m-spark { animation-name: m-in-spark; animation-timing-function: ease-out }
+/* Each speck of dirt is mopped up as he passes it (its --at) */
+.m-intro .m-dirt { animation: m-wipe .15s ease-out var(--at) both }
 
 @keyframes m-in-move {
   0% { transform: translate(-50px, 178px); animation-timing-function: linear }
@@ -309,19 +324,11 @@
   43% { transform: rotate(2deg) }
   45%, 100% { transform: rotate(0deg) }
 }
-@keyframes m-in-dirt1 {
-  0%, 12.5% { transform: scale(1); opacity: 1 }
-  15%, 100% { transform: scale(.2); opacity: 0 }
+@keyframes m-wipe {
+  from { transform: scale(1); opacity: 1 }
+  to { transform: scale(.2); opacity: 0 }
 }
-@keyframes m-in-dirt2 {
-  0%, 17% { transform: scale(1); opacity: 1 }
-  19.5%, 100% { transform: scale(.2); opacity: 0 }
-}
-@keyframes m-in-dirt3 {
-  0%, 21% { transform: scale(1); opacity: 1 }
-  23.5%, 100% { transform: scale(.2); opacity: 0 }
-}
-@keyframes m-in-dirt4 {
+@keyframes m-in-missed {
   0%, 54% { transform: scale(.2); opacity: 0 }
   56% { transform: scale(1.15); opacity: 1 }
   57%, 66% { transform: scale(1); opacity: 1 }
@@ -336,71 +343,50 @@
 
 /* ---- Peeking in, looking for dirt: from the left, the right, or up from the bottom ---- */
 
-.m-peek-left .m-move { animation: m-pk-left 3.4s both }
-.m-peek-left .m-squash { animation: m-pk-lean-left 3.4s ease-in-out both }
-.m-peek-left .m-strand { animation: m-pk-drag-left 3.4s ease-in-out both; animation-delay: var(--lag) }
-.m-peek-right .m-move { animation: m-pk-right 3.4s both }
-.m-peek-right .m-squash { animation: m-pk-lean-right 3.4s ease-in-out both }
-.m-peek-right .m-strand { animation: m-pk-drag-right 3.4s ease-in-out both; animation-delay: var(--lag) }
-.m-peek-bottom .m-move { animation: m-pk-bottom 3.4s both }
-.m-peek-bottom .m-squash { animation: m-pk-wobble 3.4s ease-in-out both }
-:is(.m-peek-left, .m-peek-right, .m-peek-bottom) .m-pupils { animation: m-pk-look 3.4s ease-in-out both }
-:is(.m-peek-left, .m-peek-right, .m-peek-bottom) .m-worried { animation: m-pk-worried 3.4s steps(1) both }
-:is(.m-peek-left, .m-peek-right, .m-peek-bottom) .m-smile { animation: m-pk-smile 3.4s steps(1) both }
-:is(.m-peek-left, .m-peek-right, .m-peek-bottom) .m-sweat { animation: m-pk-sweat 3.4s ease-in both }
+.m-peek-left { --dir: 1; --away: -70px; --peek: 6px }
+.m-peek-right { --dir: -1; --away: 310px; --peek: 234px }
+:is(.m-peek-left, .m-peek-right) .m-move { animation-name: m-pk-side }
+:is(.m-peek-left, .m-peek-right) .m-squash { animation-name: m-pk-lean }
+:is(.m-peek-left, .m-peek-right) .m-strand { animation-name: m-pk-drag }
+.m-peek-bottom .m-move { animation-name: m-pk-bottom }
+.m-peek-bottom .m-squash { animation-name: m-pk-wobble }
+:is(.m-peek-left, .m-peek-right, .m-peek-bottom) .m-pupils { animation-name: m-pk-look }
+:is(.m-peek-left, .m-peek-right, .m-peek-bottom) .m-worried { animation-name: m-pk-worried; animation-timing-function: steps(1) }
+:is(.m-peek-left, .m-peek-right, .m-peek-bottom) .m-smile { animation-name: m-pk-smile; animation-timing-function: steps(1) }
+:is(.m-peek-left, .m-peek-right, .m-peek-bottom) .m-sweat { animation-name: m-pk-sweat; animation-timing-function: ease-in }
 
-@keyframes m-pk-left {
-  0% { transform: translate(-70px, 178px); animation-timing-function: ease-out }
-  18%, 80% { transform: translate(6px, 178px); animation-timing-function: ease-in }
-  100% { transform: translate(-70px, 178px) }
+/* From the side: in from --away to --peek, leaning and dragging his strings by --dir */
+@keyframes m-pk-side {
+  0% { transform: translate(var(--away), 178px); animation-timing-function: ease-out }
+  18%, 80% { transform: translate(var(--peek), 178px); animation-timing-function: ease-in }
+  100% { transform: translate(var(--away), 178px) }
 }
-@keyframes m-pk-right {
-  0% { transform: translate(310px, 178px); animation-timing-function: ease-out }
-  18%, 80% { transform: translate(234px, 178px); animation-timing-function: ease-in }
-  100% { transform: translate(310px, 178px) }
+@keyframes m-pk-lean {
+  0% { transform: rotate(0deg) scale(1, 1) }
+  14% { transform: rotate(calc(var(--dir) * 12deg)) scale(1.06, .94) }
+  20% { transform: rotate(calc(var(--dir) * -4deg)) scale(1.08, .92) }
+  26% { transform: rotate(calc(var(--dir) * 4deg)) scale(.98, 1.02) }
+  34%, 76% { transform: rotate(calc(var(--dir) * 6deg)) scale(1, 1) }
+  84%, 100% { transform: rotate(calc(var(--dir) * -12deg)) scale(1.08, .92) }
+}
+@keyframes m-pk-drag {
+  0% { transform: skewX(0deg) }
+  14% { transform: skewX(calc(var(--dir) * -24deg)) }
+  20% { transform: skewX(calc(var(--dir) * 10deg)) }
+  28% { transform: skewX(calc(var(--dir) * -4deg)) }
+  34%, 78% { transform: skewX(0deg) }
+  86%, 100% { transform: skewX(calc(var(--dir) * 22deg)) }
 }
 @keyframes m-pk-bottom {
   0% { transform: translate(122px, 300px); animation-timing-function: ease-out }
   22%, 78% { transform: translate(122px, 236px); animation-timing-function: ease-in }
   100% { transform: translate(122px, 300px) }
 }
-@keyframes m-pk-lean-left {
-  0% { transform: rotate(0deg) scale(1, 1) }
-  14% { transform: rotate(12deg) scale(1.06, .94) }
-  20% { transform: rotate(-4deg) scale(1.08, .92) }
-  26% { transform: rotate(4deg) scale(.98, 1.02) }
-  34%, 76% { transform: rotate(6deg) scale(1, 1) }
-  84%, 100% { transform: rotate(-12deg) scale(1.08, .92) }
-}
-@keyframes m-pk-lean-right {
-  0% { transform: rotate(0deg) scale(1, 1) }
-  14% { transform: rotate(-12deg) scale(1.06, .94) }
-  20% { transform: rotate(4deg) scale(1.08, .92) }
-  26% { transform: rotate(-4deg) scale(.98, 1.02) }
-  34%, 76% { transform: rotate(-6deg) scale(1, 1) }
-  84%, 100% { transform: rotate(12deg) scale(1.08, .92) }
-}
 @keyframes m-pk-wobble {
   0%, 18% { transform: rotate(0deg) }
   24% { transform: rotate(-3deg) }
   30% { transform: rotate(3deg) }
   36%, 100% { transform: rotate(0deg) }
-}
-@keyframes m-pk-drag-left {
-  0% { transform: skewX(0deg) }
-  14% { transform: skewX(-24deg) }
-  20% { transform: skewX(10deg) }
-  28% { transform: skewX(-4deg) }
-  34%, 78% { transform: skewX(0deg) }
-  86%, 100% { transform: skewX(22deg) }
-}
-@keyframes m-pk-drag-right {
-  0% { transform: skewX(0deg) }
-  14% { transform: skewX(24deg) }
-  20% { transform: skewX(-10deg) }
-  28% { transform: skewX(4deg) }
-  34%, 78% { transform: skewX(0deg) }
-  86%, 100% { transform: skewX(-22deg) }
 }
 @keyframes m-pk-look {
   0%, 22% { transform: translate(0, 0) }

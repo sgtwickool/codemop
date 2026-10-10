@@ -18,12 +18,17 @@ npm run sync     # just write the docs pages (scripts/sync-docs.mjs)
 ## The docs are the repository's own markdown
 
 The docs pages aren't written here. `scripts/sync-docs.mjs` writes them before every build,
-from the README's sections (Quick start, Responding, Blocking merges, Configuration, Models,
-Privacy, CLI) and from `docs/self-hosting.md`, `SECURITY.md`, `CHANGELOG.md` and
-`CONTRIBUTING.md`, into `src/content/docs/` (not committed). Links between them become links
-between pages, and links to anything else in the repository go to it on GitHub. So edit those
-files, not the site. Renaming one of the README's sections means updating the script too: the
-build fails until you do.
+into `src/content/docs/` (not committed), from the README's sections marked as pages and from
+`docs/self-hosting.md`, `SECURITY.md`, `CHANGELOG.md` and `CONTRIBUTING.md`. A README section
+is a page when the line before its heading is an (invisible) marker:
+
+```markdown
+<!-- page: quickstart | Quick start | Review every pull request with CodeMop's GitHub Action, in two steps. -->
+## Quick start: the GitHub Action
+```
+
+Links between them become links between pages, and links to anything else in the repository
+go to it on GitHub. So edit those files, not the site.
 
 ## Design
 
@@ -36,7 +41,7 @@ each file saying so: change both together.
 - **Prints** (`<Print name="..." />`): computed at build time, inline SVG, with motion driven by
   the scroll position, so they tell a small story as they scroll up the screen and rewind as
   they scroll back
-- **The mascot**, in the hero: a fretful little mop. He plays his routine once as the page
+- **Moppy, the mascot**, in the hero: a fretful little mop. He plays his routine once as the page
   loads, then peeks in now and then looking for dirt; clicking him plays it again. His motion
   is CSS animations, switched by a class on his SVG (his states are listed in
   `src/styles/mascot.css`). He was designed on a canvas:
@@ -69,6 +74,13 @@ src/styles/                theme.css: tokens, fonts and Starlight's colours; mas
 
 To add a print, write a function in `src/lib/art/prints/`, add it to `prints` in
 `src/lib/art/index.ts`, and use it with `<Print name="..." />`.
+
+## Dependencies
+
+`package.json` overrides `postcss-selector-parser` for `postcss-nested` (used by Starlight's
+code blocks) with 7.1.6, past an advisory in the version it asks for (CPU exhaustion on hostile
+CSS; it only ever parses this site's own CSS, at build time). Remove the override once
+`postcss-nested` moves on.
 
 ## Deployment
 

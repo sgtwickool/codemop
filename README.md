@@ -19,6 +19,7 @@ it commits them. **[codemop.com](https://codemop.com)**
   model, which was chosen by an [eval](https://github.com/sgtwickool/codemop/blob/master/evals/review/README.md). Any provider, your own key, no
   CodeMop server
 
+<!-- page: quickstart | Quick start | Review every pull request with CodeMop's GitHub Action, in two steps. -->
 ## Quick start: the GitHub Action
 
 1. Add your model provider's API key as a repository secret: Settings → Secrets and
@@ -63,6 +64,7 @@ jobs:
 
 That's it: the next pull request gets a review. Drafts wait until they're ready for review.
 
+<!-- page: responding | Responding to CodeMop | Fix, dismiss or teach: what to do with each issue CodeMop raises. -->
 ## Responding to CodeMop
 
 CodeMop comments on each issue it finds, and keeps one summary comment in the PR's
@@ -94,6 +96,7 @@ After a force-push or rebase, it reviews the whole pull request again.
   suggestions) and `/codemop learn` doesn't work. Resolve the conversation instead, and add the
   note to `.codemop-learned.yml` on your default branch yourself
 
+<!-- page: merge-check | Blocking merges | CodeMop's merge check: a status that fails while bugs or security issues are open. -->
 ## Blocking merges
 
 CodeMop never approves or blocks a pull request on its own. To let it block merges, turn on
@@ -119,6 +122,7 @@ The status is updated on every push and on CodeMop's own commits. GitHub runs no
 a conversation is resolved, so after dismissing an issue that way, comment `/codemop check` on
 the pull request to update it straight away.
 
+<!-- page: configuration | Configuration | Every .codemop.yml setting and Action input. -->
 ## Configuring reviews
 
 How a repository is reviewed goes in `.codemop.yml`, read from the default branch so a pull
@@ -160,6 +164,7 @@ languages get the lines around each change). A change can be right in itself and
 that calls it: in the eval, context took those bugs from 4/10 found to 10/10, for about 13% more
 per review. The repository is read in one download, kept in memory, and never checked out or run.
 
+<!-- page: models | Choosing a model | The providers and models CodeMop supports, and which the eval recommends. -->
 ## Choosing a model
 
 The default is Claude Opus 5.5 at high effort, chosen by the
@@ -177,6 +182,7 @@ comments were wrong.
 | `openai-compatible` | `--api-key-env` | Any OpenAI-compatible endpoint: set `base-url` and a model |
 | `ollama` | none | A model on your own machine (CLI only; see below) |
 
+<!-- page: privacy | Privacy | Exactly what CodeMop sends, and where. -->
 ## Privacy: what's sent where
 
 CodeMop sends the diff, and with context the related code from the repository, to the model
@@ -184,6 +190,7 @@ provider you chose, with your key, and nothing else anywhere: there's no CodeMop
 review is posted on the pull request through GitHub's API with the workflow's token. Choose a
 provider whose data terms suit your code (zero data retention, Bedrock, or a local model).
 
+<!-- page: cli | The command line | Review a pull request or a local diff from your terminal. -->
 ## The command line
 
 The same review runs anywhere Python 3.12+ does:
