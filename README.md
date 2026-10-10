@@ -1,7 +1,7 @@
 # CodeMop
 
 AI code review for pull requests, with the model of your choice. Tick the fixes you want and
-it commits them.
+it commits them. **[codemop.com](https://codemop.com)**
 
 [![CI](https://github.com/sgtwickool/codemop/actions/workflows/ci.yml/badge.svg)](https://github.com/sgtwickool/codemop/actions/workflows/ci.yml)
 [![Security scan](https://github.com/sgtwickool/codemop/actions/workflows/security.yml/badge.svg)](https://github.com/sgtwickool/codemop/actions/workflows/security.yml)

@@ -1,0 +1,63 @@
+name: Site
+
+# The website (site/), at codemop.com. Its docs pages are written from the repository's
+# markdown, so a pull request that changes the docs, or renames a README section the site
+# uses, is built here too. Pushes to master deploy it to GitHub Pages.
+on:
+  pull_request:
+    paths: [ "site/**", "README.md", "docs/**", "SECURITY.md", "CHANGELOG.md", "CONTRIBUTING.md", ".github/workflows/site.yml" ]
+  push:
+    branches: [ master ]
+    paths: [ "site/**", "README.md", "docs/**", "SECURITY.md", "CHANGELOG.md", "CONTRIBUTING.md", ".github/workflows/site.yml" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deployment at a time, and never cancel one halfway
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+    - uses: actions/checkout@v7
+
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 24
+        cache: npm
+        cache-dependency-path: site/package-lock.json
+
+    - name: Install
+      run: npm ci
+
+    - name: Check
+      run: npm run check
+
+    - name: Build
+      run: npm run build
+
+    - uses: actions/upload-pages-artifact@v5
+      if: github.event_name != 'pull_request'
+      with:
+        path: site/dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+    - id: deployment
+      uses: actions/deploy-pages@v5

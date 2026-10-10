@@ -1,0 +1,21 @@
+---
+// The filters the prints share: a slightly rough ink edge, and paper grain for light and
+// dark backgrounds. Put once on any page with prints. From gregkemp.dev's BaseLayout.
+---
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="rough" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="4" result="warp" />
+      <feDisplacementMap in="SourceGraphic" in2="warp" scale="3" xChannelSelector="R" yChannelSelector="G" />
+    </filter>
+    <filter id="grain-dark" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" stitchTiles="stitch" seed="9" />
+      <feColorMatrix type="matrix" values="0 0 0 0 0.14  0 0 0 0 0.16  0 0 0 0 0.22  0 0 0 0.5 -0.16" />
+    </filter>
+    <filter id="grain-light" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" stitchTiles="stitch" seed="9" />
+      <feColorMatrix type="matrix" values="0 0 0 0 0.92  0 0 0 0 0.92  0 0 0 0 0.88  0 0 0 0.4 -0.15" />
+    </filter>
+  </defs>
+</svg>

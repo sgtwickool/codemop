@@ -1,0 +1,133 @@
+/* gregkemp.dev's look on Starlight: paper and ink, Archivo headings over Source Serif body
+   text, and colour kept for the risograph prints (pink line, blue strong, yellow glow).
+   The values are gregkemp.dev's (src/styles/global.css there). Starlight is dark by default
+   and sets data-theme="light" for the light theme. */
+
+:root {
+  --paper: #191c26;
+  --plate: #222636;
+  --ink: #e8e8e2;
+  --ink-soft: #c4c7d0;
+  --muted: #9ba0ae;
+  --rule: #343949;
+  --link: #7cc4f5;
+  --ink-line: #ff5cb8;
+  --ink-strong: #3d9fe6;
+  --ink-glow: #d9c400;
+  --print-blend: screen;
+
+  --sl-color-black: var(--paper);
+  --sl-color-gray-7: #1e2230;
+  --sl-color-gray-6: var(--plate);
+  --sl-color-gray-5: var(--rule);
+  --sl-color-gray-4: #5d6373;
+  --sl-color-gray-3: #7d8292;
+  --sl-color-gray-2: var(--muted);
+  --sl-color-gray-1: var(--ink-soft);
+  --sl-color-white: var(--ink);
+  --sl-color-accent-low: #17324a;
+  --sl-color-accent: var(--ink-strong);
+  --sl-color-accent-high: #b3dcf7;
+  --sl-color-text-accent: var(--link);
+
+  --font-sans: "Archivo Variable", "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "Source Serif 4 Variable", Georgia, serif;
+  --sl-font: var(--font-serif);
+  --sl-font-system: var(--font-sans);
+  --sl-text-base: 1.0625rem;
+  --sl-line-height: 1.65;
+}
+
+:root[data-theme="light"] {
+  --paper: #f4f4f1;
+  --plate: #ebeae4;
+  --ink: #232838;
+  --ink-soft: #4a5060;
+  --muted: #5d6373;
+  --rule: #d9d9d3;
+  --link: #005c94;
+  --ink-line: #ff48b0;
+  --ink-strong: #0078bf;
+  --ink-glow: #ffe800;
+  --print-blend: multiply;
+
+  --sl-color-black: var(--paper);
+  --sl-color-gray-7: #f0f0ec;
+  --sl-color-gray-6: var(--plate);
+  --sl-color-gray-5: var(--rule);
+  --sl-color-gray-4: #8a8f9b;
+  --sl-color-gray-3: var(--muted);
+  --sl-color-gray-2: var(--ink-soft);
+  --sl-color-gray-1: #2f3546;
+  --sl-color-white: var(--ink);
+  --sl-color-accent-low: #cfe6f5;
+  --sl-color-accent: var(--ink-strong);
+  --sl-color-accent-high: #005c94;
+  --sl-color-text-accent: var(--link);
+}
+
+/* Headings, navigation and buttons in the sans; reading text in the serif. */
+h1,
+h2,
+h3,
+h4,
+.sl-markdown-content :is(h1, h2, h3, h4),
+.site-title,
+.sidebar-content,
+.right-sidebar,
+starlight-tabs,
+.sl-link-button {
+  font-family: var(--font-sans);
+}
+.sl-markdown-content :is(h2, h3) {
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+h1#_top {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+::selection {
+  background-color: color-mix(in oklab, var(--ink-line) 35%, transparent);
+}
+
+.sl-markdown-content a {
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.2em;
+  text-decoration-color: color-mix(in oklab, var(--link) 45%, transparent);
+}
+
+/* The prints: inks overprint each other, like a risograph, on grainy paper. */
+.ink {
+  mix-blend-mode: var(--print-blend);
+}
+.grain {
+  filter: url(#grain-light);
+  mix-blend-mode: screen;
+}
+:root[data-theme="light"] .grain {
+  filter: url(#grain-dark);
+  mix-blend-mode: multiply;
+}
+.print {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.plate {
+  border-radius: 3px;
+  background-color: var(--plate);
+}
+/* Labels sit on a paper-coloured halo so lines behind them don't cut through. */
+.print-label {
+  font-family: var(--font-sans);
+  paint-order: stroke;
+  stroke: var(--print-bg);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+}
+/* The print in the home page's hero */
+.hero .print {
+  max-width: 30rem;
+}
