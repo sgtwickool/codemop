@@ -30,7 +30,7 @@ replaced with fakes.
 - `site/`: the website, [codemop.com](https://codemop.com). Its docs pages are written from the
   README's sections and the docs here when it's built (`site/scripts/sync-docs.mjs`), so edit
   those, not the site. Renaming one of the README's sections means updating that script too;
-  the Site workflow fails until you do. `cd site && npm install && npm run dev` to see it
+  the Site workflow fails until you do. [`site/README.md`](site/README.md) says how it's built
 
 The [roadmap's layout](ROADMAP.md#repository-structure) has the full tree. A module that grows
 past about 300 lines, or changes for two unrelated reasons, gets split.

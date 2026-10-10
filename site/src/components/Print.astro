@@ -1,8 +1,9 @@
 ---
-// One risograph print from src/lib/art, drawn as inline SVG (src/lib/art/svg.ts). Its motion
-// is worked out in src/lib/art/style.ts and driven by src/scripts/scroll-prints.ts.
-import type { PrintName } from "../lib/art/prints";
-import { printSvg } from "../lib/art/svg";
+// One risograph print from src/lib/art, drawn as inline SVG. Its motion is
+// worked out in src/lib/art/style.ts and driven by src/scripts/scroll-prints.ts.
+// gregkemp.dev's component (src/components/Print.astro there), with plain CSS for its classes.
+import { prints, type PrintName } from "../lib/art";
+import { printStyles } from "../lib/art/style";
 
 interface Props {
   name: PrintName;
@@ -12,9 +13,68 @@ interface Props {
 }
 
 const { name, plate = true, class: className } = Astro.props;
+const print = prints[name];
+const { width, height, layers, labels = [] } = print;
+const styles = printStyles(print);
 ---
 
-<Fragment set:html={printSvg(name, { plate, className })} />
+<svg
+  viewBox={`0 0 ${width} ${height}`}
+  class:list={["print", plate && "plate", className]}
+  data-animate={styles.animated ? "" : undefined}
+  style={`--print-bg:var(${plate ? "--plate" : "--paper"})`}
+  aria-hidden="true"
+  focusable="false"
+>
+  <g filter="url(#rough)">
+    {layers.map((layer) => {
+      // Paper ink covers what's beneath it, so it doesn't blend like the inks.
+      const blend = layer.ink !== "paper";
+      const shape = (
+        <path
+          class:list={[blend && !layer.spin && "ink"]}
+          d={layer.d}
+          pathLength={layer.motion?.kind === "draw" ? 1 : undefined}
+          style={styles.layer(layer)}
+        />
+      );
+      return layer.spin ? (
+        <g class:list={[blend && "ink"]} style={styles.spin(layer.spin)}>
+          {shape}
+        </g>
+      ) : (
+        shape
+      );
+    })}
+  </g>
+  {labels.map((label) => (
+    <text class="print-label" x={label.x} y={label.y} text-anchor={label.anchor ?? "start"} style={styles.label(label)}>
+      {label.text}
+    </text>
+  ))}
+  {plate && <rect class="grain" width={width} height={height} />}
+</svg>
+
+<style>
+  .print {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .plate {
+    border-radius: 3px;
+    background-color: var(--plate);
+  }
+
+  /* Labels sit on a paper-coloured halo so lines behind them don't cut through. */
+  .print-label {
+    font-family: var(--font-sans);
+    paint-order: stroke;
+    stroke: var(--print-bg);
+    stroke-width: 5px;
+    stroke-linejoin: round;
+  }
+</style>
 
 <script>
   import { bindScrollPrints } from "../scripts/scroll-prints";

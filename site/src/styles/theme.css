@@ -110,20 +110,3 @@ h1#_top {
   filter: url(#grain-dark);
   mix-blend-mode: multiply;
 }
-.print {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-.plate {
-  border-radius: 3px;
-  background-color: var(--plate);
-}
-/* Labels sit on a paper-coloured halo so lines behind them don't cut through. */
-.print-label {
-  font-family: var(--font-sans);
-  paint-order: stroke;
-  stroke: var(--print-bg);
-  stroke-width: 5px;
-  stroke-linejoin: round;
-}
