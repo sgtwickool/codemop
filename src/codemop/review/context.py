@@ -27,7 +27,7 @@ from typing import Dict, Iterable, List, Mapping, Optional, Protocol, Sequence, 
 
 from codemop.review.chunks import estimate_tokens
 from codemop.review.diff import FileDiff
-from codemop.review.code import Block, Language, Parsed, language_for
+from codemop.review.code import Block, Import, Parsed, language_for
 
 DEFAULT_CONTEXT_TOKENS = 6_000
 AROUND_LINES = 25  # for languages without a parser here: this many lines either side of a change
@@ -161,14 +161,17 @@ def _is_test(path: str) -> bool:
             or bool(re.search(r"\.(test|spec)\.[^.]+$", name)))
 
 
-async def _uses(defined: Dict[str, Dict[str, str]], shown: Dict[str, Set[int]], source: FileSource) -> List[Snippet]:
+async def _uses(defined: Dict[str, Dict[str, Set[str]]], shown: Dict[str, Set[int]],
+                source: FileSource) -> List[Snippet]:
     """
-    Where the changed definitions are used (`defined`: by file, each name with the top-level name
-    it belongs to), MAX_USES each: the function around each use, in a file in the same language
-    that imports what it belongs to (or the file it's in). First elsewhere in the changed files
-    (`shown`: the lines already shown, by file), then in the rest of the code, then in tests.
+    Where the changed definitions are used (`defined`: by file, each name with the names a file
+    can import to use it), MAX_USES each: the function around each use, in a file in the same
+    language that imports one of those names (or the file it's in). First elsewhere in the
+    changed files (`shown`: the lines already shown, by file), then in the rest of the code,
+    then in tests.
     """
     languages = {path: language_for(path) for path in defined}
+    modules = {path: languages[path].module_name(path) for path in defined}
     every_name = {name for names in defined.values() for name in names}
     paths = [p for p in await source.paths() if p not in shown and language_for(p) in languages.values()]
     paths = [*shown, *sorted(paths, key=_is_test)][:MAX_SCANNED_FILES]
@@ -176,8 +179,14 @@ async def _uses(defined: Dict[str, Dict[str, str]], shown: Dict[str, Set[int]], 
     found: Dict[str, int] = {}
     snippets: List[Snippet] = []
     for path, text in zip(paths, texts):
+        if all(found.get(name, 0) >= MAX_USES for name in every_name):
+            break
         language = language_for(path)
+        # Cheap checks before parsing: a file can only use them if it names them, and only from
+        # another file if it imports that file (whose module name is then in it too)
         if not text or language is None or not any(name in text for name in every_name):
+            continue
+        if path not in defined and not any(module in text for module in modules.values()):
             continue
         code = language.parse(path, text)
         if code is None:
@@ -186,10 +195,12 @@ async def _uses(defined: Dict[str, Dict[str, str]], shown: Dict[str, Set[int]], 
         for defined_in, names in defined.items():
             if languages[defined_in] is not language:
                 continue
-            imported = code.imported_from(language.module_name(defined_in)) if path != defined_in else set()
-            wanted |= {name for name, top in names.items()
-                       if path == defined_in or top in imported or "*" in imported}
-        for line, name in code.references(wanted):
+            if path == defined_in:
+                wanted |= set(names)
+                continue
+            imported = code.imported_from(modules[defined_in])
+            wanted |= {name for name, importable in names.items() if importable & imported or "*" in imported}
+        for line, name in code.references(wanted) if wanted else []:
             if found.get(name, 0) >= MAX_USES or line in shown.get(path, ()):
                 continue
             if any(s.path == path and s.start <= line <= s.end for s in snippets):
@@ -208,21 +219,20 @@ def _definition(block: Block, name: str, text: str, path: str) -> Snippet:
     return Snippet(path, start, end, f"defines {name}", _lines(text, start, end))
 
 
-async def _imported_definitions(imported: Sequence[Tuple[str, str, object]], source: FileSource) -> List[Snippet]:
-    """The definitions of names imported from the repository ((importer, name, where from) each)"""
+async def _imported_definitions(imported: Sequence[Tuple[str, Import]], source: FileSource) -> List[Snippet]:
+    """The definitions of names imported from the repository (each with the file importing it)"""
     repo_paths = set(await source.paths())
     texts: Dict[str, Optional[str]] = {}
     snippets = []
-    for importer, name, origin in imported:
-        language: Language = language_for(importer)
+    for importer, (name, origin) in imported:
+        language = language_for(importer)
         for path in language.module_paths(origin, importer, repo_paths):
             if path not in texts:
                 if len(texts) >= MAX_IMPORTED_FILES:
                     continue
                 texts[path] = await source.read(path)
             text = texts[path]
-            target = language_for(path)
-            code = target.parse(path, text) if text and target else None
+            code = language.parse(path, text) if text else None
             block = code.top_level_definitions().get(name) if code else None
             if block:
                 snippets.append(_definition(block, name, text, path))
@@ -242,9 +252,9 @@ async def build_context(files: Iterable[FileDiff], source: FileSource, budget_to
         in_diff = {file.path: file.commentable_lines() for file in files}
     snippets: List[Snippet] = []
     later: List[Snippet] = []  # same-file definitions, for step 3
-    defined: Dict[str, Dict[str, str]] = {}  # what the change defines, by file, for step 2
+    defined: Dict[str, Dict[str, Set[str]]] = {}  # what the change defines, by file, for step 2
     seen_lines: Dict[str, Set[int]] = {}  # what the diff and step 1 show, by file
-    imported: List[Tuple[str, str, object]] = []  # (importer, name, where from), for step 4
+    imported: List[Tuple[str, Import]] = []  # what the changed files import, by importer, for step 4
     files = [file for file in files if changed_lines(file)]
     texts_now = await asyncio.gather(*(source.read(file.path) for file in files))
     for file, text in zip(files, texts_now):
@@ -266,7 +276,7 @@ async def build_context(files: Iterable[FileDiff], source: FileSource, budget_to
             if block and not any(b.start <= block.start <= b.end for b in blocks):
                 later.append(_definition(block, name, text, file.path))
             elif name in imports:
-                imported.append((file.path, *imports[name]))
+                imported.append((file.path, imports[name]))
     # Imported definitions are read first: without a snapshot of the repository, reads are limited
     imports = await _imported_definitions(imported, source) if imported else []
     snippets += await _uses(defined, seen_lines, source) if any(defined.values()) else []

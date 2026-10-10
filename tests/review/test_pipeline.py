@@ -9,6 +9,7 @@ from codemop.review.diff import parse_diff
 from codemop.review.pipeline import review_diff
 from codemop.review.prompt import SYSTEM_PROMPT, render_file, render_hunks
 from codemop.review.schema import ModelReview, ModelSuggestion
+from review_support import Files
 
 
 def suggestion(file_path, line, confidence=0.9, title="Issue"):
@@ -177,15 +178,9 @@ async def test_context_comes_before_the_change(sample_diff):
     # service.py as of the change: the diff shows lines 10-16 of a class that runs from 9 to 40
     service = "\n" * 8 + "class Service:\n" + "".join(f"    x{n} = {n}\n" for n in range(10, 41))
 
-    class Files:
-        async def read(self, path):
-            return service if path == "app/service.py" else None
-
-        async def paths(self):
-            return []
     model = FakeModel({})
 
-    await review_diff(sample_diff, model, context=Files())
+    await review_diff(sample_diff, model, context=Files({"app/service.py": service}))
 
     sent = model.calls[0][1]
     assert sent.startswith("### Context: unchanged code from the repository")
@@ -195,14 +190,8 @@ async def test_context_comes_before_the_change(sample_diff):
 
 @pytest.mark.asyncio
 async def test_no_context_section_when_theres_none(sample_diff):
-    class Nothing:
-        async def read(self, path):
-            return None
-
-        async def paths(self):
-            return []
     model = FakeModel({})
 
-    await review_diff(sample_diff, model, context=Nothing())
+    await review_diff(sample_diff, model, context=Files({}))
 
     assert model.calls[0][1].startswith("### app/service.py (modified)")

@@ -58,7 +58,7 @@ include = ["/src/codemop", "/tests", "/README.md", "/LICENSE"]
 [tool.pytest.ini_options]
 testpaths = ["tests", "evals"]
 # tests/cli/cli_support.py: helpers the CLI tests share, imported as cli_support
-pythonpath = ["tests/cli"]
+pythonpath = ["tests/cli", "tests/review"]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
 # importlib: test dirs aren't packages, so they can't clash with server/tests

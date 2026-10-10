@@ -2,20 +2,21 @@
 import functools
 import posixpath
 import re
-from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Set, Tuple
+from typing import Dict, Hashable, Iterator, List, Optional, Set, Tuple
 
 import tree_sitter_javascript
 import tree_sitter_typescript
 from tree_sitter import Language as Grammar, Node, Parser, Query, QueryCursor
 
-from codemop.review.code import Block, searchable
+from codemop.review.code.base import Block, Import, owners, paths_ending_with, searchable, touches
 
 _TYPESCRIPT = Grammar(tree_sitter_typescript.language_typescript())
 _TSX = Grammar(tree_sitter_typescript.language_tsx())
 _JAVASCRIPT = Grammar(tree_sitter_javascript.language())  # with JSX
-_GRAMMARS = {".ts": _TYPESCRIPT, ".mts": _TYPESCRIPT, ".cts": _TYPESCRIPT, ".tsx": _TSX,
-             ".js": _JAVASCRIPT, ".jsx": _JAVASCRIPT, ".mjs": _JAVASCRIPT, ".cjs": _JAVASCRIPT}
+# In the order an import's file is looked for
+_GRAMMARS = {".ts": _TYPESCRIPT, ".tsx": _TSX, ".js": _JAVASCRIPT, ".jsx": _JAVASCRIPT, ".mjs": _JAVASCRIPT,
+             ".cjs": _JAVASCRIPT, ".mts": _TYPESCRIPT, ".cts": _TYPESCRIPT}
+_EXTENSION = re.compile(r"\.(d\.)?[mc]?[jt]sx?$")  # an import may name it, as ESM does ("./thing.js" for thing.ts)
 
 # Declarations with a name of their own, and how they're described
 _DECLARATIONS = {
@@ -25,13 +26,18 @@ _DECLARATIONS = {
 }
 _FUNCTIONS = {"arrow_function", "function_expression", "function", "generator_function"}
 _VARIABLES = {"lexical_declaration", "variable_declaration"}
+_MEMBERS = {"public_field_definition", "property_signature"}  # a class's fields, an interface's or type's members
 _NAMES = {"identifier", "property_identifier", "shorthand_property_identifier",
           "shorthand_property_identifier_pattern", "type_identifier"}
-_EXTENSIONS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts")
-# Every name in a file, found by tree-sitter itself (walking the tree in Python is far slower)
-_NAME_QUERIES = {grammar: Query(grammar, " ".join(f"({kind}) @name" for kind in sorted(_NAMES)
-                                                   if kind != "type_identifier" or grammar is not _JAVASCRIPT))
-                 for grammar in (_TYPESCRIPT, _TSX, _JAVASCRIPT)}
+
+
+def _name_query(grammar: Grammar, kinds: Set[str]) -> Query:
+    """Every name in a file, found by tree-sitter itself (walking the tree in Python is far slower)"""
+    return Query(grammar, " ".join(f"({kind}) @name" for kind in sorted(kinds)))
+
+
+_NAME_QUERIES = {_TYPESCRIPT: _name_query(_TYPESCRIPT, _NAMES), _TSX: _name_query(_TSX, _NAMES),
+                 _JAVASCRIPT: _name_query(_JAVASCRIPT, _NAMES - {"type_identifier"})}
 
 
 def _start(node: Node) -> int:
@@ -46,12 +52,20 @@ def _text(node: Node) -> str:
     return node.text.decode("utf-8", "replace")
 
 
+def _block(node: Node, kind: str, name: str) -> Block:
+    return Block(_start(node), _end(node), kind, name)
+
+
 def _walk(node: Node) -> Iterator[Node]:
     stack = [node]
     while stack:
         node = stack.pop()
         yield node
         stack.extend(reversed(node.children))
+
+
+def _identifier(node: Node) -> Optional[Node]:
+    return next((child for child in node.children if child.type == "identifier"), None)
 
 
 def _in_import(node: Node) -> bool:
@@ -64,30 +78,30 @@ def _in_import(node: Node) -> bool:
 
 def _named(node: Node) -> Optional[Block]:
     """The block a node is, if it's a named function, class or other declaration"""
-    name = node.child_by_field_name("name")
+    name, value = node.child_by_field_name("name"), node.child_by_field_name("value")
     if node.type in _DECLARATIONS:
-        return Block(_start(node), _end(node), _DECLARATIONS[node.type], _text(name)) if name else None
-    value = node.child_by_field_name("value")
+        return _block(node, _DECLARATIONS[node.type], _text(name)) if name else None
     if node.type == "variable_declarator" and value and value.type in _FUNCTIONS and name and name.type == "identifier":
-        statement = node.parent  # const Thing = () => ..., including the `const`
-        return Block(_start(statement), _end(statement), "function", _text(name))
+        return _block(node.parent, "function", _text(name))  # const Thing = () => ..., including the `const`
     if node.type == "public_field_definition" and value and value.type in _FUNCTIONS and name:
-        return Block(_start(node), _end(node), "method", _text(name))
+        return _block(node, "method", _text(name))
     return None
 
 
 def _declared(statement: Node) -> Optional[Node]:
     """The declaration a top-level statement makes (unwrapping `export`)"""
-    if statement.type == "export_statement":
-        return statement.child_by_field_name("declaration")
-    return statement
+    return statement.child_by_field_name("declaration") if statement.type == "export_statement" else statement
+
+
+def _default_export(statement: Node) -> bool:
+    return statement.type == "export_statement" and any(child.type == "default" for child in statement.children)
 
 
 def _declarators(declaration: Node) -> List[Tuple[str, Node]]:
     """The names a const/let/var declaration sets, each with its declarator"""
-    return [(_text(d.child_by_field_name("name")), d) for d in declaration.children
-            if d.type == "variable_declarator" and d.child_by_field_name("name") is not None
-            and d.child_by_field_name("name").type == "identifier"]
+    return [(_text(name), d) for d in declaration.children
+            if d.type == "variable_declarator" and (name := d.child_by_field_name("name")) is not None
+            and name.type == "identifier"]
 
 
 def _module(source: str) -> str:
@@ -95,8 +109,13 @@ def _module(source: str) -> str:
     parts = [p for p in source.split("?")[0].split("/") if p not in ("", ".", "..")]
     if not parts:
         return ""
-    last = re.sub(r"\.(d\.)?[mc]?[jt]sx?$", "", parts[-1])
+    last = _EXTENSION.sub("", parts[-1])
     return parts[-2] if last == "index" and len(parts) > 1 else last
+
+
+def _candidates(stem: str) -> List[str]:
+    """The files an import of `stem` could mean"""
+    return [stem + extension for extension in _GRAMMARS] + [f"{stem}/index{extension}" for extension in _GRAMMARS]
 
 
 class TypeScriptCode:
@@ -104,112 +123,97 @@ class TypeScriptCode:
         self.root, self.grammar = root, grammar
 
     @functools.cached_property
-    def blocks(self) -> List[Block]:
+    def _blocks(self) -> List[Block]:
         return [block for block in map(_named, _walk(self.root)) if block]
 
-    def innermost(self, line: int) -> Optional[Block]:
-        around = [b for b in self.blocks if b.start <= line <= b.end]
-        return min(around, key=lambda b: b.end - b.start, default=None)
-
-    def _owner(self, line: int) -> Optional[str]:
-        """The name of the top-level declaration a line is in"""
+    @functools.cached_property
+    def _definitions(self) -> Dict[str, Block]:
+        definitions: Dict[str, Block] = {}
+        default_name = None
         for statement in self.root.children:
-            if _start(statement) <= line <= _end(statement):
-                declared = _declared(statement)
-                if declared is None:
-                    return None
-                name = declared.child_by_field_name("name")
-                if name is not None:
-                    return _text(name)
-                names = _declarators(declared) if declared.type in _VARIABLES else []
-                return names[0][0] if names else None
-        return None
+            declared = _declared(statement)
+            if declared is None:  # export default <expression>, export { ... }
+                value = statement.child_by_field_name("value")
+                if _default_export(statement) and value is not None and value.type == "identifier":
+                    default_name = _text(value)
+                continue
+            name = declared.child_by_field_name("name")
+            names = [n for n, _ in _declarators(declared)] if declared.type in _VARIABLES else (
+                [_text(name)] if name is not None else [])
+            for n in names:
+                definitions[n] = _block(statement, "defines", n)
+            if names and _default_export(statement):
+                definitions["default"] = definitions[names[0]]
+        if default_name in definitions:  # export default Thing;
+            definitions["default"] = definitions[default_name]
+        return definitions
 
-    def changed_definitions(self, changed: Set[int]) -> Dict[str, str]:
+    @functools.cached_property
+    def _imports(self) -> Dict[str, Import]:
+        found: Dict[str, Import] = {}
+        for statement in self.root.children:
+            source_node = statement.child_by_field_name("source")
+            if statement.type != "import_statement" or source_node is None:
+                continue
+            source = _text(source_node).strip("'\"`")
+            for node in _walk(statement):
+                if node.type == "import_clause" and (default := _identifier(node)) is not None:
+                    found[_text(default)] = Import("default", source)
+                elif node.type == "import_specifier" and (name := node.child_by_field_name("name")) is not None:
+                    found[_text(node.child_by_field_name("alias") or name)] = Import(_text(name), source)
+                elif node.type == "namespace_import" and (local := _identifier(node)) is not None:
+                    found[_text(local)] = Import("*", source)
+        return found
+
+    def innermost(self, line: int) -> Optional[Block]:
+        return min((b for b in self._blocks if b.covers(line)), key=lambda b: b.end - b.start, default=None)
+
+    def changed_definitions(self, changed: Set[int]) -> Dict[str, Set[str]]:
+        names: Dict[str, Set[str]] = {}
+
+        def add(name: str, line: int) -> None:
+            names.setdefault(name, set()).update(owners(self._definitions, line) or {name})
+
         def touched(node: Node) -> bool:
-            return any(_start(node) <= line <= _end(node) for line in changed)
+            return touches(_start(node), _end(node), changed)
 
-        names = {block.name: self._owner(block.start) or block.name
-                 for block in (self.innermost(line) for line in sorted(changed)) if block}
+        for block in filter(None, map(self.innermost, sorted(changed))):
+            add(block.name, block.start)
         for statement in self.root.children:
             declared = _declared(statement)
             if declared is None:
                 continue
             if declared.type in _VARIABLES:  # a constant, or a function held in one
-                names.update((name, name) for name, d in _declarators(declared) if touched(d))
+                for name, declarator in _declarators(declared):
+                    if touched(declarator):
+                        add(name, _start(declarator))
             # A class's fields, and an interface's or type's members: a renamed field's uses matter
-            owner = declared.child_by_field_name("name")
             body = declared.child_by_field_name("body") or declared.child_by_field_name("value")
-            if owner is not None and body is not None and touched(body):
+            if declared.child_by_field_name("name") is not None and body is not None and touched(body):
                 for member in body.children:
                     name = member.child_by_field_name("name")
-                    if member.type in ("public_field_definition", "property_signature") and name and touched(member):
-                        names[_text(name)] = _text(owner)
-        return {name: names[name] for name in searchable(list(names), TYPESCRIPT.ignored)}
+                    if member.type in _MEMBERS and name is not None and touched(member):
+                        add(_text(name), _start(member))
+        return searchable(names, TYPESCRIPT.ignored)
 
     def top_level_definitions(self) -> Dict[str, Block]:
-        definitions: Dict[str, Block] = {}
-        default_name = None
-        for statement in self.root.children:
-            declared = _declared(statement)
-            block = (lambda name: Block(_start(statement), _end(statement), "defines", name))
-            if declared is not None:
-                name = declared.child_by_field_name("name")
-                if declared.type in _VARIABLES:
-                    for declarator_name, _ in _declarators(declared):
-                        definitions[declarator_name] = block(declarator_name)
-                elif name is not None:
-                    definitions[_text(name)] = block(_text(name))
-                    if statement.type == "export_statement" and any(c.type == "default" for c in statement.children):
-                        definitions["default"] = block(_text(name))
-            elif statement.type == "export_statement" and any(c.type == "default" for c in statement.children):
-                value = statement.child_by_field_name("value")
-                default_name = _text(value) if value is not None and value.type == "identifier" else None
-        if default_name in definitions:  # export default Thing;
-            definitions["default"] = definitions[default_name]
-        return definitions
+        return self._definitions
 
-    def _import_statements(self) -> Iterator[Tuple[str, Node]]:
-        for statement in self.root.children:
-            source = statement.child_by_field_name("source")
-            if statement.type == "import_statement" and source is not None:
-                yield _text(source).strip("'\"`"), statement
-
-    def imports(self) -> Dict[str, Tuple[str, object]]:
-        found: Dict[str, Tuple[str, object]] = {}
-        for source, statement in self._import_statements():
-            for node in _walk(statement):
-                if node.type == "import_clause":
-                    default = next((c for c in node.children if c.type == "identifier"), None)
-                    if default is not None:
-                        found[_text(default)] = ("default", source)
-                elif node.type == "import_specifier":
-                    name, alias = node.child_by_field_name("name"), node.child_by_field_name("alias")
-                    if name is not None:
-                        found[_text(alias or name)] = (_text(name), source)
-                elif node.type == "namespace_import":
-                    local = next((c for c in node.children if c.type == "identifier"), None)
-                    if local is not None:
-                        found[_text(local)] = ("*", source)
-        return found
+    def imports(self) -> Dict[str, Import]:
+        return self._imports
 
     def imported_from(self, module: str) -> Set[str]:
-        found = set()
-        for local, (name, source) in self.imports().items():
-            if _module(source) == module:
-                # A default import's local name is usually the definition's own (a component's)
-                found |= {"*"} if name == "*" else {name, local} if name == "default" else {name}
-        return found
+        return {imported.name for imported in self._imports.values() if _module(imported.source) == module}
 
     def references(self, names: Set[str]) -> List[Tuple[int, str]]:
         """As a name, a property, a type, or a JSX tag; not in the imports themselves"""
+        wanted = {name.encode() for name in names}
         found = QueryCursor(_NAME_QUERIES[self.grammar]).captures(self.root).get("name", [])
-        return sorted((_start(node), _text(node)) for node in found
-                      if _text(node) in names and not _in_import(node))
+        return sorted((_start(node), _text(node)) for node in found if node.text in wanted and not _in_import(node))
 
 
 class TypeScript:
-    extensions = _EXTENSIONS
+    extensions = tuple(_GRAMMARS)
     ignored = {
         "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else",
         "enum", "export", "extends", "false", "finally", "for", "function", "if", "import", "in", "instanceof",
@@ -223,27 +227,24 @@ class TypeScript:
     }
 
     def parse(self, path: str, text: str) -> Optional[TypeScriptCode]:
-        grammar = _GRAMMARS.get(Path(path).suffix)
+        grammar = _GRAMMARS.get(posixpath.splitext(path)[1])
         return _parse(grammar, text) if grammar is not None else None
 
     def module_name(self, path: str) -> str:
         return _module(path)
 
-    def module_paths(self, source: object, importer: str, repo_paths: Set[str]) -> List[str]:
+    def module_paths(self, source: Hashable, importer: str, repo_paths: Set[str]) -> List[str]:
         """
         For `import ... from "<source>"`: a relative path from the importer's folder, or a path
         alias (like Next.js's "@/lib/thing"), matched against the end of the repository's paths.
         A package from node_modules isn't in the repository, so it means nothing here.
         """
         spec = str(source).split("?")[0]
-        stem = re.sub(r"\.[mc]?[jt]sx?$", "", spec)  # ESM imports can name "./thing.js" for thing.ts
+        stem = _EXTENSION.sub("", spec)
         if spec.startswith("."):
             root = posixpath.normpath(posixpath.join(posixpath.dirname(importer), stem))
-            candidates = [root + ext for ext in _EXTENSIONS] + [f"{root}/index{ext}" for ext in _EXTENSIONS]
-            return [c for c in candidates if c in repo_paths]
-        tail = re.sub(r"^[@~#]/", "", stem)
-        candidates = [tail + ext for ext in _EXTENSIONS] + [f"{tail}/index{ext}" for ext in _EXTENSIONS]
-        return sorted(p for p in repo_paths if any(p == c or p.endswith("/" + c) for c in candidates))
+            return [candidate for candidate in _candidates(root) if candidate in repo_paths]
+        return paths_ending_with(repo_paths, _candidates(re.sub(r"^[@~#]/", "", stem)))
 
 
 @functools.lru_cache(maxsize=512)  # files are read again for each chunk of a diff, and for several names

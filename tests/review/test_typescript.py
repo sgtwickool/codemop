@@ -4,6 +4,7 @@ from codemop.review.code import Block, language_for
 from codemop.review.code.typescript import TYPESCRIPT
 from codemop.review.context import build_context
 from codemop.review.diff import parse_diff
+from review_support import Files
 
 LEDGER = '''\
 import { formatCents } from "@/lib/money";
@@ -71,10 +72,10 @@ def test_a_component_held_in_a_const_is_a_function():
 def test_what_a_change_defines_with_what_has_to_be_imported_to_use_it():
     code = parsed(LEDGER)
 
-    assert code.changed_definitions({11}) == {"transfer": "transfer"}
-    assert code.changed_definitions({8}) == {"RETRY_DELAY": "RETRY_DELAY"}
-    assert code.changed_definitions({4}) == {"Transfer": "Transfer", "amountCents": "Transfer"}  # a renamed field
-    assert code.changed_definitions({22}) == {"total": "Ledger"}
+    assert code.changed_definitions({11}) == {"transfer": {"transfer"}}
+    assert code.changed_definitions({8}) == {"RETRY_DELAY": {"RETRY_DELAY"}}
+    assert code.changed_definitions({4}) == {"Transfer": {"Transfer"}, "amountCents": {"Transfer"}}  # a renamed field
+    assert code.changed_definitions({22}) == {"total": {"Ledger", "default"}}  # Ledger is the default export
 
 
 def test_top_level_definitions_including_the_default_export():
@@ -90,7 +91,7 @@ def test_imports_and_what_comes_from_a_module():
 
     assert code.imports() == {"Ledger": ("default", "../lib/ledger"), "move": ("transfer", "../lib/ledger"),
                               "money": ("*", "@/lib/money")}
-    assert code.imported_from("ledger") == {"default", "Ledger", "transfer"}
+    assert code.imported_from("ledger") == {"default", "transfer"}
     assert code.imported_from("money") == {"*"}
     assert code.imported_from("other") == set()
 
@@ -110,17 +111,6 @@ def test_where_an_import_comes_from():
     assert TYPESCRIPT.module_paths("./util.js", "src/lib/ledger.ts", repo) == ["src/lib/util.ts"]  # ESM
     assert TYPESCRIPT.module_paths("react", "src/app/checkout.tsx", repo) == []  # from node_modules
     assert TYPESCRIPT.module_name("src/lib/money/index.ts") == "money"
-
-
-class Files:
-    def __init__(self, files):
-        self.files = files
-
-    async def read(self, path):
-        return self.files.get(path)
-
-    async def paths(self):
-        return list(self.files)
 
 
 @pytest.mark.asyncio
@@ -143,3 +133,17 @@ async def test_context_for_a_typescript_change_finds_its_callers_in_other_files(
         "#### src/lib/money.ts, lines 1-3 (defines formatCents)",  # through the "@/lib/money" alias
     ]
     assert "  6 |     transfer(invoice.total, customer.account, shop.account);" in context
+
+
+@pytest.mark.asyncio
+async def test_a_default_exported_component_is_found_where_its_default_imported():
+    """It can be imported as "default" as well as by its name, so a default import counts"""
+    button = "export default function SaveButton({ onSave }) {\n  return <button onClick={onSave}>Save</button>;\n}\n"
+    diff = ("diff --git a/src/save-button.jsx b/src/save-button.jsx\n--- a/src/save-button.jsx\n+++ b/src/save-button.jsx\n"
+            "@@ -1,3 +1,3 @@\n-export default function SaveButton({ onClick }) {\n+export default function SaveButton({ onSave }) {\n"
+            "   return <button onClick={onSave}>Save</button>;\n }\n")
+    form = 'import SaveButton from "./save-button";\n\nexport function Form({ save }) {\n  return <SaveButton onClick={save} />;\n}\n'
+
+    context = await build_context(parse_diff(diff), Files({"src/save-button.jsx": button, "src/form.jsx": form}))
+
+    assert "#### src/form.jsx, lines 3-5 (uses SaveButton)" in context
