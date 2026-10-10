@@ -127,7 +127,3 @@ h1#_top {
   stroke-width: 5px;
   stroke-linejoin: round;
 }
-/* The print in the home page's hero */
-.hero .print {
-  max-width: 30rem;
-}

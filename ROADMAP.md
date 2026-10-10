@@ -239,6 +239,8 @@ core package. This phase includes what makes it worth choosing over Claude's own
 - [x] Pages: landing (pitch, demo GIF of a real review, two-minute setup), Quickstart (the Action), Configuration, Supported models, Privacy (exactly what code is sent where), Self-hosting, Changelog. (The demo is a live, tickable copy of a real review rather than a GIF; also Responding, Blocking merges, the CLI, Security and Contributing)
 - [x] Deploy at `codemop.com` (GitHub Pages, from the Site workflow); link it from the CodeMop card on gregkemp.dev. (2026-10-10: live at [codemop.com](https://codemop.com) with HTTPS; the card links to it from kempgt.com#3, the first PR CodeMop reviewed outside this repository)
 
+- [x] A mascot for the hero (2026-10-10): a fretful little mop, designed on a canvas over nine takes. He plays his routine once as the page loads (mops up the dirt, taps the crooked picture straight with his handle, scurries back for a speck he missed), then peeks in now and then looking for more; still for reduced motion
+
 **Done when:** the gregkemp.dev card links to a live site with a working quickstart.
 
 ## Phase 6: v1.1, everyone's reviews
