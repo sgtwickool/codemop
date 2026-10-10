@@ -1,10 +1,11 @@
 name: Release
 
-# Publishes the codemop package to PyPI when a version tag (v0.1.0, ...) is pushed. PyPI
-# trusts this workflow directly (trusted publishing), so no API token is stored anywhere.
+# Publishes the codemop package to PyPI when a version tag (v0.1.0, ...) is pushed; not the
+# Action's major tag (v1), which moves to each release. PyPI trusts this workflow directly
+# (trusted publishing), so no API token is stored anywhere.
 on:
   push:
-    tags: [ "v*" ]
+    tags: [ "v*.*.*" ]
 
 jobs:
   build:

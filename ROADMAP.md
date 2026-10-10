@@ -3,7 +3,7 @@
 CodeMop reviews pull requests with AI and suggests fixes. The goal is a tool that is
 useful day to day and that anyone can adopt in a couple of minutes, with no server to run.
 
-This roadmap replaces the original scope documents in `docs/` (see [Decisions](#decisions)).
+This roadmap replaces the original scope documents, now in `docs/archive/` (see [Decisions](#decisions)).
 [`docs/product.md`](docs/product.md) is the product design: who it's for, the rules it doesn't
 break, and how ideas are judged.
 Phases are worked through in order. Each phase has a "done when" line, so it's clear when
@@ -226,10 +226,10 @@ core package. This phase includes what makes it worth choosing over Claude's own
 
 ## Phase 4: Docs cleanup
 
-- [ ] Rewrite the README around the Action quickstart; move server setup to a self-hosting doc
-- [ ] `CONTRIBUTING.md` (dev setup, tests, branch naming)
-- [ ] `SECURITY.md` (how to report issues, plus the accepted risks from `SECURITY_DECISIONS.md`)
-- [ ] `CHANGELOG.md`
+- [x] Rewrite the README around the Action quickstart; move server setup to a self-hosting doc (`docs/self-hosting.md`)
+- [x] `CONTRIBUTING.md` (dev setup, tests, branch naming)
+- [x] `SECURITY.md` (how to report issues, plus the accepted risks from `SECURITY_DECISIONS.md`). Most of that file no longer applied (the ecdsa and Safety exceptions are gone); `SECURITY.md` explains the Action's threat model and the risks still accepted
+- [x] `CHANGELOG.md`
 - [ ] Archive the original scope and epics to `docs/archive/`; delete or archive the local process docs (`PHASE_1_IMPLEMENTATION.md`, `BRANCH_STRATEGY_UPDATE.md`, `CI_CD_ROLLOUT_PLAN.md`, `STEERING.md`, `TESTING_GUIDE.md`, `server/docs/`)
 
 ## Phase 5: Website (marketing and docs)
@@ -335,7 +335,7 @@ The same product on other platforms; built when someone asks for one.
 | 2026-10-07 | A repository's `.codemop.yml` controls review behaviour only, never the provider, model or endpoint, and is read from the default branch | Otherwise reviewing someone else's PR could send your API key to their server (or run up costs on an expensive model), and a PR could change how it's reviewed |
 | 2026-10-07 | Also ship as a Claude Code plugin (skill + MCP server), instead of having CodeMop call a user's Claude subscription | Anthropic doesn't allow third-party products to offer claude.ai login or rate limits without approval; running inside Claude Code is the supported way for subscribers to use it |
 | 2026-10-07 | Model agnostic: provider adapters behind one interface, selected by config; the default model is chosen by the comparison eval | Users have their own provider preferences, and quality differed noticeably between Le Chat and Claude in practice, so measure it rather than guess |
-| 2026-10-07 | The original scope (`docs/codemop_project_scope.md`, `docs/epics.md`) is superseded | It was sized for a five-person team. Epic 1 → Phases 0–1; Epic 6 → Phases 2–3; Epic 3 → Phase 3 (suggestion blocks) and Phase 6 (grouped fixes); Epics 2, 4, 5, 7, 8 deferred |
+| 2026-10-07 | The original scope (`docs/archive/codemop_project_scope.md`, `docs/archive/epics.md`) is superseded | It was sized for a five-person team. Epic 1 → Phases 0–1; Epic 6 → Phases 2–3; Epic 3 → Phase 3 (suggestion blocks) and Phase 6 (grouped fixes); Epics 2, 4, 5, 7, 8 deferred |
 | 2026-10-08 | Claude Opus 5.5 at high effort stays the default model; complexity-based routing is parked | The review eval: Opus did best on complex changes (17/20 against 14–15 for the alternatives), and reviews cost about two cents, so routing to cheaper models would save little |
 | 2026-10-09 | Drop the Claude Code plugin | Claude Code has its own `/code-review`, and subscribers are reached the supported way by tiered review, which runs Anthropic's own `claude-code-action` as the deep tiers |
 | 2026-10-09 | Grouped fixes you can apply, a review that learns from you, a merge check and repository context move into Phase 3 | They're the reasons to choose CodeMop over Claude's own reviews, so the Action should launch with them |
