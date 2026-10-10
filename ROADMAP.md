@@ -230,7 +230,7 @@ core package. This phase includes what makes it worth choosing over Claude's own
 - [x] `CONTRIBUTING.md` (dev setup, tests, branch naming)
 - [x] `SECURITY.md` (how to report issues, plus the accepted risks from `SECURITY_DECISIONS.md`). Most of that file no longer applied (the ecdsa and Safety exceptions are gone); `SECURITY.md` explains the Action's threat model and the risks still accepted
 - [x] `CHANGELOG.md`
-- [ ] Archive the original scope and epics to `docs/archive/`; delete or archive the local process docs (`PHASE_1_IMPLEMENTATION.md`, `BRANCH_STRATEGY_UPDATE.md`, `CI_CD_ROLLOUT_PLAN.md`, `STEERING.md`, `TESTING_GUIDE.md`, `server/docs/`)
+- [x] Archive the original scope and epics to `docs/archive/`; delete or archive the local process docs (`PHASE_1_IMPLEMENTATION.md`, `BRANCH_STRATEGY_UPDATE.md`, `CI_CD_ROLLOUT_PLAN.md`, `STEERING.md`, `TESTING_GUIDE.md`, `server/docs/`). (2026-10-10: archived and deleted; private vulnerability reporting turned on for `SECURITY.md`)
 
 ## Phase 5: Website (marketing and docs)
 
