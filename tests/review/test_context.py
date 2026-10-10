@@ -2,6 +2,7 @@ import pytest
 
 from codemop.review.context import LocalFiles, build_context
 from codemop.review.diff import parse_diff
+from review_support import Files
 
 DB = '''\
 PAGE_SIZE = 50
@@ -47,18 +48,6 @@ diff --git a/app.py b/app.py
          rows = rows[:LIMIT]
 """
 
-
-class Files:
-    def __init__(self, files):
-        self.files = files
-        self.read_paths = []
-
-    async def read(self, path):
-        self.read_paths.append(path)
-        return self.files.get(path)
-
-    async def paths(self):
-        return list(self.files)
 
 
 @pytest.mark.asyncio

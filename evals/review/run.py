@@ -64,6 +64,9 @@ VARIANTS = {
     # was coming back as "unchanged" context for another, and its bugs went unreported
     "v9": {"model": "claude-opus-5-5", "effort": "high", "label": "Opus 5.5, high effort, context without the diff's code",
            "context": True},
+    # The same instructions with context off: the comparison for the TypeScript and JavaScript
+    # cases (2026-10-10), whose context comes from tree-sitter
+    "v10": {"model": "claude-opus-5-5", "effort": "high", "label": "Opus 5.5, high effort, no context"},
 }
 
 JUDGE_MODEL = "claude-opus-4-8"  # not one of the models being compared

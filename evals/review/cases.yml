@@ -277,6 +277,33 @@
         so sending a receipt raises KeyError
       locations: [{file: orders/serialize.py, lines: [5, 5]}]
 
+- id: cross-file-ts-units
+  tags: [seeded-bug, complex, typescript, cross-file, security]
+  issues:
+    - severity: major
+      description: >-
+        SESSION_TIMEOUT is now in seconds (1800), but src/lib/session.ts still passes it to addMinutes,
+        so sessions last 30 hours instead of 30 minutes
+      locations: [{file: src/lib/config.ts, lines: [2, 3]}]
+
+- id: cross-file-ts-sort-order
+  tags: [seeded-bug, complex, typescript, cross-file]
+  issues:
+    - severity: major
+      description: >-
+        unpaidInvoices now sorts latest due first, but NextPayment still takes the first result as the one
+        due soonest, so it shows the wrong invoice as the next payment
+      locations: [{file: src/lib/invoices.ts, lines: [8, 10]}]
+
+- id: cross-file-js-sync-to-async
+  tags: [seeded-bug, complex, javascript, cross-file]
+  issues:
+    - severity: major
+      description: >-
+        loadFlags is now async, but Dashboard still calls it without await while rendering, so flags is a
+        Promise, flags.newDashboard is always undefined, and the new dashboard never shows
+      locations: [{file: src/features/flags.js, lines: [3, 3]}]
+
 # ---- clean changes: no known issue ----
 
 - {id: clean-rename-refactor, tags: [clean, simple, python], issues: []}
@@ -288,3 +315,4 @@
 - {id: clean-real-github-client, tags: [clean, complex, python], source: "commit 576d45f, src/codemop/github/client.py", issues: []}
 - {id: clean-cross-file-optional-argument, tags: [clean, complex, python, cross-file], issues: []}
 - {id: clean-cross-file-generator, tags: [clean, complex, python, cross-file], issues: []}
+- {id: clean-cross-file-ts-optional-prop, tags: [clean, complex, typescript, cross-file], issues: []}

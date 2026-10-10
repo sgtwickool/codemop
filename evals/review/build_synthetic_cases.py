@@ -503,6 +503,141 @@ def send_receipt(order, customers, mailer):
 ''',
     }),
 
+    # ---- the same in TypeScript and JavaScript: bugs the compiler doesn't catch ----
+    "cross-file-ts-units": CrossFile("src/lib/config.ts", '''\
+export const APP_NAME = "Dayplan";
+export const SESSION_TIMEOUT = 30; // minutes
+export const UPLOAD_LIMIT_MB = 10;
+''', '''\
+export const APP_NAME = "Dayplan";
+// Timeouts are in seconds, like every other duration in the app
+export const SESSION_TIMEOUT = 30 * 60;
+export const UPLOAD_LIMIT_MB = 10;
+''', {
+        "src/lib/session.ts": '''\
+import { addMinutes } from "date-fns";
+import { SESSION_TIMEOUT } from "@/lib/config";
+
+export function sessionExpiry(now: Date): Date {
+  return addMinutes(now, SESSION_TIMEOUT);
+}
+
+export function isExpired(expiresAt: Date, now = new Date()): boolean {
+  return expiresAt <= now;
+}
+''',
+        "src/lib/uploads.ts": '''\
+import { UPLOAD_LIMIT_MB } from "@/lib/config";
+
+export const tooBig = (bytes: number) => bytes > UPLOAD_LIMIT_MB * 1024 * 1024;
+''',
+    }),
+    "cross-file-ts-sort-order": CrossFile("src/lib/invoices.ts", '''\
+export interface Invoice {
+  id: string;
+  dueOn: string;
+  totalCents: number;
+  paid: boolean;
+}
+
+/** Unpaid invoices, soonest due first */
+export function unpaidInvoices(invoices: Invoice[]): Invoice[] {
+  return invoices.filter((i) => !i.paid).sort((a, b) => a.dueOn.localeCompare(b.dueOn));
+}
+''', '''\
+export interface Invoice {
+  id: string;
+  dueOn: string;
+  totalCents: number;
+  paid: boolean;
+}
+
+/** Unpaid invoices, latest first, for the invoices list */
+export function unpaidInvoices(invoices: Invoice[]): Invoice[] {
+  return invoices.filter((i) => !i.paid).sort((a, b) => b.dueOn.localeCompare(a.dueOn));
+}
+''', {
+        "src/components/next-payment.tsx": '''\
+import { type Invoice, unpaidInvoices } from "@/lib/invoices";
+
+export function NextPayment({ invoices }: { invoices: Invoice[] }) {
+  const next = unpaidInvoices(invoices)[0]; // the one due soonest
+  if (!next) return <p>Nothing to pay.</p>;
+  return (
+    <p>
+      Next payment: {next.totalCents / 100} due {next.dueOn}
+    </p>
+  );
+}
+''',
+        "src/app/invoices/page.tsx": '''\
+import { unpaidInvoices } from "@/lib/invoices";
+import { loadInvoices } from "@/lib/db";
+
+export default async function InvoicesPage() {
+  const invoices = unpaidInvoices(await loadInvoices());
+  return <ul>{invoices.map((i) => <li key={i.id}>{i.dueOn}</li>)}</ul>;
+}
+''',
+    }),
+    "cross-file-js-sync-to-async": CrossFile("src/features/flags.js", '''\
+import flagsFile from "../../flags.json";
+
+export function loadFlags() {
+  return { ...flagsFile.defaults, ...flagsFile[process.env.NODE_ENV] };
+}
+''', '''\
+const FLAGS_URL = "https://flags.internal/api/flags";
+
+export async function loadFlags() {
+  const response = await fetch(FLAGS_URL);
+  return response.json();
+}
+''', {
+        "src/components/Dashboard.jsx": '''\
+import { loadFlags } from "../features/flags";
+import { NewDashboard } from "./NewDashboard";
+import { OldDashboard } from "./OldDashboard";
+
+export function Dashboard({ user }) {
+  const flags = loadFlags();
+  return flags.newDashboard ? <NewDashboard user={user} /> : <OldDashboard user={user} />;
+}
+''',
+    }),
+    "clean-cross-file-ts-optional-prop": CrossFile("src/components/button.tsx", '''\
+type ButtonProps = { label: string; onClick: () => void };
+
+export function Button({ label, onClick }: ButtonProps) {
+  return <button onClick={onClick}>{label}</button>;
+}
+''', '''\
+type ButtonProps = { label: string; onClick: () => void; size?: "sm" | "md" };
+
+export function Button({ label, onClick, size = "md" }: ButtonProps) {
+  return (
+    <button className={size === "sm" ? "btn btn-sm" : "btn"} onClick={onClick}>
+      {label}
+    </button>
+  );
+}
+''', {
+        "src/app/settings/page.tsx": '''\
+import { Button } from "@/components/button";
+
+export default function Settings({ save }: { save: () => void }) {
+  return <Button label="Save" onClick={save} />;
+}
+''',
+        "src/components/toolbar.tsx": '''\
+import { Button } from "./button";
+
+export function Toolbar({ undo }: { undo: () => void }) {
+  return <Button label="Undo" onClick={undo} size="sm" />;
+}
+''',
+    }),
+
     # ---- clean: changes that look like they could break callers, and don't ----
     "clean-cross-file-optional-argument": CrossFile("notify/email.py", '''\
 def send_email(smtp, to, subject, body):

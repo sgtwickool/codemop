@@ -27,15 +27,19 @@ Generated from `cases.yml` and `cases/` by `render_cases.py`. Line numbers are n
 | 21 | [cross-file-units](#cross-file-units) | seeded-bug | 1 major, 0 minor |
 | 22 | [cross-file-sync-to-async](#cross-file-sync-to-async) | seeded-bug | 1 major, 0 minor |
 | 23 | [cross-file-renamed-key](#cross-file-renamed-key) | seeded-bug | 1 major, 0 minor |
-| 24 | [clean-rename-refactor](#clean-rename-refactor) | clean | none (clean) |
-| 25 | [clean-add-tests](#clean-add-tests) | clean | none (clean) |
-| 26 | [clean-docs](#clean-docs) | clean | none (clean) |
-| 27 | [clean-small-feature](#clean-small-feature) | clean | none (clean) |
-| 28 | [clean-real-placement](#clean-real-placement) | clean | none (clean) |
-| 29 | [clean-real-pricing](#clean-real-pricing) | clean | none (clean) |
-| 30 | [clean-real-github-client](#clean-real-github-client) | clean | none (clean) |
-| 31 | [clean-cross-file-optional-argument](#clean-cross-file-optional-argument) | clean | none (clean) |
-| 32 | [clean-cross-file-generator](#clean-cross-file-generator) | clean | none (clean) |
+| 24 | [cross-file-ts-units](#cross-file-ts-units) | seeded-bug | 1 major, 0 minor |
+| 25 | [cross-file-ts-sort-order](#cross-file-ts-sort-order) | seeded-bug | 1 major, 0 minor |
+| 26 | [cross-file-js-sync-to-async](#cross-file-js-sync-to-async) | seeded-bug | 1 major, 0 minor |
+| 27 | [clean-rename-refactor](#clean-rename-refactor) | clean | none (clean) |
+| 28 | [clean-add-tests](#clean-add-tests) | clean | none (clean) |
+| 29 | [clean-docs](#clean-docs) | clean | none (clean) |
+| 30 | [clean-small-feature](#clean-small-feature) | clean | none (clean) |
+| 31 | [clean-real-placement](#clean-real-placement) | clean | none (clean) |
+| 32 | [clean-real-pricing](#clean-real-pricing) | clean | none (clean) |
+| 33 | [clean-real-github-client](#clean-real-github-client) | clean | none (clean) |
+| 34 | [clean-cross-file-optional-argument](#clean-cross-file-optional-argument) | clean | none (clean) |
+| 35 | [clean-cross-file-generator](#clean-cross-file-generator) | clean | none (clean) |
+| 36 | [clean-cross-file-ts-optional-prop](#clean-cross-file-ts-optional-prop) | clean | none (clean) |
 
 ## real-pr-model
 
@@ -1782,9 +1786,71 @@ diff --git a/orders/serialize.py b/orders/serialize.py
      }
 ```
 
+## cross-file-ts-units
+
+**24. seeded-bug, complex, typescript, cross-file, security**
+
+- **major**: SESSION_TIMEOUT is now in seconds (1800), but src/lib/session.ts still passes it to addMinutes, so sessions last 30 hours instead of 30 minutes (`src/lib/config.ts` lines 2-3)
+
+```diff
+diff --git a/src/lib/config.ts b/src/lib/config.ts
+--- a/src/lib/config.ts
++++ b/src/lib/config.ts
+@@ -1,3 +1,4 @@
+ export const APP_NAME = "Dayplan";
+-export const SESSION_TIMEOUT = 30; // minutes
++// Timeouts are in seconds, like every other duration in the app
++export const SESSION_TIMEOUT = 30 * 60;
+ export const UPLOAD_LIMIT_MB = 10;
+```
+
+## cross-file-ts-sort-order
+
+**25. seeded-bug, complex, typescript, cross-file**
+
+- **major**: unpaidInvoices now sorts latest due first, but NextPayment still takes the first result as the one due soonest, so it shows the wrong invoice as the next payment (`src/lib/invoices.ts` lines 8-10)
+
+```diff
+diff --git a/src/lib/invoices.ts b/src/lib/invoices.ts
+--- a/src/lib/invoices.ts
++++ b/src/lib/invoices.ts
+@@ -5,7 +5,7 @@
+   paid: boolean;
+ }
+ 
+-/** Unpaid invoices, soonest due first */
++/** Unpaid invoices, latest first, for the invoices list */
+ export function unpaidInvoices(invoices: Invoice[]): Invoice[] {
+-  return invoices.filter((i) => !i.paid).sort((a, b) => a.dueOn.localeCompare(b.dueOn));
++  return invoices.filter((i) => !i.paid).sort((a, b) => b.dueOn.localeCompare(a.dueOn));
+ }
+```
+
+## cross-file-js-sync-to-async
+
+**26. seeded-bug, complex, javascript, cross-file**
+
+- **major**: loadFlags is now async, but Dashboard still calls it without await while rendering, so flags is a Promise, flags.newDashboard is always undefined, and the new dashboard never shows (`src/features/flags.js` lines 3-3)
+
+```diff
+diff --git a/src/features/flags.js b/src/features/flags.js
+--- a/src/features/flags.js
++++ b/src/features/flags.js
+@@ -1,5 +1,6 @@
+-import flagsFile from "../../flags.json";
++const FLAGS_URL = "https://flags.internal/api/flags";
+ 
+-export function loadFlags() {
+-  return { ...flagsFile.defaults, ...flagsFile[process.env.NODE_ENV] };
++export async function loadFlags() {
++  const response = await fetch(FLAGS_URL);
++  return response.json();
+ }
+```
+
 ## clean-rename-refactor
 
-**24. clean, simple, python**
+**27. clean, simple, python**
 
 Expected: nothing wrong.
 
@@ -1805,7 +1871,7 @@ diff --git a/billing/invoice.py b/billing/invoice.py
 
 ## clean-add-tests
 
-**25. clean, simple, python**
+**28. clean, simple, python**
 
 Expected: nothing wrong.
 
@@ -1836,7 +1902,7 @@ new file mode 100644
 
 ## clean-docs
 
-**26. clean, simple, docs**
+**29. clean, simple, docs**
 
 Expected: nothing wrong.
 
@@ -1857,7 +1923,7 @@ diff --git a/docs/deploying.md b/docs/deploying.md
 
 ## clean-small-feature
 
-**27. clean, simple, python**
+**30. clean, simple, python**
 
 Expected: nothing wrong.
 
@@ -1886,7 +1952,7 @@ diff --git a/geo/distance.py b/geo/distance.py
 
 ## clean-real-placement
 
-**28. clean, complex, python** · commit 495398d, src/codemop/review/placement.py
+**31. clean, complex, python** · commit 495398d, src/codemop/review/placement.py
 
 Expected: nothing wrong.
 
@@ -1945,7 +2011,7 @@ index 0000000..b159565
 
 ## clean-real-pricing
 
-**29. clean, simple, python** · commit a82f899, src/codemop/providers/pricing.py
+**32. clean, simple, python** · commit a82f899, src/codemop/providers/pricing.py
 
 Expected: nothing wrong.
 
@@ -2005,7 +2071,7 @@ index 0000000..9765e90
 
 ## clean-real-github-client
 
-**30. clean, complex, python** · commit 576d45f, src/codemop/github/client.py
+**33. clean, complex, python** · commit 576d45f, src/codemop/github/client.py
 
 Expected: nothing wrong.
 
@@ -2097,7 +2163,7 @@ index 0000000..4b9dcf6
 
 ## clean-cross-file-optional-argument
 
-**31. clean, complex, python, cross-file**
+**34. clean, complex, python, cross-file**
 
 Expected: nothing wrong.
 
@@ -2120,7 +2186,7 @@ diff --git a/notify/email.py b/notify/email.py
 
 ## clean-cross-file-generator
 
-**32. clean, complex, python, cross-file**
+**35. clean, complex, python, cross-file**
 
 Expected: nothing wrong.
 
@@ -2134,4 +2200,29 @@ diff --git a/reports/users.py b/reports/users.py
 -    return [row for row in db.query("SELECT * FROM users WHERE last_login > now() - interval '30 days'")]
 +    """Every user who has logged in during the last 30 days, a row at a time (there are millions)"""
 +    yield from db.stream("SELECT * FROM users WHERE last_login > now() - interval '30 days'")
+```
+
+## clean-cross-file-ts-optional-prop
+
+**36. clean, complex, typescript, cross-file**
+
+Expected: nothing wrong.
+
+```diff
+diff --git a/src/components/button.tsx b/src/components/button.tsx
+--- a/src/components/button.tsx
++++ b/src/components/button.tsx
+@@ -1,5 +1,9 @@
+-type ButtonProps = { label: string; onClick: () => void };
++type ButtonProps = { label: string; onClick: () => void; size?: "sm" | "md" };
+ 
+-export function Button({ label, onClick }: ButtonProps) {
+-  return <button onClick={onClick}>{label}</button>;
++export function Button({ label, onClick, size = "md" }: ButtonProps) {
++  return (
++    <button className={size === "sm" ? "btn btn-sm" : "btn"} onClick={onClick}>
++      {label}
++    </button>
++  );
+ }
 ```

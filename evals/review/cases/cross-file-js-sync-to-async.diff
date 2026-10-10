@@ -1,0 +1,13 @@
+diff --git a/src/features/flags.js b/src/features/flags.js
+--- a/src/features/flags.js
++++ b/src/features/flags.js
+@@ -1,5 +1,6 @@
+-import flagsFile from "../../flags.json";
++const FLAGS_URL = "https://flags.internal/api/flags";
+ 
+-export function loadFlags() {
+-  return { ...flagsFile.defaults, ...flagsFile[process.env.NODE_ENV] };
++export async function loadFlags() {
++  const response = await fetch(FLAGS_URL);
++  return response.json();
+ }
