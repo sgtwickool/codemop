@@ -1,0 +1,428 @@
+/* CodeMop's mascot (src/lib/mascot.ts): how he looks, and how he moves in each state, set as
+   a class on his <svg> by src/scripts/mascot.ts:
+     m-intro     the routine, once, when the page loads: rushes in mopping, straightens the
+                 picture with his handle, scurries back for a speck he missed, dashes off
+     m-away      off looking for mess elsewhere; the scene stays clean
+     m-peek-*    now and then, peeks in from the left, the right or the bottom, looks around
+                 for dirt, and ducks away again
+   Without motion (no JavaScript, or reduced motion), he just stands in the clean scene. */
+
+.mascot-replay {
+  display: block;
+  width: 100%;
+  max-width: 30rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.mascot-replay:disabled {
+  cursor: default;
+}
+.mascot {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* How he looks */
+.m-plate { fill: var(--plate) }
+.m-floor { fill: none; stroke: var(--ink-strong); stroke-width: 1.4; stroke-linecap: round; opacity: .35 }
+.m-yellow { fill: var(--ink-glow) }
+.m-blue { fill: var(--ink-strong) }
+.m-pink { fill: var(--ink-line) }
+.m-ink { mix-blend-mode: var(--print-blend) }
+.m-handle { fill: none; stroke: var(--ink-strong); stroke-width: 6; stroke-linecap: round }
+.m-strand {
+  fill: none;
+  stroke: var(--ink-glow);
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  mix-blend-mode: var(--print-blend);
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+}
+.m-strand.m-edge { stroke: var(--ink-strong); stroke-width: 1.2; opacity: .7 }
+.m-fuzz { fill: none; stroke: var(--ink-line); stroke-width: 1.4; stroke-linecap: round; mix-blend-mode: var(--print-blend) }
+.m-eye { fill: #f4f4f1; stroke: var(--ink-strong); stroke-width: 1.6 }
+.m-glint { fill: #f4f4f1 }
+.m-line { fill: none; stroke: var(--ink-strong); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round }
+.m-thin { stroke-width: 1.6 }
+.m-frame-box { fill: var(--paper); stroke: var(--ink-strong); stroke-width: 2.6; stroke-linejoin: round }
+
+/* Standing still in the clean scene: how he is with no animation, and where each state
+   starts from */
+.m-move { transform: translate(110px, 178px) }
+.m-away .m-move { transform: translate(300px, 178px) }
+.m-squash, .m-head { transform-box: fill-box; transform-origin: 50% 100% }
+.m-eyes, .m-dirt1, .m-dirt2, .m-dirt3, .m-dirt4, .m-spark { transform-box: fill-box; transform-origin: 50% 50% }
+.m-puff-r { transform-box: fill-box; transform-origin: 0% 100% }
+.m-puff-l { transform-box: fill-box; transform-origin: 100% 100% }
+.m-frame { transform-box: view-box; transform-origin: 196px 46px }
+.m-dirt1, .m-dirt2, .m-dirt3, .m-dirt4, .m-spark, .m-speed-r, .m-speed-l, .m-puff-r, .m-puff-l,
+.m-sweat, .m-shocked, .m-smile { opacity: 0 }
+
+:root:not(.motion) .mascot * { animation: none !important }
+:root:not(.motion) .mascot .m-move { transform: translate(110px, 178px) }
+
+/* ---- The routine, once ---- */
+
+.m-intro .m-move { animation: m-in-move 6s both }
+.m-intro .m-hop { animation: m-in-hop 6s ease-in-out both }
+.m-intro .m-squash { animation: m-in-squash 6s ease-in-out both }
+.m-intro .m-strand { animation: m-in-drag 6s ease-in-out both; animation-delay: var(--lag) }
+.m-intro .m-head { animation: m-in-jiggle 6s ease-in-out both }
+.m-intro .m-pupils { animation: m-in-look 6s ease-in-out both }
+.m-intro .m-eyes { animation: m-in-widen 6s steps(1) both }
+.m-intro .m-worried { animation: m-in-worried 6s steps(1) both }
+.m-intro .m-shocked { animation: m-in-shocked 6s steps(1) both }
+.m-intro .m-smile { animation: m-in-smile 6s steps(1) both }
+.m-intro .m-sweat { animation: m-in-sweat 6s ease-in both }
+.m-intro .m-speed-r { animation: m-in-speed-r 6s steps(1) both }
+.m-intro .m-speed-l { animation: m-in-speed-l 6s steps(1) both }
+.m-intro .m-puff-r { animation: m-in-puff-r 6s ease-out both }
+.m-intro .m-puff-l { animation: m-in-puff-l 6s ease-out both }
+.m-intro .m-frame { animation: m-in-tilt 6s ease-in-out both }
+.m-intro .m-dirt1 { animation: m-in-dirt1 6s ease-out both }
+.m-intro .m-dirt2 { animation: m-in-dirt2 6s ease-out both }
+.m-intro .m-dirt3 { animation: m-in-dirt3 6s ease-out both }
+.m-intro .m-dirt4 { animation: m-in-dirt4 6s ease-out both }
+.m-intro .m-spark { animation: m-in-spark 6s ease-out both }
+
+@keyframes m-in-move {
+  0% { transform: translate(-50px, 178px); animation-timing-function: linear }
+  22% { transform: translate(130px, 178px); animation-timing-function: ease-out }
+  25% { transform: translate(146px, 178px); animation-timing-function: ease-out }
+  28%, 60% { transform: translate(150px, 178px); animation-timing-function: ease-in }
+  65% { transform: translate(104px, 178px); animation-timing-function: ease-out }
+  66%, 84% { transform: translate(100px, 178px); animation-timing-function: ease-in }
+  88% { transform: translate(126px, 178px); animation-timing-function: linear }
+  100% { transform: translate(300px, 178px) }
+}
+@keyframes m-in-hop {
+  0%, 48% { transform: translateY(0) }
+  49.5% { transform: translateY(-8px) }
+  51% { transform: translateY(0) }
+  52.5% { transform: translateY(-8px) }
+  54%, 76% { transform: translateY(0) }
+  77.5% { transform: translateY(-8px) }
+  79%, 100% { transform: translateY(0) }
+}
+@keyframes m-in-squash {
+  0% { transform: rotate(12deg) scale(1.1, .88) }
+  3% { transform: rotate(14deg) scale(.97, 1.04) }
+  6% { transform: rotate(14deg) scale(1.12, .86) }
+  9% { transform: rotate(14deg) scale(.97, 1.04) }
+  12% { transform: rotate(14deg) scale(1.12, .86) }
+  15% { transform: rotate(14deg) scale(.97, 1.04) }
+  18% { transform: rotate(14deg) scale(1.12, .86) }
+  21% { transform: rotate(14deg) scale(.97, 1.04) }
+  24% { transform: rotate(8deg) scale(1.08, .9) }
+  26% { transform: rotate(-6deg) scale(1.12, .88) }
+  29% { transform: rotate(0deg) scale(.97, 1.03) }
+  32%, 34% { transform: rotate(0deg) scale(1, 1) }
+  36.5% { transform: rotate(-5deg) scale(1.14, .84) }
+  39.5% { transform: rotate(18deg) scale(.94, 1.08) }
+  42% { transform: rotate(10deg) scale(1.04, .96) }
+  45% { transform: rotate(0deg) scale(1.06, .94) }
+  48% { transform: rotate(0deg) scale(1.1, .88) }
+  49.5% { transform: rotate(0deg) scale(.94, 1.08) }
+  51% { transform: rotate(0deg) scale(1.12, .86) }
+  52.5% { transform: rotate(0deg) scale(.94, 1.08) }
+  54% { transform: rotate(0deg) scale(1.1, .88) }
+  56% { transform: rotate(0deg) scale(1, 1) }
+  58% { transform: rotate(0deg) scale(1.02, .98) }
+  60% { transform: rotate(4deg) scale(1.08, .92) }
+  61.5% { transform: rotate(-14deg) scale(1.12, .86) }
+  63% { transform: rotate(-14deg) scale(.97, 1.04) }
+  64.5% { transform: rotate(-14deg) scale(1.12, .86) }
+  66% { transform: rotate(6deg) scale(1.12, .88) }
+  68% { transform: rotate(-6deg) scale(1.1, .88) }
+  70% { transform: rotate(6deg) scale(.97, 1.04) }
+  72% { transform: rotate(-6deg) scale(1.1, .88) }
+  74% { transform: rotate(0deg) scale(1, 1) }
+  76% { transform: rotate(0deg) scale(1.1, .88) }
+  77.5% { transform: rotate(0deg) scale(.94, 1.08) }
+  79% { transform: rotate(0deg) scale(1.12, .86) }
+  81% { transform: rotate(0deg) scale(1, 1) }
+  83% { transform: rotate(0deg) scale(1.02, .98) }
+  85% { transform: rotate(-4deg) scale(1.08, .92) }
+  87% { transform: rotate(14deg) scale(1.12, .86) }
+  90% { transform: rotate(14deg) scale(.97, 1.04) }
+  93% { transform: rotate(14deg) scale(1.12, .86) }
+  96% { transform: rotate(14deg) scale(.97, 1.04) }
+  100% { transform: rotate(12deg) scale(1.1, .88) }
+}
+/* The strings drag behind him, whichever way he goes: skewed back from their tops */
+@keyframes m-in-drag {
+  0% { transform: skewX(-32deg) scaleX(1.15) }
+  3% { transform: skewX(-22deg) scaleX(1.02) }
+  6% { transform: skewX(-32deg) scaleX(1.15) }
+  9% { transform: skewX(-22deg) scaleX(1.02) }
+  12% { transform: skewX(-32deg) scaleX(1.15) }
+  15% { transform: skewX(-22deg) scaleX(1.02) }
+  18% { transform: skewX(-32deg) scaleX(1.15) }
+  21% { transform: skewX(-22deg) scaleX(1.02) }
+  24% { transform: skewX(-14deg) scaleX(1.08) }
+  27% { transform: skewX(9deg) scaleX(1.1) }
+  30% { transform: skewX(-4deg) scaleX(1) }
+  33%, 35% { transform: skewX(0deg) scaleX(1) }
+  36.5% { transform: skewX(0deg) scaleX(1.12) }
+  39.5% { transform: skewX(-12deg) scaleX(1) }
+  43% { transform: skewX(5deg) scaleX(1) }
+  46% { transform: skewX(0deg) scaleX(1) }
+  48% { transform: skewX(0deg) scaleX(1.12) }
+  49.5% { transform: skewX(0deg) scaleX(.95) }
+  51% { transform: skewX(0deg) scaleX(1.15) }
+  52.5% { transform: skewX(0deg) scaleX(.95) }
+  54% { transform: skewX(0deg) scaleX(1.12) }
+  56%, 60% { transform: skewX(0deg) scaleX(1) }
+  61.5% { transform: skewX(26deg) scaleX(1.1) }
+  63% { transform: skewX(32deg) scaleX(1.15) }
+  64.5% { transform: skewX(24deg) scaleX(1.05) }
+  66.5% { transform: skewX(-9deg) scaleX(1.1) }
+  68% { transform: skewX(14deg) scaleX(1.15) }
+  70% { transform: skewX(-14deg) scaleX(1.15) }
+  72% { transform: skewX(14deg) scaleX(1.15) }
+  74% { transform: skewX(0deg) scaleX(1) }
+  76% { transform: skewX(0deg) scaleX(1.12) }
+  77.5% { transform: skewX(0deg) scaleX(.95) }
+  79% { transform: skewX(0deg) scaleX(1.15) }
+  81%, 85% { transform: skewX(0deg) scaleX(1) }
+  87% { transform: skewX(-26deg) scaleX(1.1) }
+  90% { transform: skewX(-32deg) scaleX(1.15) }
+  93% { transform: skewX(-22deg) scaleX(1.02) }
+  96%, 100% { transform: skewX(-32deg) scaleX(1.15) }
+}
+@keyframes m-in-jiggle {
+  0% { transform: rotate(-4deg) scale(1.04, .96) }
+  3% { transform: rotate(2deg) scale(.98, 1.02) }
+  6% { transform: rotate(-5deg) scale(1.05, .95) }
+  9% { transform: rotate(2deg) scale(.98, 1.02) }
+  12% { transform: rotate(-5deg) scale(1.05, .95) }
+  15% { transform: rotate(2deg) scale(.98, 1.02) }
+  18% { transform: rotate(-5deg) scale(1.05, .95) }
+  21% { transform: rotate(2deg) scale(.98, 1.02) }
+  24% { transform: rotate(0deg) scale(1, 1) }
+  26% { transform: rotate(7deg) scale(1.06, .94) }
+  29% { transform: rotate(-2deg) scale(.99, 1.01) }
+  32%, 37% { transform: rotate(0deg) scale(1, 1) }
+  39.5% { transform: rotate(-6deg) scale(.97, 1.03) }
+  43% { transform: rotate(3deg) scale(1.02, .98) }
+  46%, 50% { transform: rotate(0deg) scale(1, 1) }
+  51% { transform: rotate(0deg) scale(1.06, .94) }
+  52.5% { transform: rotate(0deg) scale(1, 1) }
+  54% { transform: rotate(0deg) scale(1.06, .94) }
+  56%, 60% { transform: rotate(0deg) scale(1, 1) }
+  61.5% { transform: rotate(5deg) scale(1.05, .95) }
+  63% { transform: rotate(-2deg) scale(.98, 1.02) }
+  64.5% { transform: rotate(5deg) scale(1.05, .95) }
+  66.5% { transform: rotate(-7deg) scale(1.06, .94) }
+  69% { transform: rotate(2deg) scale(1, 1) }
+  72%, 78% { transform: rotate(0deg) scale(1, 1) }
+  79% { transform: rotate(0deg) scale(1.06, .94) }
+  81%, 85% { transform: rotate(0deg) scale(1, 1) }
+  87% { transform: rotate(-5deg) scale(1.05, .95) }
+  90% { transform: rotate(2deg) scale(.98, 1.02) }
+  93% { transform: rotate(-5deg) scale(1.05, .95) }
+  96% { transform: rotate(2deg) scale(.98, 1.02) }
+  100% { transform: rotate(-4deg) scale(1.04, .96) }
+}
+@keyframes m-in-look {
+  0%, 25% { transform: translate(3px, 1px) }
+  29%, 40% { transform: translate(2.5px, -2.5px) }
+  45%, 56% { transform: translate(0, 0) }
+  57.5%, 66% { transform: translate(-3px, 1px) }
+  67%, 74% { transform: translate(0, 2px) }
+  76%, 79% { transform: translate(0, 0) }
+  81% { transform: translate(-3px, 0) }
+  83% { transform: translate(3px, 0) }
+  85% { transform: translate(-1px, 0) }
+  87%, 100% { transform: translate(3px, 1px) }
+}
+@keyframes m-in-widen {
+  0% { transform: scale(1) }
+  29% { transform: scale(1.18) }
+  36% { transform: scale(1) }
+  57.5% { transform: scale(1.18) }
+  61%, 100% { transform: scale(1) }
+}
+@keyframes m-in-worried {
+  0% { opacity: 1 }
+  29% { opacity: 0 }
+  36% { opacity: 1 }
+  45% { opacity: 0 }
+  61% { opacity: 1 }
+  74% { opacity: 0 }
+  81%, 100% { opacity: 1 }
+}
+@keyframes m-in-shocked {
+  0% { opacity: 0 }
+  29% { opacity: 1 }
+  36% { opacity: 0 }
+  57.5% { opacity: 1 }
+  61%, 100% { opacity: 0 }
+}
+@keyframes m-in-smile {
+  0% { opacity: 0 }
+  45% { opacity: 1 }
+  57.5% { opacity: 0 }
+  74% { opacity: 1 }
+  81%, 100% { opacity: 0 }
+}
+@keyframes m-in-sweat {
+  0%, 2% { transform: translate(0, 0); opacity: 0 }
+  3% { transform: translate(0, 0); opacity: 1 }
+  12% { transform: translate(-3px, 12px); opacity: 0 }
+  13%, 61% { transform: translate(0, 0); opacity: 0 }
+  62% { transform: translate(0, 0); opacity: 1 }
+  70% { transform: translate(3px, 12px); opacity: 0 }
+  71%, 86% { transform: translate(0, 0); opacity: 0 }
+  87% { transform: translate(0, 0); opacity: 1 }
+  96%, 100% { transform: translate(-3px, 12px); opacity: 0 }
+}
+@keyframes m-in-speed-r {
+  0% { opacity: 1 }
+  23% { opacity: 0 }
+  87%, 100% { opacity: 1 }
+}
+@keyframes m-in-speed-l {
+  0% { opacity: 0 }
+  61.5% { opacity: 1 }
+  65.5%, 100% { opacity: 0 }
+}
+@keyframes m-in-puff-r {
+  0%, 24% { transform: scale(.3); opacity: 0 }
+  26% { transform: scale(1); opacity: 1 }
+  32%, 100% { transform: scale(1.4); opacity: 0 }
+}
+@keyframes m-in-puff-l {
+  0%, 65% { transform: scale(.3); opacity: 0 }
+  66.5% { transform: scale(1); opacity: 1 }
+  71%, 100% { transform: scale(1.4); opacity: 0 }
+}
+@keyframes m-in-tilt {
+  0%, 39% { transform: rotate(12deg) }
+  41% { transform: rotate(-5deg) }
+  43% { transform: rotate(2deg) }
+  45%, 100% { transform: rotate(0deg) }
+}
+@keyframes m-in-dirt1 {
+  0%, 12.5% { transform: scale(1); opacity: 1 }
+  15%, 100% { transform: scale(.2); opacity: 0 }
+}
+@keyframes m-in-dirt2 {
+  0%, 17% { transform: scale(1); opacity: 1 }
+  19.5%, 100% { transform: scale(.2); opacity: 0 }
+}
+@keyframes m-in-dirt3 {
+  0%, 21% { transform: scale(1); opacity: 1 }
+  23.5%, 100% { transform: scale(.2); opacity: 0 }
+}
+@keyframes m-in-dirt4 {
+  0%, 54% { transform: scale(.2); opacity: 0 }
+  56% { transform: scale(1.15); opacity: 1 }
+  57%, 66% { transform: scale(1); opacity: 1 }
+  73%, 100% { transform: scale(.2); opacity: 0 }
+}
+@keyframes m-in-spark {
+  0%, 43% { transform: scale(.2) rotate(0deg); opacity: 0 }
+  46% { transform: scale(1.15) rotate(20deg); opacity: 1 }
+  51% { transform: scale(1) rotate(30deg); opacity: 1 }
+  56%, 100% { transform: scale(.6) rotate(45deg); opacity: 0 }
+}
+
+/* ---- Peeking in, looking for dirt: from the left, the right, or up from the bottom ---- */
+
+.m-peek-left .m-move { animation: m-pk-left 3.4s both }
+.m-peek-left .m-squash { animation: m-pk-lean-left 3.4s ease-in-out both }
+.m-peek-left .m-strand { animation: m-pk-drag-left 3.4s ease-in-out both; animation-delay: var(--lag) }
+.m-peek-right .m-move { animation: m-pk-right 3.4s both }
+.m-peek-right .m-squash { animation: m-pk-lean-right 3.4s ease-in-out both }
+.m-peek-right .m-strand { animation: m-pk-drag-right 3.4s ease-in-out both; animation-delay: var(--lag) }
+.m-peek-bottom .m-move { animation: m-pk-bottom 3.4s both }
+.m-peek-bottom .m-squash { animation: m-pk-wobble 3.4s ease-in-out both }
+:is(.m-peek-left, .m-peek-right, .m-peek-bottom) .m-pupils { animation: m-pk-look 3.4s ease-in-out both }
+:is(.m-peek-left, .m-peek-right, .m-peek-bottom) .m-worried { animation: m-pk-worried 3.4s steps(1) both }
+:is(.m-peek-left, .m-peek-right, .m-peek-bottom) .m-smile { animation: m-pk-smile 3.4s steps(1) both }
+:is(.m-peek-left, .m-peek-right, .m-peek-bottom) .m-sweat { animation: m-pk-sweat 3.4s ease-in both }
+
+@keyframes m-pk-left {
+  0% { transform: translate(-70px, 178px); animation-timing-function: ease-out }
+  18%, 80% { transform: translate(6px, 178px); animation-timing-function: ease-in }
+  100% { transform: translate(-70px, 178px) }
+}
+@keyframes m-pk-right {
+  0% { transform: translate(310px, 178px); animation-timing-function: ease-out }
+  18%, 80% { transform: translate(234px, 178px); animation-timing-function: ease-in }
+  100% { transform: translate(310px, 178px) }
+}
+@keyframes m-pk-bottom {
+  0% { transform: translate(122px, 300px); animation-timing-function: ease-out }
+  22%, 78% { transform: translate(122px, 236px); animation-timing-function: ease-in }
+  100% { transform: translate(122px, 300px) }
+}
+@keyframes m-pk-lean-left {
+  0% { transform: rotate(0deg) scale(1, 1) }
+  14% { transform: rotate(12deg) scale(1.06, .94) }
+  20% { transform: rotate(-4deg) scale(1.08, .92) }
+  26% { transform: rotate(4deg) scale(.98, 1.02) }
+  34%, 76% { transform: rotate(6deg) scale(1, 1) }
+  84%, 100% { transform: rotate(-12deg) scale(1.08, .92) }
+}
+@keyframes m-pk-lean-right {
+  0% { transform: rotate(0deg) scale(1, 1) }
+  14% { transform: rotate(-12deg) scale(1.06, .94) }
+  20% { transform: rotate(4deg) scale(1.08, .92) }
+  26% { transform: rotate(-4deg) scale(.98, 1.02) }
+  34%, 76% { transform: rotate(-6deg) scale(1, 1) }
+  84%, 100% { transform: rotate(12deg) scale(1.08, .92) }
+}
+@keyframes m-pk-wobble {
+  0%, 18% { transform: rotate(0deg) }
+  24% { transform: rotate(-3deg) }
+  30% { transform: rotate(3deg) }
+  36%, 100% { transform: rotate(0deg) }
+}
+@keyframes m-pk-drag-left {
+  0% { transform: skewX(0deg) }
+  14% { transform: skewX(-24deg) }
+  20% { transform: skewX(10deg) }
+  28% { transform: skewX(-4deg) }
+  34%, 78% { transform: skewX(0deg) }
+  86%, 100% { transform: skewX(22deg) }
+}
+@keyframes m-pk-drag-right {
+  0% { transform: skewX(0deg) }
+  14% { transform: skewX(24deg) }
+  20% { transform: skewX(-10deg) }
+  28% { transform: skewX(4deg) }
+  34%, 78% { transform: skewX(0deg) }
+  86%, 100% { transform: skewX(-22deg) }
+}
+@keyframes m-pk-look {
+  0%, 22% { transform: translate(0, 0) }
+  30% { transform: translate(-3px, 1px) }
+  42% { transform: translate(3px, 1px) }
+  54% { transform: translate(-3px, 0) }
+  64% { transform: translate(0, 2px) }
+  74% { transform: translate(2px, -1px) }
+  84%, 100% { transform: translate(0, 0) }
+}
+@keyframes m-pk-worried {
+  0% { opacity: 1 }
+  68% { opacity: 0 }
+  80%, 100% { opacity: 1 }
+}
+@keyframes m-pk-smile {
+  0% { opacity: 0 }
+  68% { opacity: 1 }
+  80%, 100% { opacity: 0 }
+}
+@keyframes m-pk-sweat {
+  0%, 4% { transform: translate(0, 0); opacity: 0 }
+  6% { transform: translate(0, 0); opacity: 1 }
+  20%, 100% { transform: translate(-3px, 12px); opacity: 0 }
+}

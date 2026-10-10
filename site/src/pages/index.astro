@@ -3,7 +3,8 @@ import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
 import Print from "../components/Print.astro";
 import PrintFilters from "../components/PrintFilters.astro";
 import SummaryDemo from "../components/SummaryDemo.astro";
-import { printSvg } from "../lib/art/svg";
+import { mascotSvg } from "../lib/mascot";
+import "../styles/mascot.css";
 
 const github = "https://github.com/sgtwickool/codemop";
 const loop = [
@@ -42,7 +43,9 @@ const loop = [
         { text: "Quick start", link: "/quickstart/", icon: "right-arrow", variant: "primary" },
         { text: "GitHub", link: github, icon: "external", variant: "minimal" },
       ],
-      image: { html: printSvg("mop") },
+      image: {
+        html: `<button type="button" class="mascot-replay" aria-label="Watch CodeMop tidy up again">${mascotSvg}</button>`,
+      },
     },
   }}
 >
@@ -121,6 +124,12 @@ const loop = [
     Made by <a href="https://gregkemp.dev">Greg Kemp</a>. MIT licensed, on <a href={github}>GitHub</a>.
   </p>
 </StarlightPage>
+
+<script>
+  import { bindMascot } from "../scripts/mascot";
+
+  bindMascot();
+</script>
 
 <style>
   section {
