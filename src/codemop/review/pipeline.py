@@ -93,7 +93,9 @@ async def review_diff(
     """
     instructions = SYSTEM_PROMPT + settled.instructions()
     plan_budget = chunk_tokens or model.chunk_tokens
-    plan = plan_chunks(parse_diff(diff), plan_budget, ignored_paths=ignored_paths)
+    files = parse_diff(diff)
+    plan = plan_chunks(files, plan_budget, ignored_paths=ignored_paths)
+    in_diff = {file.path: file.commentable_lines() for file in files}  # for context, which mustn't repeat it
     report = ReviewReport(model=model.name, skipped=list(plan.skipped), chunks=len(plan.chunks))
     changed = sum(
         line.kind != "context"
@@ -113,7 +115,7 @@ async def review_diff(
                 return
             text = chunk.text
             if context is not None:
-                around = await build_context(chunk.files, context, min(context_tokens, plan_budget // 2))
+                around = await build_context(chunk.files, context, min(context_tokens, plan_budget // 2), in_diff)
                 text = f"{around}\n\n### The change\n\n{chunk.text}" if around else chunk.text
             try:
                 review, usage = await model.review(instructions, text)

@@ -60,6 +60,10 @@ VARIANTS = {
     # can say where it shows up outside the diff: did the review hold?
     "v8": {"model": "claude-opus-5-5", "effort": "high", "label": "Opus 5.5, high effort, context numbered, outside_diff",
            "context": True},
+    # And with context that never repeats code the diff shows (2026-10-10): code added in one file
+    # was coming back as "unchanged" context for another, and its bugs went unreported
+    "v9": {"model": "claude-opus-5-5", "effort": "high", "label": "Opus 5.5, high effort, context without the diff's code",
+           "context": True},
 }
 
 JUDGE_MODEL = "claude-opus-4-8"  # not one of the models being compared
