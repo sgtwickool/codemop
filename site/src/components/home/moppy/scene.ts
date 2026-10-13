@@ -104,7 +104,7 @@ const moppy = `
   </g>`;
 
 const svg = `
-<svg class="mascot m-intro" viewBox="0 76 560 404" role="img"
+<svg class="mascot m-intro m-hold" viewBox="0 76 560 404" role="img"
   aria-label="Moppy, CodeMop's mascot, a worried little mop, hops in, mops up a puddle beside a wet-floor sign that reads Caution: fixes being committed, knocks the tipping sign straight with his handle and hops for joy">
   <path class="m-floor" d="M40 430 H540" stroke-width="3" stroke-linecap="round"/>
   <g class="m-puddle">

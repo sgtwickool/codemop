@@ -194,11 +194,11 @@ const loop = [
     color: var(--ink-soft);
   }
 
-  /* Caution tape across the page, a little askew, creeping along (clipped at the page's edges) */
+  /* Caution tape across the page, a little askew, creeping along. Clipped at the page's sides
+     only: tilted, its ends rise and fall further the wider the page is. */
   .tape-wrap {
-    margin: 2rem calc(50% - 50vw) 0;
-    padding-block: 1rem;
-    overflow: clip;
+    margin: 3rem calc(50% - 50vw) 1rem;
+    overflow-x: clip;
   }
   .tape {
     margin-inline: -1rem;

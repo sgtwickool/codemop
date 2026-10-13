@@ -1,7 +1,8 @@
 /* How Moppy moves (scene.ts draws him, play.ts says when). The scene's resting state is the tidy
    one at the end of each routine, so without the `motion` class (reduced motion) nothing moves
    and the floor is clean. A routine is a class on the <svg>: m-intro, as the page loads, and
-   m-tidy, when a drip lands later. While he's off screen, m-paused stops his idling. */
+   m-tidy, when a drip lands later. m-hold keeps the intro on its first frame until the page has
+   settled; while he's off screen, m-paused stops his idling. */
 
 .mascot-replay {
   all: unset;
@@ -81,16 +82,21 @@
 .motion .m-breathe {
   animation: m-breathe 1.8s ease-in-out 5s infinite alternate;
 }
-.m-paused :is(.m-eyes, .m-breathe) {
+.m-paused :is(.m-eyes, .m-breathe),
+.m-hold * {
   animation-play-state: paused;
 }
+/* Held, he hasn't arrived yet: the floor waits, wet, with the sign tipping */
+.motion .m-hold :is(.m-move, .m-speed) {
+  visibility: hidden;
+}
 
-/* The routine as the page loads (4.4s): he hops in, skids to a stop, mops up the puddle, knocks
+/* The routine as the page loads (5s): he hops in, skids to a stop, mops up the puddle, knocks
    the tipping sign straight, and hops for joy */
 .motion .m-intro :is(.m-move, .m-hop, .m-scrub, .m-squash, .m-strands, .m-sign, .m-puddle, .m-bubbles, .m-speed,
   .m-puff, .m-drop, .m-spark, .m-pupils, .m-worried, .m-smile) {
   /* Longhands: the build's minifier (lightningcss) turns a shorthand without a name into `none` */
-  animation-duration: 4.4s;
+  animation-duration: 5s;
   animation-timing-function: cubic-bezier(0.45, 0, 0.3, 1);
   animation-delay: 0.4s;
   animation-fill-mode: both;
