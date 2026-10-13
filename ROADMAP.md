@@ -28,12 +28,12 @@ managed Code Review for Team and Enterprise plans at about $15–25 and 20 minut
   fixed (Claude's Action is swayed by old comments, and replies to Code Review do nothing)
 - **Cheap and fast enough for every push:** about 2–3¢ and 5 seconds a review (the
   [eval](evals/review/README.md)), with deeper, costlier review only where a change needs it
-  (tiered review, Phase 8)
+  (tiered review, Phase 9)
 - **For teams Anthropic's managed review doesn't serve:** any provider, your own key (including
   zero data retention or Bedrock), only `pull-requests: write`, and a check that can fail on
   major findings (Claude's is always neutral). Later GitLab and Gitea/Forgejo, which have
   nothing like it
-- **Reviews a feature across repositories** (Phase 9): the frontend and backend PRs that ship
+- **Reviews a feature across repositories** (Phase 10): the frontend and backend PRs that ship
   together, reviewed as one change
 
 Where Claude is ahead: it reads the whole repository, verifies findings with several agents,
@@ -245,7 +245,7 @@ core package. This phase includes what makes it worth choosing over Claude's own
 
 ## Phase 6: v1.1, everyone's reviews
 
-After v1. The order of Phases 6–9, and what each is for, come from the
+After v1. The order of Phases 6–10, and what each is for, come from the
 [product design](docs/product.md).
 
 - [x] Repository context for TypeScript and JavaScript, then Go: the function around a change,
@@ -278,7 +278,36 @@ their agents').
 **Done when:** explanations pass the eval's accuracy check with no broken links, and both
 commands work on a real PR.
 
-## Phase 8: v1.3, tiered review
+## Phase 8: v1.3, checkpoints
+
+A strategic review for apps built with agents: at the stages where an app's structure matters,
+one plain question with a recommended answer for this app, recorded so the agent builds that way
+and later reviews hold changes to it. See the [product design](docs/product.md#checkpoints-strategic-review).
+
+- [ ] `codemop checkup`: reads the file tree and a few key files of a repository and asks the
+  checkpoint its stage calls for: two or three options, a sentence or two on each, one
+  recommended with reasons from the app's own files, and when to revisit it
+- [ ] Tried on real apps built with agents at different stages, before anything else is built:
+  are the recommendations specific (they cite the files), right, and in proportion to the app?
+- [ ] The stages, spotted by rules on the diff and the file tree (the model runs only when one
+  is): the first changes, a database, auth or payments, a file of about 400 lines or a
+  component that does everything, the same logic in three places, state passed through many
+  layers, getting ready to share. Each is asked once; "not now" asks again at a later stage
+- [ ] On pull requests: a checkpoint in the summary, with an option to tick. Ticking writes the
+  decision to `ARCHITECTURE.md` and points `AGENTS.md` (Cursor, Codex, Copilot) and `CLAUDE.md`
+  (Claude Code) at it, on the PR's branch
+- [ ] On pushes to the default branch: the same in one pinned "CodeMop checkpoints" issue,
+  edited in place; ticking commits the decision to the default branch, or opens a PR for it
+  where the branch is protected
+- [ ] The review holds later changes to the recorded decisions
+- [ ] Measured: eval cases of apps at known stages, with an answer key of sensible
+  recommendations, graded for specificity, correctness and proportion
+
+**Done when:** `codemop checkup` gives specific, proportionate recommendations on the eval's
+apps, and a decision ticked on a PR and in the issue reaches `ARCHITECTURE.md` and is held by
+the next review.
+
+## Phase 9: v1.4, tiered review
 
 A cheap triage step picks, per PR:
 1. **Skip:** only what's certainly trivial (docs only, lock files, pure renames, whitespace),
@@ -302,7 +331,7 @@ A cheap triage step picks, per PR:
 **Done when:** the eval shows the tiers together find more than CodeMop's review alone on the
 complex cases, for less than reviewing everything at the deep tier.
 
-## Phase 9: v1.4, cross-repository review
+## Phase 10: v1.5, cross-repository review
 
 PRs in different repositories that ship together (a frontend and the backend it calls),
 reviewed as one change, for the bugs that come from mismatches: request and response shapes,
@@ -348,3 +377,4 @@ The same product on other platforms; built when someone asks for one.
 | 2026-10-10 | The product design (`docs/product.md`) sets what comes after v1: TypeScript/JavaScript context and `codemop stats`, then `/codemop explain`, tiered review, and cross-repository review, as Phases 6–9; other platforms when asked | One product, the review loop for a change, rather than a bucket of features; smallest and widest first, so the big bets are chosen with real users' numbers |
 | 2026-10-10 | Solo builders working with agents are a target, served by `/codemop explain` (teaching mode) | Nobody explains to them the code they ship; on demand, it costs other users nothing |
 | 2026-10-10 | Cut multi-repository workspaces, the VS Code extension and the analytics dashboard | Workspaces are for writing code, not reviewing it (a separate project, if any); the PR already puts fixes one click away; a dashboard is against "everything happens on the PR" |
+| 2026-10-14 | Checkpoints, a strategic review for apps built with agents, become Phase 8 (v1.3), before tiered review; they run on pushes to the default branch too, in one issue, and locally as `codemop checkup` | Most people building with agents push straight to their default branch; checkpoints build on explain and `learn`, and serve the solo builders v1.2 starts on |
