@@ -41,13 +41,33 @@ https://claude.ai/artifact/3gPHveubJAv6dAoKUZ9ec5
 - **Moppy, the mascot**, in the hero: a fretful little mop, beside a wet-floor sign and its
   puddle. As the page loads he hops in, mops up the puddle, knocks the tipping sign straight
   and hops for joy; now and then a drip lands and he mops that up too; clicking him plays the
-  routine again. His motion is CSS animations, switched by a class on his SVG (the routines are
-  in `src/styles/mascot.css`). The scene is drawn as it rests, tidied up, which is all that
-  reduced motion shows. He was first designed on a canvas:
+  routine again. His motion is CSS animations, switched by a class on his SVG (the routines
+  are in `src/components/home/moppy/moppy.css`). The scene is drawn as it rests, tidied up,
+  which is all that reduced motion shows. He was first designed on a canvas:
   https://claude.ai/artifact/7cb2xzBSeYCZrxw3uCiuCp
 - **The caution tape** across the home page creeps along, except with reduced motion
 - Colour tokens are in `src/styles/theme.css`, mapped onto Starlight's variables for both
   themes, with the buttons, cards and labels the pages share
+
+## Structure
+
+```
+astro.config.mjs           Starlight: the sidebar, logo, fonts, theme and the motion opt-in script.
+scripts/sync-docs.mjs      Writes the docs pages from the repository's markdown.
+public/                    Static files served as-is (the favicon).
+src/pages/index.astro      The home page, including all of its copy.
+src/content/docs/          The docs pages, written by sync-docs.mjs (not committed).
+src/assets/logo.svg        The header's logo (also public/favicon.svg).
+src/components/starlight/  Starlight's parts this site replaces: Hero, the home page's hero, and
+                           HeaderLinks, the header's links. Starlight loads these on every page.
+src/components/home/       What only the home page uses: SummaryDemo, a real review from PR #20
+                           whose boxes you can tick, and moppy/, the mascot:
+  scene.ts                   his scene, as SVG (the hero's image, given as HTML)
+  moppy.css                  how he moves in each routine
+  play.ts                    when he moves
+src/styles/theme.css       Tokens, fonts, Starlight's colours, and the buttons, cards and labels
+                           every page shares.
+```
 
 ## Dependencies
 

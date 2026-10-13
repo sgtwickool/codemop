@@ -1,6 +1,8 @@
 ---
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
-import SummaryDemo from "../components/SummaryDemo.astro";
+import { moppyHtml } from "../components/home/moppy/scene";
+import SummaryDemo from "../components/home/SummaryDemo.astro";
+import "../components/home/moppy/moppy.css";
 
 const github = "https://github.com/sgtwickool/codemop";
 const description =
@@ -8,24 +10,25 @@ const description =
 const reviewStep = "- uses: sgtwickool/codemop@v1\n  with:\n    api-key: ${{ secrets.ANTHROPIC_API_KEY }}";
 const tape = Array(16).fill("Caution ◆ Fixes being committed ◆ ").join("");
 
-// The loop's steps, each with when it happens, and a sign for it
+// The loop's steps, each with when it happens, and a sign for it: drawn in the sign's ink
+// (currentColor), on its yellow plate
 const loop = [
   {
-    sign: '<circle cx="31" cy="31" r="13" fill="#fff" stroke="#16181D" stroke-width="5"/><path d="M41 41 L54 54" stroke="#16181D" stroke-width="6" stroke-linecap="round"/>',
+    sign: '<circle cx="31" cy="31" r="13" fill="#fff" stroke="currentColor" stroke-width="5"/><path d="M41 41 L54 54" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>',
     when: "On every push",
     title: "Review",
     text: "A comment on each issue, with a one-click fix where there is one. It reads the code around each change too, and where the changed code is used, because a change can be right in itself and break what calls it.",
     link: "/quickstart/",
   },
   {
-    sign: '<rect x="17" y="17" width="38" height="38" rx="7" fill="#fff" stroke="#16181D" stroke-width="4.5"/><path d="M25 37 L33 45 L48 27" stroke="#16181D" stroke-width="5.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+    sign: '<rect x="17" y="17" width="38" height="38" rx="7" fill="#fff" stroke="currentColor" stroke-width="4.5"/><path d="M25 37 L33 45 L48 27" stroke="currentColor" stroke-width="5.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
     when: "In the summary",
     title: "Respond",
     text: "One summary lists every issue. Tick the fixes you want, then Commit the ticked fixes, and they land as one commit. Resolve a conversation to dismiss it, or reply /codemop learn to teach the whole repository.",
     link: "/responding/",
   },
   {
-    sign: '<path d="M16 56 V22 M56 56 V22" stroke="#16181D" stroke-width="5" stroke-linecap="round"/><rect x="16" y="30" width="40" height="10" fill="#16181D"/><path d="M22 30 l8 10 M34 30 l8 10 M46 30 l8 10" stroke="#FFC800" stroke-width="4"/>',
+    sign: '<path d="M16 56 V22 M56 56 V22" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><rect x="16" y="30" width="40" height="10" fill="currentColor"/><path class="stripes" d="M22 30 l8 10 M34 30 l8 10 M46 30 l8 10" stroke-width="4"/>',
     when: "Before merging",
     title: "Merge",
     text: "An optional merge check fails while bugs or security issues are open, and passes once they're fixed or dismissed. Make it required, and a known bug doesn't merge unnoticed.",
@@ -44,12 +47,13 @@ const loop = [
       tagline: "Reviews your pull requests with the model of your choice. Tick the fixes you want and it commits them.",
       actions: [
         { text: "Quick start", link: "/quickstart/" },
-        { text: "Source on GitHub", link: github },
+        { text: "Source on GitHub", link: github, variant: "secondary" },
       ],
+      image: { html: moppyHtml },
     },
   }}
 >
-  <div class="tape-wrap not-content" aria-hidden="true"><div class="tape"><span>{tape}</span></div></div>
+  <div class="tape-wrap not-content" aria-hidden="true" data-tape><div class="tape"><span>{tape}</span></div></div>
 
   <section class="not-content" aria-labelledby="loop">
     <h2 id="loop">The review loop</h2>
@@ -59,8 +63,8 @@ const loop = [
           <li>
             <a class="card step" href={step.link}>
               <div class="step-top">
-                <svg width="64" height="64" viewBox="0 0 72 72" aria-hidden="true">
-                  <rect x="3" y="3" width="66" height="66" rx="14" fill="#FFC800" stroke="#16181D" stroke-width="3" />
+                <svg class="sign" width="64" height="64" viewBox="0 0 72 72" aria-hidden="true">
+                  <rect class="plate" x="3" y="3" width="66" height="66" rx="14" stroke-width="3" />
                   <Fragment set:html={step.sign} />
                 </svg>
                 <span class="step-number" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span>
@@ -150,9 +154,13 @@ const loop = [
 </StarlightPage>
 
 <script>
-  import { bindMascot } from "../scripts/mascot";
+  import { playMoppy } from "../components/home/moppy/play";
 
-  bindMascot();
+  playMoppy();
+
+  // The caution tape creeps along only while it's on screen
+  const tape = document.querySelector("[data-tape]");
+  if (tape) new IntersectionObserver(([entry]) => tape.classList.toggle("paused", !entry.isIntersecting)).observe(tape);
 
   // The setup step's copy button
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
@@ -198,7 +206,7 @@ const loop = [
     transform: rotate(-1.4deg);
     background: var(--yellow);
     color: var(--on-yellow);
-    border-block: 3px solid #16181d;
+    border-block: 3px solid var(--night);
     white-space: nowrap;
     overflow: hidden;
     font-family: var(--font-label);
@@ -212,6 +220,9 @@ const loop = [
   }
   :global(.motion) .tape span {
     animation: tape 60s linear infinite;
+  }
+  .tape-wrap.paused span {
+    animation-play-state: paused;
   }
   @keyframes tape {
     to {
@@ -249,6 +260,16 @@ const loop = [
     align-items: center;
     justify-content: space-between;
     margin-bottom: 0.25rem;
+  }
+  .sign {
+    color: var(--night);
+  }
+  .sign .plate {
+    fill: var(--yellow);
+    stroke: currentColor;
+  }
+  .sign :global(.stripes) {
+    stroke: var(--yellow);
   }
   .step-number {
     font-family: var(--font-label);
@@ -292,9 +313,9 @@ const loop = [
     padding: 0.4rem 0.9rem;
     background: var(--water);
     color: var(--on-yellow);
-    border: 2.5px solid #16181d;
+    border: 2.5px solid var(--night);
     border-radius: 12px;
-    box-shadow: 3px 3px 0 #16181d;
+    box-shadow: 3px 3px 0 var(--night);
     font-weight: 700;
   }
   @media (max-width: 56rem) {
@@ -331,19 +352,23 @@ const loop = [
     color: var(--ink-soft);
   }
 
-  /* Setting up, on an ink panel in both themes */
+  /* Setting up, on a night-dark panel in both themes, with its own palette */
   .setup {
+    --setup-text: #edeef1;
+    --setup-soft: #b9bcc4;
+    --setup-code: #2a2d35;
+    --setup-pre: #23262d;
+    --setup-button: #2f333b;
+    --setup-button-edge: #4a4f5a;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
     align-items: center;
     gap: 2rem 3rem;
     padding: clamp(1.75rem, 4vw, 3.25rem);
-    background: #16181d;
-    color: #edeef1;
+    background: var(--night);
+    color: var(--setup-text);
     border-radius: 28px;
-  }
-  :root:not([data-theme="light"]) .setup {
-    outline: 2px solid var(--rule);
+    outline: 2px solid var(--edge);
   }
   .setup h2 {
     color: var(--yellow);
@@ -361,13 +386,13 @@ const loop = [
   }
   .setup p {
     margin: 0;
-    color: #b9bcc4;
+    color: var(--setup-soft);
   }
   .setup code {
-    background: #2a2d35;
-    color: #edeef1;
+    background: var(--setup-code);
+    color: var(--setup-text);
   }
-  .setup a:not(.button) {
+  .setup a {
     color: var(--yellow);
   }
   .setup-code {
@@ -377,14 +402,14 @@ const loop = [
   .setup pre {
     margin: 0;
     padding: 1.5rem 1.6rem;
-    background: #23262d;
+    background: var(--setup-pre);
     border: 2.5px solid var(--yellow);
     border-radius: 18px;
     overflow-x: auto;
     font-family: var(--sl-font-mono);
     font-size: 0.95rem;
     line-height: 1.85;
-    color: #f2f3f5;
+    color: var(--setup-text);
   }
   .setup pre code {
     background: none;
@@ -401,9 +426,9 @@ const loop = [
     min-height: 2.25rem;
     padding: 0 0.8rem;
     font: 600 0.85rem var(--font-body);
-    color: #edeef1;
-    background: #2f333b;
-    border: 1.5px solid #4a4f5a;
+    color: var(--setup-text);
+    background: var(--setup-button);
+    border: 1.5px solid var(--setup-button-edge);
     border-radius: 9px;
     cursor: pointer;
   }

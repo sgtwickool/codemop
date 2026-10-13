@@ -5,7 +5,7 @@
 ---
 
 <div class="demo not-content">
-  <article class="comment">
+  <article class="card comment">
     <header>
       <span class="avatar" aria-hidden="true"></span>
       <strong>CodeMop</strong> commented on <code>src/codemop/cli/post.py</code>, lines 143–144
@@ -32,7 +32,7 @@
     </div>
   </article>
 
-  <article class="comment">
+  <article class="card comment">
     <header>
       <span class="avatar" aria-hidden="true"></span>
       <strong>CodeMop</strong> commented
@@ -98,13 +98,13 @@
     font-size: 0.95rem;
     line-height: 1.55;
   }
-  .comment {
-    background: var(--paper);
-    border: 2.5px solid var(--line);
+  /* (Under .demo, to outrank the shared .card it varies) */
+  .demo .comment {
     border-radius: 18px;
+    box-shadow: none;
     overflow: hidden;
   }
-  .comment:first-child {
+  .demo .comment:first-child {
     box-shadow: 6px 6px 0 var(--yellow);
   }
   header {
@@ -125,7 +125,7 @@
     height: 1.4rem;
     border-radius: 7px;
     background: var(--yellow);
-    border: 2px solid #16181d;
+    border: 2px solid var(--night);
     flex: none;
   }
   .body {
@@ -140,9 +140,6 @@
   .title,
   .heading {
     font-weight: 700;
-  }
-  .title,
-  .heading {
     font-size: 1.05rem;
   }
   .suggestion {
@@ -173,11 +170,11 @@
   }
   .del {
     background: #ffe6de;
-    color: #16181d;
+    color: var(--night);
   }
   .add {
     background: #dff5e5;
-    color: #16181d;
+    color: var(--night);
   }
   :root:not([data-theme="light"]) .del {
     background: #4a2a22;

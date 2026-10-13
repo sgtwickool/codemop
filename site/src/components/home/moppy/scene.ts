@@ -1,12 +1,13 @@
 // Moppy, CodeMop's mascot, in the home page's hero: a fretful mop who can't leave a mess alone,
-// beside a wet-floor sign and its puddle. As HTML, because Starlight's hero takes its image as
-// HTML: a button around the SVG, which plays his routine again.
+// beside a wet-floor sign and its puddle. As HTML, because that's how Starlight's hero takes its
+// image (`hero.image.html`), and so his styles and script load on the home page only: a button
+// around the SVG, which plays his routine again.
 //
 // The scene is drawn as it is once he's tidied up, which is all that reduced motion shows. How
-// he moves is in src/styles/mascot.css, and when, in src/scripts/mascot.ts: the class on the
-// <svg> is the routine playing (m-intro as the page loads, m-tidy when a drip lands later).
-// The ink outlines are the same dark ink in both themes; the handle, floor and speed lines
-// follow the theme, so they show on a dark page.
+// he moves is in moppy.css, and when, in play.ts: the class on the <svg> is the routine playing
+// (m-intro as the page loads, m-tidy when a drip lands later). His colours are the theme's that
+// stay the same in both themes (--night, --yellow and --water in theme.css); the handle, floor
+// and speed lines follow the theme, so they show on a dark page.
 
 const INK = "#16181D";
 const YELLOW = "#FFC800";
@@ -15,17 +16,17 @@ const WATER = "#BFE9F4";
 // Moppy's strands, in two sets so the outer ones trail the inner ones
 const OUTER = "M-18 -42 C-27 -30 -21 -18 -36 0 M19 -42 C29 -30 25 -18 38 -2";
 const INNER = "M-8 -44 C-13 -30 -7 -16 -15 2 M2 -44 C4 -30 -1 -16 4 3 M11 -44 C16 -30 12 -16 22 2";
-const strands = (d: string, extra = "") => `
-  <g class="m-strands${extra}">
+const strands = (d: string, outer = false) => `
+  <g class="m-strands${outer ? " m-strands-outer" : ""}">
     <path d="${d}" stroke="${INK}" stroke-width="8" stroke-linecap="round" fill="none"/>
     <path d="${d}" stroke="#ffffff" stroke-width="5" stroke-linecap="round" fill="none"/>
   </g>`;
 
-const sparkle = (x: number, y: number, r: number, fill: string, extra = "") => {
+const sparkle = (x: number, y: number, r: number, fill: string, cls = "m-spark") => {
   const a = r / 10;
   const d = `M0 ${-r} C${a} ${-4 * a} ${4 * a} ${-a} ${r} 0 C${4 * a} ${a} ${a} ${4 * a} 0 ${r} ` +
     `C${-a} ${4 * a} ${-4 * a} ${a} ${-r} 0 C${-4 * a} ${-a} ${-a} ${-4 * a} 0 ${-r} Z`;
-  return `<g transform="translate(${x} ${y})"><g class="${extra || "m-spark"}"><path d="${d}" fill="${fill}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/></g></g>`;
+  return `<g transform="translate(${x} ${y})"><g class="${cls}"><path d="${d}" fill="${fill}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/></g></g>`;
 };
 
 const drop = (x: number, y: number, size: number, cls: string) => {
@@ -74,7 +75,7 @@ const moppy = `
         <g transform="rotate(-8)">
           <path class="m-handle" d="M0 -80 L8 -160" stroke-width="4" stroke-linecap="round"/>
           <circle cx="8.4" cy="-163" r="3.6" fill="${YELLOW}" stroke="${INK}" stroke-width="1.4"/>
-          ${strands(OUTER, " m-strands-outer")}
+          ${strands(OUTER, true)}
           ${strands(INNER)}
           <rect x="-16" y="-85" width="32" height="9" rx="3" fill="#1592B0" stroke="${INK}" stroke-width="1.4"/>
           <rect x="-24" y="-78" width="48" height="36" rx="16" fill="${YELLOW}" stroke="${INK}" stroke-width="1.4"/>
@@ -130,5 +131,5 @@ const svg = `
   ${sparkle(334, 432, 9, YELLOW, "m-mini-spark")}
 </svg>`;
 
-export const mascotHtml = `
+export const moppyHtml = `
 <button type="button" class="mascot-replay" aria-label="Watch Moppy tidy up again">${svg}</button>`;

@@ -10,13 +10,17 @@
   --ink-soft: #c4c7cf;
   --muted: #9ba0ab;
   --rule: #343842;
-  --line: #edeef1; /* outlines of cards and buttons */
-  --shadow: #ffc800; /* their offset shadows */
-  --yellow: #ffc800;
+  --edge: var(--rule); /* an outline for dark things that would sink into a dark page */
+  --line: var(--ink); /* outlines of cards and buttons */
+  --shadow: var(--yellow); /* their offset shadows */
   --yellow-soft: #3a3215;
+
+  /* The same in both themes: the sign's yellow, the water's blue, and the night-dark ink of
+     the sign's outlines and text, of Moppy, and of the dark panels */
+  --yellow: #ffc800;
   --water: #bfe9f4;
-  --on-yellow: #16181d;
-  --m-handle: #edeef1; /* Moppy's handle, which has no outline of its own */
+  --night: #16181d;
+  --on-yellow: var(--night);
 
   --sl-color-black: var(--paper);
   --sl-color-gray-7: #1a1d23;
@@ -27,7 +31,7 @@
   --sl-color-gray-2: var(--muted);
   --sl-color-gray-1: var(--ink-soft);
   --sl-color-white: var(--ink);
-  --sl-color-accent-low: #3a3215;
+  --sl-color-accent-low: var(--yellow-soft);
   --sl-color-accent: var(--yellow);
   --sl-color-accent-high: #ffe27a;
   --sl-color-text-accent: var(--ink);
@@ -50,10 +54,9 @@
   --ink-soft: #3d4048;
   --muted: #5a5e68;
   --rule: #d9dbe0;
-  --line: #16181d;
-  --shadow: #16181d;
+  --edge: transparent;
+  --shadow: var(--ink);
   --yellow-soft: #fff1b8;
-  --m-handle: #16181d;
 
   /* The rest follow from the tokens above, as set on :root */
   --sl-color-gray-7: #f8f8fa;
@@ -61,7 +64,6 @@
   --sl-color-gray-3: var(--muted);
   --sl-color-gray-2: var(--ink-soft);
   --sl-color-gray-1: #2a2d35;
-  --sl-color-accent-low: #fff1b8;
   --sl-color-accent-high: #8a6a00;
 }
 
@@ -118,8 +120,7 @@ h1#_top {
 }
 
 /* Links: ink, underlined in yellow (in the docs' own content, as Starlight's own rules are) */
-.sl-markdown-content a:not(:where(.not-content *)),
-.link {
+.sl-markdown-content a:not(:where(.not-content *)) {
   color: var(--ink);
   text-decoration-line: underline;
   text-decoration-thickness: 2px;
@@ -127,8 +128,7 @@ h1#_top {
   text-decoration-color: var(--yellow);
   transition: text-decoration-color 150ms, color 150ms;
 }
-.sl-markdown-content a:not(:where(.not-content *)):hover,
-.link:hover {
+.sl-markdown-content a:not(:where(.not-content *)):hover {
   color: var(--ink);
   text-decoration-color: currentColor;
 }
@@ -197,10 +197,9 @@ h1#_top {
   box-shadow: 5px 5px 0 var(--shadow);
 }
 
-/* Code and links outside the docs' own content (the home page, its demo). Kept to zero
-   specificity, so a page's own styles win, and off code blocks (Expressive Code's frames are
-   not-content too). */
-:where(.not-content) :not(pre) > code {
+/* Code and links in the home page's own markup. Kept to zero specificity, so its components'
+   styles win, and off code blocks. */
+:where([data-has-hero] .not-content) :not(pre) > code {
   font-family: var(--sl-font-mono);
   font-size: 0.86em;
   background: var(--yellow-soft);
@@ -208,12 +207,12 @@ h1#_top {
   padding: 0.05em 0.35em;
   overflow-wrap: anywhere;
 }
-:where(.not-content) a:where(:not(.button, .card)) {
+:where([data-has-hero] .not-content) a:where(:not(.button, .card)) {
   color: var(--ink);
   text-decoration-thickness: 2px;
   text-underline-offset: 0.2em;
   text-decoration-color: var(--yellow);
 }
-:where(.not-content) a:where(:not(.button, .card)):hover {
+:where([data-has-hero] .not-content) a:where(:not(.button, .card)):hover {
   text-decoration-color: currentColor;
 }

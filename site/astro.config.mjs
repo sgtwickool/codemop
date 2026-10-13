@@ -14,8 +14,8 @@ export default defineConfig({
       logo: { src: "./src/assets/logo.svg" },
       // The home page's hero (its headline and Moppy's scene), and the header's links
       components: {
-        Hero: "./src/components/Hero.astro",
-        SocialIcons: "./src/components/HeaderLinks.astro",
+        Hero: "./src/components/starlight/Hero.astro",
+        SocialIcons: "./src/components/starlight/HeaderLinks.astro",
       },
       social: [{ icon: "github", label: "GitHub", href: "https://github.com/sgtwickool/codemop" }],
       customCss: [
