@@ -1,11 +1,10 @@
-// When CodeMop's mascot moves (src/styles/mascot.css says how): his routine once as the page
-// loads, then away, peeking back in now and then to look for dirt, only while he's on screen
-// and the tab is visible. Clicking him plays the routine again. With reduced motion he stays
-// still, and this does nothing.
+// When Moppy moves (src/styles/mascot.css says how): his routine once as the page loads, then
+// now and then a drip lands and he mops it up, only while he's on screen and the tab is
+// visible. Clicking him plays the routine again. With reduced motion he stays still, and this
+// does nothing.
 
-const PEEKS = ["m-peek-left", "m-peek-right", "m-peek-bottom"];
-const STATES = ["m-intro", "m-away", ...PEEKS];
-const QUIET = [12_000, 28_000]; // between peeks, at random within this, in ms
+const ROUTINES = ["m-intro", "m-tidy"];
+const QUIET = [12_000, 28_000]; // between drips, at random within this, in ms
 
 export function bindMascot() {
   const svg = document.querySelector<SVGSVGElement>(".mascot");
@@ -20,30 +19,29 @@ export function bindMascot() {
   let timer = 0;
   let onScreen = true;
 
-  const show = (state: string) => {
-    const again = svg.classList.contains(state);
-    svg.classList.remove(...STATES);
-    if (again) svg.getBoundingClientRect(); // so its animation starts over
-    svg.classList.add(state);
+  const play = (routine: string) => {
+    svg.classList.remove(...ROUTINES);
+    svg.getBoundingClientRect(); // so its animations start over
+    svg.classList.add(routine);
   };
   const later = () => {
     window.clearTimeout(timer);
-    timer = window.setTimeout(peek, QUIET[0] + Math.random() * (QUIET[1] - QUIET[0]));
+    timer = window.setTimeout(drip, QUIET[0] + Math.random() * (QUIET[1] - QUIET[0]));
   };
-  const peek = () => {
-    if (!onScreen || document.hidden || !svg.classList.contains("m-away")) return later();
-    show(PEEKS[Math.floor(Math.random() * PEEKS.length)]);
+  const drip = () => {
+    if (!onScreen || document.hidden || ROUTINES.some((r) => svg.classList.contains(r))) return later();
+    play("m-tidy");
   };
 
-  // The routine and each peek end with him away
+  // Each routine ends with the floor clean, which is how the scene rests
   move.addEventListener("animationend", (event) => {
     if (event.target !== move) return;
-    show("m-away");
+    svg.classList.remove(...ROUTINES);
     later();
   });
   new IntersectionObserver(([entry]) => (onScreen = entry.isIntersecting)).observe(svg);
   button?.addEventListener("click", () => {
     window.clearTimeout(timer);
-    show("m-intro");
+    play("m-intro");
   });
 }

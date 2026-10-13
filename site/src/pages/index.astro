@@ -1,51 +1,47 @@
 ---
-import { Code } from "@astrojs/starlight/components";
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
-import Print from "../components/Print.astro";
-import PrintFilters from "../components/PrintFilters.astro";
-import SectionHeading from "../components/SectionHeading.astro";
 import SummaryDemo from "../components/SummaryDemo.astro";
-import "../styles/mascot.css";
 
 const github = "https://github.com/sgtwickool/codemop";
-const tagline =
+const description =
   "AI code review for pull requests, with the model of your choice. Tick the fixes you want and it commits them.";
 const reviewStep = "- uses: sgtwickool/codemop@v1\n  with:\n    api-key: ${{ secrets.ANTHROPIC_API_KEY }}";
+const tape = Array(16).fill("Caution ◆ Fixes being committed ◆ ").join("");
 
-// The loop's steps, each labelled with when it happens (as gregkemp.dev labels its work with dates)
+// The loop's steps, each with when it happens, and a sign for it
 const loop = [
   {
-    print: "mop",
+    sign: '<circle cx="31" cy="31" r="13" fill="#fff" stroke="#16181D" stroke-width="5"/><path d="M41 41 L54 54" stroke="#16181D" stroke-width="6" stroke-linecap="round"/>',
     when: "On every push",
     title: "Review",
     text: "A comment on each issue, with a one-click fix where there is one. It reads the code around each change too, and where the changed code is used, because a change can be right in itself and break what calls it.",
     link: "/quickstart/",
   },
   {
-    print: "respond",
+    sign: '<rect x="17" y="17" width="38" height="38" rx="7" fill="#fff" stroke="#16181D" stroke-width="4.5"/><path d="M25 37 L33 45 L48 27" stroke="#16181D" stroke-width="5.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
     when: "In the summary",
     title: "Respond",
     text: "One summary lists every issue. Tick the fixes you want, then Commit the ticked fixes, and they land as one commit. Resolve a conversation to dismiss it, or reply /codemop learn to teach the whole repository.",
     link: "/responding/",
   },
   {
-    print: "gate",
+    sign: '<path d="M16 56 V22 M56 56 V22" stroke="#16181D" stroke-width="5" stroke-linecap="round"/><rect x="16" y="30" width="40" height="10" fill="#16181D"/><path d="M22 30 l8 10 M34 30 l8 10 M46 30 l8 10" stroke="#FFC800" stroke-width="4"/>',
     when: "Before merging",
     title: "Merge",
     text: "An optional merge check fails while bugs or security issues are open, and passes once they're fixed or dismissed. Make it required, and a known bug doesn't merge unnoticed.",
     link: "/merge-check/",
   },
-] as const;
+];
 ---
 
 <StarlightPage
   frontmatter={{
     title: "CodeMop: AI code review for pull requests",
-    description: tagline,
+    description,
     template: "splash",
     hero: {
-      title: "CodeMop",
-      tagline,
+      title: "Code review that <mark>cleans up</mark> after itself.",
+      tagline: "Reviews your pull requests with the model of your choice. Tick the fixes you want and it commits them.",
       actions: [
         { text: "Quick start", link: "/quickstart/" },
         { text: "Source on GitHub", link: github },
@@ -53,16 +49,22 @@ const loop = [
     },
   }}
 >
-  <PrintFilters />
+  <div class="tape-wrap not-content" aria-hidden="true"><div class="tape"><span>{tape}</span></div></div>
 
   <section class="not-content" aria-labelledby="loop">
-    <SectionHeading id="loop" text="The review loop" />
+    <h2 id="loop">The review loop</h2>
     <ol class="steps">
       {
-        loop.map((step) => (
+        loop.map((step, i) => (
           <li>
-            <a class="step" href={step.link}>
-              <Print name={step.print} />
+            <a class="card step" href={step.link}>
+              <div class="step-top">
+                <svg width="64" height="64" viewBox="0 0 72 72" aria-hidden="true">
+                  <rect x="3" y="3" width="66" height="66" rx="14" fill="#FFC800" stroke="#16181D" stroke-width="3" />
+                  <Fragment set:html={step.sign} />
+                </svg>
+                <span class="step-number" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span>
+              </div>
               <p class="label">{step.when}</p>
               <h3>{step.title}</h3>
               <p class="step-text">{step.text}</p>
@@ -73,41 +75,45 @@ const loop = [
     </ol>
   </section>
 
-  <section class="not-content" aria-labelledby="real">
-    <SectionHeading id="real" text="A real review" />
-    <p class="intro">
-      CodeMop's review of its own <a href={`${github}/pull/20`}>pull request #20</a>, a 1,450-line refactor (a typical
-      pull request costs a few cents). Tick the fix, then <strong>Commit the ticked fixes</strong>.
-    </p>
-    <SummaryDemo />
+  <section class="not-content real" aria-labelledby="real">
+    <div class="real-intro">
+      <h2 id="real">A real review</h2>
+      <p class="intro">
+        CodeMop's review of its own <a href={`${github}/pull/20`}>pull request #20</a>, a 1,450-line refactor (a
+        typical pull request costs a few cents). Tick the fix, then <strong>Commit the ticked fixes</strong>.
+      </p>
+    </div>
+    <div class="real-demo">
+      <SummaryDemo />
+      <span class="sticker" aria-hidden="true">about $0.36</span>
+    </div>
   </section>
 
   <section class="not-content" aria-labelledby="why">
-    <SectionHeading id="why" text="Why CodeMop" />
-    <!-- Each over a rule in one of the inks, as gregkemp.dev's product lists -->
+    <h2 id="why">Why CodeMop</h2>
     <dl class="reasons">
-      <div>
+      <div class="card">
         <dt>Safe on any pull request</dt>
         <dd>
           It reads the diff through GitHub's API and never checks out or runs the pull request's code, so it can hold
           your key on a fork's PR, from anyone. Agents that run tools on the code can't.
         </dd>
       </div>
-      <div>
+      <div class="card">
         <dt>Cheap enough for every push</dt>
         <dd>
           A few cents and a few seconds a review with the default model, chosen by
           an <a href={`${github}/blob/master/evals/review/README.md`}>eval</a> in which 99% of its comments were right.
         </dd>
       </div>
-      <div>
+      <div class="card">
         <dt>Your model, your key</dt>
         <dd>
           Anthropic, Mistral, OpenAI, OpenRouter, any OpenAI-compatible endpoint, or a local model. No CodeMop server:
           your code goes only to the provider you choose.
         </dd>
       </div>
-      <div>
+      <div class="card">
         <dt>It learns, and you can see what</dt>
         <dd>
           What it's taught goes in a file in your repository, which you can read and edit. Re-reviews look at the new
@@ -117,116 +123,306 @@ const loop = [
     </dl>
   </section>
 
-  <section class="not-content" aria-labelledby="setup">
-    <SectionHeading id="setup" text="Set up in two minutes" />
-    <ol class="setup">
-      <li>Add your model provider's API key as a repository secret, e.g. <code>ANTHROPIC_API_KEY</code>.</li>
-      <li>
-        Add CodeMop's workflow, <code>.github/workflows/codemop.yml</code>, from
-        the <a href="/quickstart/">quick start</a>. Its review step is just:
-        <Code code={reviewStep} lang="yaml" />
-      </li>
-    </ol>
-    <p class="intro">The next pull request gets a review.</p>
+  <section class="not-content setup" aria-labelledby="setup">
+    <div class="setup-text">
+      <h2 id="setup">Set up in two minutes</h2>
+      <ol>
+        <li>Add your model provider's API key as a repository secret, e.g. <code>ANTHROPIC_API_KEY</code>.</li>
+        <li>
+          Add CodeMop's workflow, <code>.github/workflows/codemop.yml</code>, from the <a href="/quickstart/">quick start</a>.
+          Its review step is just this.
+        </li>
+      </ol>
+      <p>The next pull request gets a review.</p>
+    </div>
+    <div class="setup-code">
+      <pre><code><span class="key">- uses:</span> sgtwickool/codemop@v1
+  <span class="key">with:</span>
+    <span class="key">api-key:</span> {"${{ secrets.ANTHROPIC_API_KEY }}"}</code></pre>
+      <button type="button" class="copy" data-copy={reviewStep}>Copy</button>
+    </div>
   </section>
 
-  <p class="not-content credit">
-    Made by <a href="https://gregkemp.dev">Greg Kemp</a>. MIT licensed, on <a href={github}>GitHub</a>.
-  </p>
+  <footer class="not-content credit">
+    <span>Made by <a href="https://gregkemp.dev">Greg Kemp</a>. MIT licensed, on <a href={github}>GitHub</a>.</span>
+    <span>Mind the wet floor.</span>
+  </footer>
 </StarlightPage>
 
 <script>
   import { bindMascot } from "../scripts/mascot";
 
   bindMascot();
+
+  // The setup step's copy button
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
+    button.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(button.dataset.copy ?? "");
+      button.textContent = "Copied";
+      setTimeout(() => (button.textContent = "Copy"), 1500);
+    });
+  }
 </script>
 
 <style>
   section {
     display: flex;
     flex-direction: column;
-    gap: 1.75rem;
-    margin-top: clamp(5rem, 10vw, 8rem);
+    gap: 2.25rem;
+    margin-top: clamp(5rem, 10vw, 7.5rem);
+  }
+  h2 {
+    margin: 0;
+    font-size: clamp(2.4rem, 5vw, 3.5rem);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    color: var(--ink);
   }
   .intro {
     margin: 0;
-    max-width: 36em;
+    max-width: 34em;
     font-size: 1.1rem;
     color: var(--ink-soft);
   }
+
+  /* Caution tape across the page, a little askew, creeping along (clipped at the page's edges) */
+  .tape-wrap {
+    margin: 2rem calc(50% - 50vw) 0;
+    padding-block: 1rem;
+    overflow: clip;
+  }
+  .tape {
+    margin-inline: -1rem;
+    padding: 0.55rem 0;
+    transform: rotate(-1.4deg);
+    background: var(--yellow);
+    color: var(--on-yellow);
+    border-block: 3px solid #16181d;
+    white-space: nowrap;
+    overflow: hidden;
+    font-family: var(--font-label);
+    font-weight: 800;
+    font-size: 1.35rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .tape span {
+    display: inline-block;
+  }
+  :global(.motion) .tape span {
+    animation: tape 60s linear infinite;
+  }
+  @keyframes tape {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  /* The loop */
   .steps {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-    gap: 2.5rem 2rem;
-    margin: 0.5rem 0 0;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+    gap: 1.75rem;
+    margin: 0;
     padding: 0;
     list-style: none;
+  }
+  .steps li {
+    display: flex;
   }
   .step {
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
+    gap: 0.7rem;
+    padding: 1.75rem;
     color: inherit;
     text-decoration: none;
+    transition: transform 150ms ease, box-shadow 150ms ease;
   }
-  .step :global(.print) {
-    margin-bottom: 0.4rem;
+  .step:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 7px 7px 0 var(--shadow);
+  }
+  .step-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.25rem;
+  }
+  .step-number {
+    font-family: var(--font-label);
+    font-weight: 800;
+    font-size: 2.5rem;
+    color: var(--rule);
   }
   .step h3 {
     margin: 0;
-    font-size: 1.15rem;
+    font-size: 1.85rem;
     font-weight: 800;
+    letter-spacing: -0.02em;
     color: var(--ink);
-  }
-  .step:hover h3 {
-    color: var(--link);
   }
   .step-text {
     margin: 0;
-    font-size: 0.95rem;
     color: var(--ink-soft);
   }
-  .reasons {
+
+  /* The real review, with its price on a sticker */
+  .real {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
-    gap: 2rem 3rem;
-    margin: 0.5rem 0 0;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    align-items: center;
+    gap: 2.5rem 3rem;
   }
-  .reasons div {
+  .real-intro {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
-    padding-top: 0.75rem;
-    border-top: 2px solid var(--ink-strong);
+    gap: 1.25rem;
   }
-  .reasons div:nth-child(even) {
-    border-top-color: var(--ink-line);
+  .real-demo {
+    position: relative;
+    min-width: 0;
+  }
+  .sticker {
+    position: absolute;
+    top: -1.1rem;
+    right: -0.4rem;
+    transform: rotate(5deg);
+    padding: 0.4rem 0.9rem;
+    background: var(--water);
+    color: var(--on-yellow);
+    border: 2.5px solid #16181d;
+    border-radius: 12px;
+    box-shadow: 3px 3px 0 #16181d;
+    font-weight: 700;
+  }
+  @media (max-width: 56rem) {
+    .real {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* Why */
+  .reasons {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+    gap: 1.5rem;
+    margin: 0;
+  }
+  .reasons .card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1.6rem;
+    border-top-width: 10px;
+    border-top-color: var(--yellow);
+    box-shadow: none;
   }
   .reasons dt {
-    font-family: var(--font-sans);
+    font-family: var(--font-display);
     font-weight: 800;
+    font-size: 1.6rem;
+    letter-spacing: -0.02em;
     color: var(--ink);
   }
   .reasons dd {
     margin: 0;
     color: var(--ink-soft);
   }
+
+  /* Setting up, on an ink panel in both themes */
   .setup {
     display: grid;
-    gap: 0.8rem;
-    margin: 0.5rem 0 0;
-    padding-left: 1.3rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    align-items: center;
+    gap: 2rem 3rem;
+    padding: clamp(1.75rem, 4vw, 3.25rem);
+    background: #16181d;
+    color: #edeef1;
+    border-radius: 28px;
   }
-  .setup li {
+  :root:not([data-theme="light"]) .setup {
+    outline: 2px solid var(--rule);
+  }
+  .setup h2 {
+    color: var(--yellow);
+  }
+  .setup-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+  }
+  .setup ol {
+    display: grid;
+    gap: 0.7rem;
+    margin: 0;
+    padding-left: 1.4rem;
+  }
+  .setup p {
+    margin: 0;
+    color: #b9bcc4;
+  }
+  .setup code {
+    background: #2a2d35;
+    color: #edeef1;
+  }
+  .setup a:not(.button) {
+    color: var(--yellow);
+  }
+  .setup-code {
+    position: relative;
     min-width: 0;
   }
-  .setup :global(.expressive-code) {
-    margin-top: 0.6rem;
+  .setup pre {
+    margin: 0;
+    padding: 1.5rem 1.6rem;
+    background: #23262d;
+    border: 2.5px solid var(--yellow);
+    border-radius: 18px;
+    overflow-x: auto;
+    font-family: var(--sl-font-mono);
+    font-size: 0.95rem;
+    line-height: 1.85;
+    color: #f2f3f5;
   }
+  .setup pre code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+  }
+  .setup .key {
+    color: var(--yellow);
+  }
+  .copy {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    min-height: 2.25rem;
+    padding: 0 0.8rem;
+    font: 600 0.85rem var(--font-body);
+    color: #edeef1;
+    background: #2f333b;
+    border: 1.5px solid #4a4f5a;
+    border-radius: 9px;
+    cursor: pointer;
+  }
+  .copy:hover {
+    border-color: var(--yellow);
+  }
+  @media (max-width: 56rem) {
+    .setup {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
   .credit {
-    margin: clamp(5rem, 10vw, 8rem) 0 1rem;
-    text-align: center;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.75rem 2rem;
+    margin: clamp(4rem, 8vw, 6rem) 0 1rem;
     color: var(--muted);
-    font-size: 0.9rem;
+    font-size: 0.95rem;
   }
 </style>

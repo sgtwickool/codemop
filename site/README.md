@@ -32,52 +32,22 @@ go to it on GitHub. So edit those files, not the site.
 
 ## Design
 
-The look is [gregkemp.dev](https://gregkemp.dev)'s (`github.com/sgtwickool/kempgt.com`): paper
-and ink, Archivo for headings and Source Serif 4 for text, and colour kept for risograph prints
-in three inks (pink `line`, blue `strong`, yellow `glow`) that overprint, multiplied on light
-paper and screened on dark. The art library and the print component are copied from there,
-each file saying so: change both together.
+A tidy tool should look tidy, and fun: wet-floor-sign yellow and ink, a pale water blue, chunky
+outlines with solid offset shadows, and flat colour (no shading or shine). Bricolage Grotesque
+for headings, Figtree for text, Barlow Condensed for the small caution labels and JetBrains
+Mono for code, all self-hosted. It was designed on a canvas, as direction D:
+https://claude.ai/artifact/3gPHveubJAv6dAoKUZ9ec5
 
-- **Prints** (`<Print name="..." />`): computed at build time, inline SVG, with motion driven by
-  the scroll position, so they tell a small story as they scroll up the screen and rewind as
-  they scroll back
-- **Moppy, the mascot**, in the hero: a fretful little mop. He plays his routine once as the page
-  loads, then peeks in now and then looking for dirt; clicking him plays it again. His motion
-  is CSS animations, switched by a class on his SVG (his states are listed in
-  `src/styles/mascot.css`). He was designed on a canvas:
+- **Moppy, the mascot**, in the hero: a fretful little mop, beside a wet-floor sign and its
+  puddle. As the page loads he hops in, mops up the puddle, knocks the tipping sign straight
+  and hops for joy; now and then a drip lands and he mops that up too; clicking him plays the
+  routine again. His motion is CSS animations, switched by a class on his SVG (the routines are
+  in `src/styles/mascot.css`). The scene is drawn as it rests, tidied up, which is all that
+  reduced motion shows. He was first designed on a canvas:
   https://claude.ai/artifact/7cb2xzBSeYCZrxw3uCiuCp
-- Both stand still for anyone who prefers reduced motion
-- **Headings** are printed in two inks, slightly out of register (Overprint.astro), in wide
-  black Archivo, with gregkemp.dev's button, link and small labels (all in `theme.css`)
+- **The caution tape** across the home page creeps along, except with reduced motion
 - Colour tokens are in `src/styles/theme.css`, mapped onto Starlight's variables for both
-  themes
-
-## Structure
-
-```
-astro.config.mjs           Starlight: the sidebar, fonts, theme and the motion opt-in script.
-scripts/sync-docs.mjs      Writes the docs pages from the repository's markdown.
-public/                    Static files served as-is (the favicon).
-src/pages/index.astro      The home page, including all of its copy.
-src/content/docs/          The docs pages, written by sync-docs.mjs (not committed).
-src/components/            Print and the filters the prints share; Overprint and SectionHeading,
-                           the two-ink headings; Hero, the home page's (in place of Starlight's);
-                           HeaderLinks, the header's Docs link; and SummaryDemo, a real review
-                           from PR #20 whose boxes you can tick.
-src/lib/art/               The prints, as on gregkemp.dev:
-  index.ts                   every print, in page order
-  prints/review-loop.ts      the prints for the review loop: mop, respond, gate
-  geometry.ts, build.ts      helpers for path data, motions and print sizes
-  style.ts                   turns a print's motions into CSS
-  types.ts
-src/lib/mascot.ts          The mascot's SVG.
-src/scripts/               scroll-prints.ts moves the prints; mascot.ts says when the mascot moves.
-src/styles/                theme.css: tokens, fonts and Starlight's colours; mascot.css: how
-                           the mascot moves in each state.
-```
-
-To add a print, write a function in `src/lib/art/prints/`, add it to `prints` in
-`src/lib/art/index.ts`, and use it with `<Print name="..." />`.
+  themes, with the buttons, cards and labels the pages share
 
 ## Dependencies
 

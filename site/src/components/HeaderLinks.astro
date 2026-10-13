@@ -1,22 +1,31 @@
 ---
-// The header's links, in place of Starlight's social icons: the docs, as a quiet text link like
-// gregkemp.dev's nav, then the social icons (GitHub)
+// The header's links, in place of Starlight's social icons: the docs as a text link, the
+// social icons (GitHub), then the quick start as a small button
 import SocialIcons from "@astrojs/starlight/components/SocialIcons.astro";
 ---
 
 <a class="docs-link" href="/quickstart/">Docs</a>
 <SocialIcons />
+<a class="button quick" href="/quickstart/">Quick start</a>
 
 <style>
   .docs-link {
-    font-family: var(--font-sans);
-    font-size: 0.85rem;
-    color: var(--muted);
+    font-weight: 600;
+    color: var(--ink);
     text-decoration: none;
-    margin-inline-end: 0.75rem;
-    transition: color 150ms;
+    margin-inline-end: 0.5rem;
   }
   .docs-link:hover {
     color: var(--ink);
+    text-decoration: underline 2px var(--yellow);
+    text-underline-offset: 0.25em;
+  }
+  .quick {
+    min-height: 2.5rem;
+    padding: 0 1rem;
+    font-size: 0.95rem;
+    border-radius: 11px;
+    box-shadow: 3px 3px 0 var(--line);
+    margin-inline-start: 0.75rem;
   }
 </style>

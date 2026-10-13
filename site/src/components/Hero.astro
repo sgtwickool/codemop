@@ -1,9 +1,9 @@
 ---
 // The home page's hero, in place of Starlight's (only pages with `hero` in their frontmatter
-// have one): the title printed in two inks like gregkemp.dev's headings, the tagline, the
-// actions as gregkemp.dev's button and link, and Moppy.
+// have one): a caution label, the headline (its title, as HTML, so a phrase can be marked),
+// the tagline, the actions as buttons, and Moppy's scene.
 import { mascotHtml } from "../lib/mascot";
-import Overprint from "./Overprint.astro";
+import "../styles/mascot.css";
 
 const { data } = Astro.locals.starlightRoute.entry;
 const { title = data.title, tagline, actions = [] } = data.hero ?? {};
@@ -11,50 +11,103 @@ const { title = data.title, tagline, actions = [] } = data.hero ?? {};
 
 <div class="hero">
   <div class="copy">
-    <Overprint as="h1" id="_top" class="type-hero" data-page-title>{title}</Overprint>
+    <p class="caution label">
+      <svg width="22" height="20" viewBox="0 0 22 20" aria-hidden="true">
+        <path d="M11 2 L20.5 18 H1.5 Z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path>
+        <path d="M11 7.5 V12.5" stroke="var(--on-yellow)" stroke-width="2.4" stroke-linecap="round"></path>
+        <circle cx="11" cy="15.4" r="1.3" fill="var(--on-yellow)"></circle>
+      </svg>
+      AI code review for GitHub
+    </p>
+    <h1 id="_top" data-page-title set:html={title} />
     {tagline && <p class="tagline" set:html={tagline} />}
     <div class="actions">
       {actions.map((action, i) => (
-        <a href={action.link} class={i === 0 ? "button" : "link"}>
+        <a href={action.link} class:list={["button", { plain: i > 0 }]}>
           {action.text}
         </a>
       ))}
     </div>
+    <p class="facts">MIT licensed · Runs as a GitHub Action · Your key, your model</p>
   </div>
-  <Fragment set:html={mascotHtml} />
+  <div class="scene">
+    <Fragment set:html={mascotHtml} />
+  </div>
 </div>
 
 <style>
   .hero {
     display: grid;
-    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
     align-items: center;
     gap: 2.5rem 3rem;
-    padding-block: 3rem 1rem;
+    padding-block: 2.5rem 1.5rem;
   }
   .copy {
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
     gap: 1.5rem;
+  }
+  .caution {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.3rem 0.85rem 0.3rem 0.5rem;
+    background: #16181d;
+    color: var(--yellow);
+    border-radius: 10px;
+  }
+  :root:not([data-theme="light"]) .caution {
+    outline: 1.5px solid var(--rule);
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(2.9rem, 5.4vw, 4.75rem);
+    line-height: 0.96;
+    letter-spacing: -0.035em;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+  h1 :global(mark) {
+    background: var(--yellow);
+    color: var(--on-yellow);
+    border-radius: 0.18em;
+    padding: 0 0.1em;
+    white-space: nowrap;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
   }
   .tagline {
     margin: 0;
-    max-width: 30em;
-    font-size: 1.2rem;
-    line-height: 1.6;
+    max-width: 31em;
+    font-size: 1.25rem;
+    line-height: 1.55;
     color: var(--ink-soft);
   }
   .actions {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: 0.75rem 1.5rem;
-    font-family: var(--font-sans);
+    gap: 0.9rem;
+    margin-top: 0.25rem;
   }
-  @media (max-width: 50rem) {
+  .facts {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+  .scene {
+    width: 100%;
+    max-width: 35rem;
+    justify-self: center;
+  }
+  @media (max-width: 56rem) {
     .hero {
       grid-template-columns: minmax(0, 1fr);
-      padding-block: 1.5rem 0;
+      padding-block: 1rem 0;
+    }
+    .scene {
+      max-width: 30rem;
     }
   }
 </style>
