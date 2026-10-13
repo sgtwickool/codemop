@@ -4,7 +4,8 @@ What CodeMop is, who it's for, the rules it doesn't break, and how every idea fo
 judged. The [roadmap](../ROADMAP.md) says what's being built and when; this says why, and is
 what an idea has to fit before it becomes a phase.
 
-Agreed 2026-10-10 (the [decisions](#decided-2026-10-10) are at the end).
+Agreed 2026-10-10, with checkpoints added 2026-10-14. The decisions are at the end
+([2026-10-10](#decided-2026-10-10), [2026-10-14](#decided-2026-10-14)).
 
 ## In one line
 
@@ -22,7 +23,7 @@ product, however good it is.
 |---|---|---|
 | **Open-source maintainers** | A first review of every PR, most of them from forks by people they don't know, without paying much or risking their key | Claude's Action reviews forks only when a maintainer asks, because it runs tools on the PR's code. CodeMop never does, so it can review every fork PR automatically |
 | **Small teams** | Review on every PR with a merge check, on the provider and plan they already have (another provider, zero data retention, Bedrock) | Anthropic's managed Code Review is for Team and Enterprise plans, costs about $15–25 a review and takes about 20 minutes, and its check is always neutral. CodeMop costs about 2–3¢, takes seconds, and its check can block a merge |
-| **Solo builders working with agents** | To notice what their agents got wrong, and to understand the code they're shipping | Claude reviews the code. Nothing yet explains it to the person who has to own it |
+| **Solo builders working with agents** | To notice what their agents got wrong, to understand the code they're shipping, and to keep the app's structure sound as it grows | Claude reviews the code. Nothing yet explains it to the person who has to own it, or gets their agent to choose the app's structure on purpose |
 
 Not for: organisations that want a deep audit of the whole repository on every change (that's
 what Anthropic's Code Review and Claude Code's `/code-review` are for, and tiered review hands
@@ -66,7 +67,8 @@ the changes that need it to them), or anyone who wants an agent that writes the 
    false-alarm rate.
 5. **Everything happens on the pull request.** One summary comment, edited in place, with
    everything that can be done; what it learns is in a file in the repository. No dashboard to
-   visit and no hidden state.
+   visit and no hidden state. A repository that pushes straight to its default branch gets one
+   issue in place of the pull request, for checkpoints.
 6. **Your key, your provider, no hosted service.** CodeMop never holds anyone's code or pays
    for anyone's inference.
 7. **Measured, not guessed.** A change to what the review finds goes through the eval first.
@@ -76,7 +78,8 @@ the changes that need it to them), or anyone who wants an agent that writes the 
 - Not an agent: it doesn't explore the repository, run tests or write code on its own. When a
   change needs that, tiered review hands it to Claude Code
 - Not a hosted service, and not a dashboard
-- Not a coding assistant: it reviews and explains changes, it doesn't help write them
+- Not a coding assistant: it reviews and explains changes, it doesn't help write them.
+  Checkpoints write down decisions for an agent to follow, never the code
 
 ## The ideas, judged against the loop
 
@@ -85,6 +88,7 @@ the changes that need it to them), or anyone who wants an agent that writes the 
 | Context for more languages | Review | Everyone | **Core** | S–M |
 | Measuring it in use | All | Us, and teams | **Core** | S |
 | `/codemop explain` (teaching mode) | Respond | Solo builders, and newcomers on any team | **Core** | S–M |
+| Checkpoints (strategic review) | Review, Respond | Solo builders working with agents | **Core** | M–L |
 | Tiered review | Review | Teams, maintainers | **Core** | L |
 | Cross-repository review | Review | Teams with several repositories | **Core** | L |
 | GitLab, Gitea/Forgejo | All | New users | Distribution: when someone asks | M each |
@@ -137,6 +141,60 @@ knows why it matters.
   doesn't quiz anyone, and it doesn't track what someone has learned
 - **Measure:** the judge grades explanations for accuracy, and the link check runs in the eval
 
+### Checkpoints (strategic review)
+
+The review looks at one change at a time; nothing looks at where the app is heading. Someone
+building with an agent gets a working app quickly, but nobody decides its structure: where data
+access lives, what runs on the server, when a file should be split. The agent does whatever is
+quickest each time, and the app becomes a tangle that nobody would want to share. The person
+doesn't know which structures exist or when each one is right, but a model reading the app does.
+
+- **Design: a question at the moment it matters, and the answer becomes a rule.**
+  1. **Notice:** cheap rules on the diff and the file tree spot a stage the app has reached (see
+     below). The model runs only when one does, so most pushes cost nothing extra
+  2. **Ask:** one checkpoint, in plain words. Two or three options, a sentence or two on each,
+     and one recommended for this app, with the reasons taken from its own files. Each option says
+     when to revisit it. `/codemop explain` goes deeper on any of them
+  3. **Record:** ticking an option writes the decision to `ARCHITECTURE.md`, in plain words, and
+     points `AGENTS.md` at it (Cursor, Codex, Copilot and Claude Code all read it). From then on
+     the person's agent builds that way. It's `/codemop learn` for the shape of the whole app
+  4. **Hold:** the review checks later changes against the recorded decisions ("this page reads
+     from the database directly, but data access lives in `lib/data/`"), as it does what it learns
+- **The stages, each asked once** ("not now" asks again at a later stage):
+
+  | When | The question |
+  |---|---|
+  | The first changes | What shape is the app: folders by feature or by kind of file? |
+  | A database or ORM is added | Where does data access live? |
+  | Auth or payments are added | What runs on the server, what in the browser, and where secrets go |
+  | A file passes about 400 lines, or one component fetches, holds state and renders | How should it be split? |
+  | The same logic in three places | A shared module, or leave it |
+  | State passed down through many layers | Is it time for a store? |
+  | A deploy config, a license or a README | Ready to share: tests for the core, `.env.example`, no secrets, a linter |
+
+- **Proportional, not textbook.** The recommendation is the simplest structure that holds
+  until the next stage. An agent building a layered service architecture for a to-do app is the
+  other way to make a mess, and the person can't tell that from good advice either
+- **Specific or silent.** A checkpoint cites the app's own files. "Consider a cleaner
+  architecture" isn't one, and the eval fails it
+- **Rare and quiet (rule 4).** A handful of checkpoints in an app's life, never more than one at
+  a time. They don't fail the merge check unless the repository asks them to
+- **Where people are.** Most people building with agents push straight to their default branch
+  and never open a pull request. So checkpoints run on pushes to the default branch as well,
+  in one pinned "CodeMop checkpoints" issue, edited in place like the summary. Ticking an option
+  there commits the decision to the default branch (or opens a pull request for it, where the
+  branch is protected). `codemop checkup` runs the same thing locally, with the person's own key
+- **Fits the rules:** it reads the file tree and a few files through the API and never runs the
+  code (rule 1). A checkpoint reads more than a diff review, perhaps 10–30¢, but is rare, and
+  says why it ran (rule 3). The decisions are in the repository, for anyone to read and edit
+  (rule 5)
+- **Build it in this order:** `codemop checkup` first, run on real apps built with agents at
+  different stages, to find out whether its recommendations are specific, right and in
+  proportion. Nothing else is worth building until they are. Then pull requests, then the issue
+- **Measure:** eval cases of apps at known stages, each with an answer key of sensible
+  recommendations; the judge grades them for specificity (cites the files), correctness and
+  proportion. Later, `codemop stats` counts options chosen against "not now"
+
 ### Tiered review
 
 As in the roadmap's Phase 8: rules skip only what's certainly trivial; a quick, cheap triage
@@ -180,11 +238,14 @@ are chosen with real users' numbers:
 
 1. **v1.1, everyone's reviews:** context for TypeScript/JavaScript, and `codemop stats`
 2. **v1.2, explain:** `/codemop explain`
-3. **v1.3, tiered review**
-4. **v1.4, cross-repository review**
-5. GitLab, Gitea/Forgejo and the self-hosted App when people ask for them
+3. **v1.3, checkpoints:** `codemop checkup`, then pull requests and the checkpoints issue
+4. **v1.4, tiered review**
+5. **v1.5, cross-repository review**
+6. GitLab, Gitea/Forgejo and the self-hosted App when people ask for them
 
-Each is a roadmap phase (Phases 6–9) with its own "done when", and goes through the eval before it ships.
+Each is a roadmap phase with its own "done when", and goes through the eval before it ships.
+Checkpoints becomes a phase between explain (Phase 7) and tiered review when the roadmap is next
+re-cut.
 
 ## How we'll know it's working
 
@@ -204,3 +265,12 @@ Each is a roadmap phase (Phases 6–9) with its own "done when", and goes throug
    cross-repository review serves fewer people and needs a GitHub App or token first
 4. **The rules stand as written.** Rule 1 is the one most likely to be tested, by tiered review
    and by any idea that wants to run the code
+
+## Decided, 2026-10-14
+
+1. **Checkpoints are part of CodeMop**, not a separate product: the decisions they record are
+   what the review then holds later changes to, and that only works in the same tool
+2. **They reach people who don't use pull requests**: pushes to the default branch, one pinned
+   issue, and `codemop checkup` locally. Rule 5 now says so
+3. **They come before tiered review**, as v1.3: they build on explain and `learn`, and serve the
+   solo builders that v1.2 starts on
