@@ -26,6 +26,9 @@ To be 1.0.0, the first release of the GitHub Action.
 - **The merge check:** with `merge_check: true` in `.codemop.yml`, a "CodeMop" commit status that
   fails while bugs or security issues are open, for branch protection to require;
   `/codemop check` updates it (`codemop check`)
+- **Received, at a glance:** 👀 on the comment within seconds of ticking **Commit the ticked
+  fixes** or commenting `/codemop check` or `/codemop learn`, taken off when it's done, and 😕
+  if it failed
 - **Repository context, on by default:** the whole of each changed function, where the changed
   code is used in other files, and the definitions it uses, for Python, TypeScript and
   JavaScript. A finding can say where it shows up outside the diff, and changing it there counts

@@ -82,6 +82,9 @@ summary keeps every issue from every review: open ones at the top, and under "Do
 applied, addressed (their code changed; CodeMop resolves their conversation) or dismissed.
 After a force-push or rebase, it reviews the whole pull request again.
 
+- Within a few seconds of ticking **Commit the ticked fixes**, or commenting `/codemop check` or
+  `/codemop learn`, CodeMop puts 👀 on the comment, and takes it off when it's done. 😕 means it
+  failed: the CodeMop run in the repository's Actions tab says why
 - Ticking fixes and `/codemop learn` work for people with write access (CodeMop tells anyone
   else so). A fix is applied only where the code it replaces hasn't changed since the review;
   the summary says which were applied, and why any weren't
