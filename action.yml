@@ -3,7 +3,7 @@ description: AI code review for pull requests, with the model of your choice. Ti
 author: Gregory Kemp
 branding:
   icon: check-circle
-  color: blue
+  color: yellow
 
 inputs:
   api-key:

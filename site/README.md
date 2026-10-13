@@ -46,6 +46,8 @@ https://claude.ai/artifact/3gPHveubJAv6dAoKUZ9ec5
   which is all that reduced motion shows. He was first designed on a canvas:
   https://claude.ai/artifact/7cb2xzBSeYCZrxw3uCiuCp
 - **The caution tape** across the home page creeps along, except with reduced motion
+- **The link card**, `public/og.png` (1200×630), is the hero's headline beside Moppy's scene at
+  rest, rendered in a browser from the site's own fonts and drawing. Redo it if the hero changes
 - Colour tokens are in `src/styles/theme.css`, mapped onto Starlight's variables for both
   themes, with the buttons, cards and labels the pages share
 
@@ -54,7 +56,9 @@ https://claude.ai/artifact/3gPHveubJAv6dAoKUZ9ec5
 ```
 astro.config.mjs           Starlight: the sidebar, logo, fonts, theme and the motion opt-in script.
 scripts/sync-docs.mjs      Writes the docs pages from the repository's markdown.
-public/                    Static files served as-is (the favicon).
+public/                    Static files served as-is: the favicon (a bolder drawing than the
+                           logo, to read at 16px) and its .ico, the iOS home-screen icon, and
+                           og.png, the card shown where a link to the site is shared.
 src/pages/index.astro      The home page, including all of its copy.
 src/content/docs/          The docs pages, written by sync-docs.mjs (not committed).
 src/assets/logo.svg        The header's logo (also public/favicon.svg).
