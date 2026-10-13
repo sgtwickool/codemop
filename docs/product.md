@@ -156,8 +156,8 @@ doesn't know which structures exist or when each one is right, but a model readi
      and one recommended for this app, with the reasons taken from its own files. Each option says
      when to revisit it. `/codemop explain` goes deeper on any of them
   3. **Record:** ticking an option writes the decision to `ARCHITECTURE.md`, in plain words, and
-     points `AGENTS.md` at it (Cursor, Codex, Copilot and Claude Code all read it). From then on
-     the person's agent builds that way. It's `/codemop learn` for the shape of the whole app
+     points `AGENTS.md` (read by Cursor, Codex and Copilot) and `CLAUDE.md` (read by Claude Code)
+     at it. From then on the person's agent builds that way. It's `/codemop learn` for the shape of the whole app
   4. **Hold:** the review checks later changes against the recorded decisions ("this page reads
      from the database directly, but data access lives in `lib/data/`"), as it does what it learns
 - **The stages, each asked once** ("not now" asks again at a later stage):
