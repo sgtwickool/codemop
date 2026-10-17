@@ -33,7 +33,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/sgtwickool/codemop"
+Homepage = "https://codemop.com"
+Documentation = "https://codemop.com/quickstart/"
+Source = "https://github.com/sgtwickool/codemop"
+Changelog = "https://codemop.com/changelog/"
+Issues = "https://github.com/sgtwickool/codemop/issues"
 
 [project.scripts]
 codemop = "codemop.cli:main"

@@ -132,4 +132,4 @@ const svg = `
 </svg>`;
 
 export const moppyHtml = `
-<button type="button" class="mascot-replay" aria-label="Watch Moppy tidy up again">${svg}</button>`;
+<button type="button" class="mascot-replay" aria-label="Caution: fixes being committed. Watch Moppy tidy up again">${svg}</button>`;

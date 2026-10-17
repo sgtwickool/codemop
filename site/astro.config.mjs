@@ -9,7 +9,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "CodeMop",
-      description: "AI code review for pull requests, with the model of your choice. Tick the fixes you want and it commits them.",
+      description: "AI code review for GitHub pull requests, with the model of your choice. Tick the fixes you want and it commits them.",
       favicon: "/favicon.svg",
       logo: { src: "./src/assets/logo.svg" },
       // The home page's hero (its headline and Moppy's scene), and the header's links

@@ -6,7 +6,21 @@ import "../components/home/moppy/moppy.css";
 
 const github = "https://github.com/sgtwickool/codemop";
 const description =
-  "AI code review for pull requests, with the model of your choice. Tick the fixes you want and it commits them.";
+  "AI code review for GitHub pull requests, with the model of your choice. Tick the fixes you want and it commits them.";
+// For search engines: what CodeMop is, that it's free, and where its code is
+const structuredData = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "CodeMop",
+  url: "https://codemop.com/",
+  description,
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "GitHub Actions, Linux, macOS, Windows",
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+  license: "https://github.com/sgtwickool/codemop/blob/master/LICENSE",
+  codeRepository: github,
+  author: { "@type": "Person", name: "Gregory Kemp", url: "https://gregkemp.dev" },
+});
 const reviewStep = "- uses: sgtwickool/codemop@v1\n  with:\n    api-key: ${{ secrets.ANTHROPIC_API_KEY }}";
 const tape = Array(16).fill("Caution ◆ Fixes being committed ◆ ").join("");
 
@@ -39,12 +53,17 @@ const loop = [
 
 <StarlightPage
   frontmatter={{
-    title: "CodeMop: AI code review for pull requests",
+    // The browser tab and search results read "AI code review for GitHub pull requests | CodeMop"
+    title: "AI code review for GitHub pull requests",
     description,
     template: "splash",
+    head: [
+      { tag: "meta", attrs: { property: "og:type", content: "website" } },
+      { tag: "script", attrs: { type: "application/ld+json" }, content: structuredData },
+    ],
     hero: {
       title: "Code review that <mark>cleans up</mark> after itself.",
-      tagline: "Reviews your pull requests with the model of your choice. Tick the fixes you want and it commits them.",
+      tagline: "Reviews your GitHub pull requests with the model of your choice. Tick the fixes you want and it commits them.",
       actions: [
         { text: "Quick start", link: "/quickstart/" },
         { text: "Source on GitHub", link: github, variant: "secondary" },
