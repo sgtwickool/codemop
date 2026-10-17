@@ -20,6 +20,18 @@ const files = {
   "SECURITY.md": { slug: "security", description: "Reporting a vulnerability, and why fork PRs are safe to review." },
   "CHANGELOG.md": { slug: "changelog", description: "What changed in each release." },
   "CONTRIBUTING.md": { slug: "contributing", description: "Setting up, making a change, and releasing." },
+  "docs/guides/compare.md": {
+    slug: "compare",
+    description: "How CodeMop differs from CodeRabbit, GitHub Copilot code review and Claude Code Review, and when to choose each.",
+  },
+  "docs/guides/fork-pull-requests.md": {
+    slug: "fork-pull-requests",
+    description: "Why most AI reviewers skip pull requests from forks, and how CodeMop reviews them without risking your key.",
+  },
+  "docs/guides/model-comparison.md": {
+    slug: "model-comparison",
+    description: "Claude Opus, Sonnet and Haiku reviewing the same pull requests against an answer key: bugs found, false alarms, cost.",
+  },
 };
 
 // The README's marked sections: each one's page, and its body.

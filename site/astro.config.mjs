@@ -55,6 +55,7 @@ export default defineConfig({
       sidebar: [
         { label: "Start", items: ["quickstart", "responding", "merge-check"] },
         { label: "Reference", items: ["configuration", "models", "cli"] },
+        { label: "Guides", items: ["compare", "fork-pull-requests", "model-comparison"] },
         { label: "About", items: ["privacy", "security", "self-hosting", "changelog", "contributing"] },
       ],
       pagination: true,
