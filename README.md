@@ -6,6 +6,7 @@ it commits them. **[codemop.com](https://codemop.com)**
 [![CI](https://github.com/sgtwickool/codemop/actions/workflows/ci.yml/badge.svg)](https://github.com/sgtwickool/codemop/actions/workflows/ci.yml)
 [![Security scan](https://github.com/sgtwickool/codemop/actions/workflows/security.yml/badge.svg)](https://github.com/sgtwickool/codemop/actions/workflows/security.yml)
 [![PyPI](https://img.shields.io/pypi/v/codemop)](https://pypi.org/project/codemop/)
+[![Reviewed by CodeMop](https://img.shields.io/badge/reviewed_by-CodeMop-ffc800?labelColor=16181d)](https://codemop.com)
 
 - **Reviews every pull request, including ones from forks, safely.** It reads the diff and
   the repository through the API and never checks out or runs the PR's code, so it can hold
@@ -63,6 +64,13 @@ jobs:
 ```
 
 That's it: the next pull request gets a review. Drafts wait until they're ready for review.
+
+If you like it, the badge tells people who visit your repository:
+[![Reviewed by CodeMop](https://img.shields.io/badge/reviewed_by-CodeMop-ffc800?labelColor=16181d)](https://codemop.com)
+
+```markdown
+[![Reviewed by CodeMop](https://img.shields.io/badge/reviewed_by-CodeMop-ffc800?labelColor=16181d)](https://codemop.com)
+```
 
 <!-- page: responding | Responding to CodeMop | Fix, dismiss or teach: what to do with each issue CodeMop raises. -->
 ## Responding to CodeMop

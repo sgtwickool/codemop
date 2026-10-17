@@ -82,7 +82,7 @@ def test_the_summary_says_what_was_reviewed_and_what_wasnt():
     assert "Skipped `uv.lock`: matches an ignored path pattern" in body
     assert "Left out the suggested fix for `app.py:3`: it repeats a nearby line" in body
     assert "2 issue(s) are listed here without a comment on the code" in body
-    assert "anthropic/claude-opus-5-5 · 2,000 input / 300 output tokens · about $0.02" in body
+    assert "<sub>[CodeMop](https://codemop.com) · anthropic/claude-opus-5-5 · 2,000 input / 300 output tokens · about $0.02" in body
 
 
 def test_how_to_respond_is_there_when_there_are_issues():

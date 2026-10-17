@@ -320,7 +320,7 @@ def _summary_body(state: SummaryState, report: ReviewReport, cost: str, *, revie
     if notes:
         lines += ["", "<details><summary>Notes</summary>", ""] + [f"- {note}" for note in notes] + ["", "</details>"]
 
-    lines += ["", f"<sub>{report.model} · {report.usage.input_tokens:,} input / "
+    lines += ["", f"<sub>[CodeMop](https://codemop.com) · {report.model} · {report.usage.input_tokens:,} input / "
                   f"{report.usage.output_tokens:,} output tokens · {cost} · this comment is updated "
                   f"when CodeMop reviews new commits</sub>", _state_data(state)]
     return "\n".join(lines)
