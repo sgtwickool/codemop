@@ -19,7 +19,7 @@ COPY --chown=appuser:appuser server/requirements.txt .
 RUN pip install --user --no-cache-dir -r requirements.txt
 
 # The codemop package (its dependencies are already installed, pinned, above)
-COPY --chown=appuser:appuser pyproject.toml README.md LICENSE /tmp/codemop/
+COPY --chown=appuser:appuser pyproject.toml README.md LICENSE NOTICE /tmp/codemop/
 COPY --chown=appuser:appuser src /tmp/codemop/src
 RUN pip install --user --no-cache-dir --no-deps /tmp/codemop && rm -rf /tmp/codemop
 

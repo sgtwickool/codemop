@@ -16,7 +16,7 @@ COPY --chown=appuser:appuser server/requirements.txt server/requirements-dev.txt
 RUN pip install --user --no-cache-dir -r requirements-dev.txt
 
 # The codemop package (rebuild the image after changing it)
-COPY --chown=appuser:appuser pyproject.toml README.md LICENSE /tmp/codemop/
+COPY --chown=appuser:appuser pyproject.toml README.md LICENSE NOTICE /tmp/codemop/
 COPY --chown=appuser:appuser src /tmp/codemop/src
 RUN pip install --user --no-cache-dir --no-deps /tmp/codemop && rm -rf /tmp/codemop
 

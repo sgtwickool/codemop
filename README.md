@@ -234,4 +234,5 @@ count Ollama reports back, and stops with an error rather than review a fragment
 - [The review eval](https://github.com/sgtwickool/codemop/blob/master/evals/review/README.md): how the default model was chosen, and how changes
   to the review are measured
 
-MIT licensed.
+Apache 2.0 licensed (versions up to 0.1.0 were MIT). The name, the logo and Moppy are
+[trademarks](https://github.com/sgtwickool/codemop/blob/master/TRADEMARKS.md): fork freely, but give your fork its own name.

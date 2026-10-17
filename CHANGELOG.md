@@ -36,6 +36,11 @@ To be 1.0.0, the first release of the GitHub Action.
 - `--max-changed-lines N`: doesn't review a diff larger than this (a cost limit)
 - Each suggested fix is checked to fit the lines it replaces, and left out if it doesn't
 
+### Changed
+
+- **Licensed under Apache 2.0**, from MIT (0.1.0 stays MIT), with a NOTICE file. The name, the
+  logo and Moppy are trademarks: see `TRADEMARKS.md`
+
 ### Fixed
 
 - Reading pull requests with more than 100 comments

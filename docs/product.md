@@ -4,8 +4,9 @@ What CodeMop is, who it's for, the rules it doesn't break, and how every idea fo
 judged. The [roadmap](../ROADMAP.md) says what's being built and when; this says why, and is
 what an idea has to fit before it becomes a phase.
 
-Agreed 2026-10-10, with checkpoints added 2026-10-14. The decisions are at the end
-([2026-10-10](#decided-2026-10-10), [2026-10-14](#decided-2026-10-14)).
+Agreed 2026-10-10, with checkpoints added 2026-10-14 and the licence and making money on
+2026-10-17. The decisions are at the end ([2026-10-10](#decided-2026-10-10),
+[2026-10-14](#decided-2026-10-14), [2026-10-17](#decided-2026-10-17)).
 
 ## In one line
 
@@ -255,6 +256,29 @@ before it ships.
 - **Adoption:** someone installs it from the README alone in a few minutes; other people's
   repositories run it; issues come from people we don't know
 
+## Making money
+
+The Action stays free and complete: your key, your model, every feature. If CodeMop makes money,
+it's from convenience, never from holding features back.
+
+- **Hosted CodeMop, the likeliest:** a GitHub App installed with one click, with no key and no
+  workflow file, and the model's cost in a monthly price. It's for the people least willing to
+  set up an Action, above all the solo builders checkpoints are for. Cross-repository review
+  needs a GitHub App anyway, so that could be the first thing it does that the Action can't
+  - **It breaks rule 6** (no hosted service; never holds code or pays for inference), so
+    building it means changing the rule for the hosted app only. The Action and self-hosting
+    keep it as written
+- **Paid setup and support** for companies that run it themselves (Bedrock, zero data retention)
+- **GitHub Sponsors**, from now: small, but it shows the project is looked after
+- **Not:** features held back from the free Action, ads, or anything done with people's code
+- **When:** not before v1 has users. `codemop stats` and adoption say whether anyone would pay;
+  it's decided alongside checkpoints (v1.3), whose users are the likeliest to
+
+**The licence fits it:** Apache 2.0 lets anyone use, change and host the code, and its NOTICE
+file has to travel with every copy. The name, the logo and Moppy are trademarks
+([TRADEMARKS.md](../TRADEMARKS.md)), so a copy can't call itself CodeMop. Code that exists only
+for a hosted service (accounts, billing) can stay private.
+
 ## Decided, 2026-10-10
 
 1. **Solo builders working with agents are a target**, so `/codemop explain` is v1.2. It's
@@ -273,3 +297,12 @@ before it ships.
    issue, and `codemop checkup` locally. Rule 5 now says so
 3. **They come before tiered review**, as v1.3: they build on explain and `learn`, and serve the
    solo builders that v1.2 starts on
+
+## Decided, 2026-10-17
+
+1. **Apache 2.0 from v1**, with a NOTICE file (0.1.0 stays MIT). The name, the logo and Moppy
+   are trademarks, set out in `TRADEMARKS.md`, and CodeMop is to be registered as a UK trade
+   mark (classes 9 and 42)
+2. **Making money:** hosted CodeMop is the likeliest way, decided once v1 has users; rule 6
+   stands until then
+3. **The free Action keeps every feature**
