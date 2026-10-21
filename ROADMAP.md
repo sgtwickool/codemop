@@ -12,7 +12,7 @@ to move on.
 ## Why CodeMop
 
 Claude already reviews PRs (its GitHub Action, on an API key or a Pro/Max subscription, and a
-managed Code Review for Team and Enterprise plans at about $15–25 and 20 minutes a review), so
+managed Code Review for Team and Enterprise plans, billed by usage), so
 "use your subscription" isn't a reason to choose CodeMop. These are:
 
 - **Reviews fork PRs automatically and safely:** CodeMop reads only the diff, through the API,

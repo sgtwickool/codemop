@@ -23,7 +23,7 @@ product, however good it is.
 | Who | What they need | Why CodeMop and not Claude's own review |
 |---|---|---|
 | **Open-source maintainers** | A first review of every PR, most of them from forks by people they don't know, without paying much or risking their key | Claude's Action reviews forks only when a maintainer asks, because it runs tools on the PR's code. CodeMop never does, so it can review every fork PR automatically |
-| **Small teams** | Review on every PR with a merge check, on the provider and plan they already have (another provider, zero data retention, Bedrock) | Anthropic's managed Code Review is for Team and Enterprise plans, costs about $15–25 a review and takes about 20 minutes, and its check is always neutral. CodeMop costs about 2–3¢, takes seconds, and its check can block a merge |
+| **Small teams** | Review on every PR with a merge check, on the provider and plan they already have (another provider, zero data retention, Bedrock) | Anthropic's managed Code Review is for Team and Enterprise plans, is billed by usage with no flat price, and its check never fails. CodeMop costs about 2–3¢ a review with Claude Opus 5.5, and its check can block a merge |
 | **Solo builders working with agents** | To notice what their agents got wrong, to understand the code they're shipping, and to keep the app's structure sound as it grows | Claude reviews the code. Nothing yet explains it to the person who has to own it, or gets their agent to choose the app's structure on purpose |
 
 Not for: organisations that want a deep audit of the whole repository on every change (that's
