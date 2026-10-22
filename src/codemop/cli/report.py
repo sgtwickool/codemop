@@ -37,7 +37,11 @@ def format_cost(cost: Optional[float], usage: Usage) -> str:
         return "cost unknown for this model"
     if cost == 0:
         return "no cost (local model)"
-    return f"about ${cost:.2f}" if cost >= 0.01 else "under $0.01"
+    if cost < 0.01:
+        return "under 1¢"
+    if cost < 0.10:
+        return f"about {cost * 10:.0f}¢"  # a few cents reads better in cents
+    return f"about ${cost:.2f}"
 
 
 def report_text(report: ReviewReport, target: str, config_source: str) -> str:
