@@ -125,7 +125,7 @@ const loop = [
       <div class="card">
         <dt>Cheap enough for every push</dt>
         <dd>
-          A few cents and a few seconds a review with the default model, chosen by
+          A few cents a review with the default model, and done in under a minute. It was chosen by
           an <a href={`${github}/blob/master/evals/review/README.md`}>eval</a> in which 99% of its comments were right.
         </dd>
       </div>
@@ -150,13 +150,13 @@ const loop = [
     <div class="setup-text">
       <h2 id="setup">Set up in two minutes</h2>
       <ol>
-        <li>Add your model provider's API key as a repository secret, e.g. <code>ANTHROPIC_API_KEY</code>.</li>
+        <li>Add your model provider's API key as a repository secret, e.g. <code>ANTHROPIC_API_KEY</code>. For Claude it comes from <a href="https://console.anthropic.com">console.anthropic.com</a>; a Pro or Max subscription isn't one.</li>
         <li>
-          Add CodeMop's workflow, <code>.github/workflows/codemop.yml</code>, from the <a href="/quickstart/">quick start</a>.
+          Commit CodeMop's workflow, <code>.github/workflows/codemop.yml</code>, from the <a href="/quickstart/">quick start</a> to your default branch.
           Its review step is just this.
         </li>
       </ol>
-      <p>The next pull request gets a review.</p>
+      <p>Every pull request from then on gets a review.</p>
     </div>
     <div class="setup-code">
       <pre><code><span class="key">- uses:</span> sgtwickool/codemop@v1

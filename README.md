@@ -16,16 +16,20 @@ it commits them. **[codemop.com](https://codemop.com)**
 - **Learns what isn't a problem.** Resolve a conversation and it won't raise that again on the
   PR; reply `/codemop learn <why>` and it won't raise it again in the repository
 - **Can block merges** while bugs or security issues are open, with a status you can require
-- **Cheap enough for every push:** about 2–3¢ and a few seconds a review with the default
-  model, which was chosen by an [eval](https://github.com/sgtwickool/codemop/blob/master/evals/review/README.md). Any provider, your own key, no
-  CodeMop server
+- **Cheap enough for every push:** about 2–3¢ a review with the default model, which was chosen
+  by an [eval](https://github.com/sgtwickool/codemop/blob/master/evals/review/README.md), and done in under a minute. Any provider, your own key,
+  no CodeMop server
+
+**See it:** [a real review you can tick](https://codemop.com/#real), on codemop.com.
 
 <!-- page: quickstart | Quick start | Review every pull request with CodeMop's GitHub Action, in two steps. -->
 ## Quick start: the GitHub Action
 
-1. Add your model provider's API key as a repository secret: Settings → Secrets and
-   variables → Actions → New repository secret, e.g. `ANTHROPIC_API_KEY`.
-2. Add `.github/workflows/codemop.yml`:
+1. Get an API key from your model provider: for Claude, at
+   [console.anthropic.com](https://console.anthropic.com) (a Claude Pro or Max subscription
+   isn't an API key). Add it to your repository as a secret named `ANTHROPIC_API_KEY`: Settings →
+   Secrets and variables → Actions → New repository secret.
+2. Commit `.github/workflows/codemop.yml` to your default branch (usually `main`), as it is:
 
 ```yaml
 name: CodeMop
@@ -63,7 +67,17 @@ jobs:
           api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-That's it: the next pull request gets a review. Drafts wait until they're ready for review.
+That's it: every pull request from then on gets a review, usually within a minute. Drafts wait
+until they're ready for review. Another provider? See [Choosing a model](#choosing-a-model).
+
+**No review?**
+
+- The CodeMop run in your repository's Actions tab says what happened
+- The workflow has to be on the default branch: GitHub runs it from there, so a pull request
+  that adds it isn't reviewed itself
+- The secret's name has to match the one in the workflow
+- Drafts are skipped until they're ready for review, and so are pull requests with more than
+  3,000 changed lines (`max-changed-lines`)
 
 If you like it, the badge tells people who visit your repository:
 [![Reviewed by CodeMop](https://img.shields.io/badge/reviewed_by-CodeMop-ffc800?labelColor=16181d)](https://codemop.com)
@@ -90,7 +104,7 @@ summary keeps every issue from every review: open ones at the top, and under "Do
 applied, addressed (their code changed; CodeMop resolves their conversation) or dismissed.
 After a force-push or rebase, it reviews the whole pull request again.
 
-- Within a few seconds of ticking **Commit the ticked fixes**, or commenting `/codemop check` or
+- Within about 10 seconds of ticking **Commit the ticked fixes**, or commenting `/codemop check` or
   `/codemop learn`, CodeMop puts 👀 on the comment, and takes it off when it's done. 😕 means it
   failed: the CodeMop run in the repository's Actions tab says why
 - Ticking fixes and `/codemop learn` work for people with write access (CodeMop tells anyone
@@ -192,6 +206,16 @@ comments were wrong.
 | `openrouter` | `OPENROUTER_API_KEY` | Name a model |
 | `openai-compatible` | `--api-key-env` | Any OpenAI-compatible endpoint: set `base-url` and a model |
 | `ollama` | none | A model on your own machine (CLI only; see below) |
+
+In the Action, set `provider`, and `model` where the table says to name one, with that
+provider's key as a secret. For Mistral:
+
+```yaml
+      - uses: sgtwickool/codemop@v1
+        with:
+          provider: mistral
+          api-key: ${{ secrets.MISTRAL_API_KEY }}
+```
 
 <!-- page: privacy | Privacy | Exactly what CodeMop sends, and where. -->
 ## Privacy: what's sent where
