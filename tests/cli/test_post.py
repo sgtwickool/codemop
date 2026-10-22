@@ -146,6 +146,8 @@ def test_on_a_fork_the_summary_says_what_works_there(capsys, monkeypatch, fake_m
 
     assert "**Fix it:** use \"Commit suggestion\" on its comment" in summary_of(github)
     assert "CodeMop can't commit to a fork's branch, so add a note to `.codemop-learned.yml`" in summary_of(github)
+    [review] = github["reviews"]
+    assert "/codemop learn" not in review["comments"][0]["body"]
 
 
 def test_a_re_review_looks_only_at_whats_new(capsys, monkeypatch, fake_model, github):

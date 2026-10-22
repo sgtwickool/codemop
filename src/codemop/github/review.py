@@ -33,7 +33,9 @@ def location(s: ModelSuggestion) -> str:
     return location_text(s.file_path, s.line, s.end_line)
 
 
-def comment_body(s: ModelSuggestion, same_group: Sequence[ModelSuggestion] = (), finding_id: Optional[int] = None) -> str:
+def comment_body(s: ModelSuggestion, same_group: Sequence[ModelSuggestion] = (), finding_id: Optional[int] = None,
+                 teachable: bool = True) -> str:
+    """One issue's comment; `teachable` is False on a fork's PR, where `/codemop learn` can't work"""
     parts = [f"**{SEVERITY_LABELS[s.severity]}: {s.title}**", "", s.explanation]
     if same_group:
         places = ", ".join(f"`{location(other)}`" for other in same_group)
@@ -43,9 +45,9 @@ def comment_body(s: ModelSuggestion, same_group: Sequence[ModelSuggestion] = (),
         fence = "`" * max(3, max(map(len, re.findall(r"`+", s.suggested_code)), default=0) + 1)
         # An empty suggestion deletes the lines; an empty line in the block would replace them with one
         parts += ["", f"{fence}suggestion", *([s.suggested_code] if s.suggested_code else []), fence]
+    learn = ", or reply `/codemop learn <why>` to teach it for the whole repository" if teachable else ""
     parts += ["", f"{COMMENT_FOOTER} {s.confidence:.2f} · Not a problem? Resolve this conversation and "
-                  "CodeMop won't raise it again on this PR, or reply `/codemop learn <why>` to teach it for the "
-                  "whole repository.</sub>"]
+                  f"CodeMop won't raise it again on this PR{learn}.</sub>"]
     if finding_id is not None:  # which of the summary's findings it is
         parts.append(f"<!-- codemop-finding:{finding_id} -->")
     return "\n".join(parts)
@@ -81,16 +83,17 @@ def group_of(s: ModelSuggestion, issues: Sequence[ModelSuggestion]) -> List[Mode
     return [other for other in issues if s.group and other is not s and other.group == s.group]
 
 
-def inline_comment(s: ModelSuggestion, issues: Sequence[ModelSuggestion] = (), finding_id: Optional[int] = None) -> dict:
+def inline_comment(s: ModelSuggestion, issues: Sequence[ModelSuggestion] = (), finding_id: Optional[int] = None,
+                   teachable: bool = True) -> dict:
     comment = {"path": s.file_path, "line": s.end_line or s.line, "side": "RIGHT",
-               "body": comment_body(s, group_of(s, issues), finding_id)}
+               "body": comment_body(s, group_of(s, issues), finding_id, teachable)}
     if s.end_line and s.end_line > s.line:
         comment.update(start_line=s.line, start_side="RIGHT")
     return comment
 
 
 def review_payload(inline: Sequence[ModelSuggestion], head_sha: str, issues: Sequence[ModelSuggestion] = (),
-                   finding_ids: Sequence[int] = ()) -> dict:
+                   finding_ids: Sequence[int] = (), teachable: bool = True) -> dict:
     """
     The body for POST /repos/{owner}/{repo}/pulls/{number}/reviews: the inline comments
     (`issues`: all of them; `finding_ids`: the summary's id for each inline one, in order)
@@ -100,5 +103,5 @@ def review_payload(inline: Sequence[ModelSuggestion], head_sha: str, issues: Seq
         "commit_id": head_sha,
         "event": "COMMENT",  # never approves or requests changes
         "body": f"CodeMop's comments on {head_sha[:7]}; the summary is in the PR's conversation.",
-        "comments": [inline_comment(s, issues, finding_id) for s, finding_id in zip(inline, ids)],
+        "comments": [inline_comment(s, issues, finding_id, teachable) for s, finding_id in zip(inline, ids)],
     }

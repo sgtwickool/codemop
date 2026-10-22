@@ -18,6 +18,13 @@ def test_a_comment_with_a_fix_has_a_suggestion_block():
     )
 
 
+def test_on_a_forks_pr_a_comment_doesnt_offer_codemop_learn():
+    assert comment_body(suggestion(), teachable=False).endswith(
+        "<sub>CodeMop · confidence 0.90 · Not a problem? Resolve this conversation and CodeMop won't raise it "
+        "again on this PR.</sub>"
+    )
+
+
 def test_an_empty_fix_is_an_empty_suggestion_block_which_deletes_the_lines():
     assert "```suggestion\n```" in comment_body(suggestion(code=""))
 

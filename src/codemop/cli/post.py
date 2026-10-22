@@ -123,17 +123,17 @@ async def post(pr: PullRequestRef, pull: PullRequest, report: ReviewReport, stat
     added = state.add(new, shown, head, head_files)
     state.commit = head
 
+    same_repo = pull.head_repo == pr.repo  # a fork's branch can't be committed to: no checklist or learning there
     inline = ranked(new)[:max_comments]  # most important first, in the same order as `added`
     review_url, rejected = None, False
     if inline:
         try:
             review_url = await api.post_review(
-                pr, review_payload(inline, head, new, [f.id for f in added[:max_comments]]), **auth)
+                pr, review_payload(inline, head, new, [f.id for f in added[:max_comments]], same_repo), **auth)
         except GitHubError as e:
             if e.status != 422:
                 raise
             rejected = True  # the summary lists them all anyway
-    same_repo = pull.head_repo == pr.repo  # a fork's branch can't be committed to: no checklist or learning there
     body = summary_body(state, report, format_cost(report.cost, report.usage), review_url=review_url,
                         inline_rejected=rejected, checklist=checklist and same_repo, teachable=same_repo, since=since,
                         less_important=less_important, not_commented=len(new) - len(inline), merge_check=merge_check)
