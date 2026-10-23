@@ -188,7 +188,7 @@ core package. This phase includes what makes it worth choosing over Claude's own
 - [x] Post a single PR review with inline ```` ```suggestion ```` blocks (one-click apply) plus a summary (`codemop review owner/repo#N --post`; a commit already reviewed isn't reviewed again)
 - [x] Check each `suggested_code` really replaces lines `line..end_line` before posting it as a suggestion block: small models often include the line above or below, which GitHub would then duplicate (seen with qwen2.5-coder:7b). (Repeated lines at the edges are trimmed; a fix that still repeats nearby code is left out, and the comment kept)
 - [x] Cost guardrails: maximum diff size and maximum number of comments (`--max-changed-lines`, set by whoever runs it, 3000 in the Action; `max_comments` in `.codemop.yml`, default 10)
-- [ ] Review fork PRs automatically: a `pull_request_target` workflow that reads the diff through the API and never checks out the PR's code, so the key is safe (see [Why CodeMop](#why-codemop)); document why it's safe, and the permissions (`pull-requests: write`)
+- [x] Review fork PRs automatically: a `pull_request_target` workflow that reads the diff through the API and never checks out the PR's code, so the key is safe (see [Why CodeMop](#why-codemop)); document why it's safe, and the permissions (`pull-requests: write`). (Documented in `docs/guides/fork-pull-requests.md`; tested on 2026-10-22 with #46, from a fork in the gregkemp-dev organisation: reviewed automatically, no checkboxes, the merge check failed on its bug, and a `/codemop learn` reply was skipped. The comments still offered `/codemop learn` there, fixed in #47)
 
 ### Fixes you can apply
 
@@ -218,8 +218,8 @@ core package. This phase includes what makes it worth choosing over Claude's own
 
 ### Dogfooding
 
-- [ ] Run it on CodeMop's own PRs for at least two weeks (the workflow is in place, 2026-10-09: `.github/workflows/codemop.yml`, its first review on PR #2; the two weeks start once our work goes through PRs)
-- [ ] Tag `v1`; list on the GitHub Marketplace
+- [x] Run it on CodeMop's own PRs for at least two weeks (the workflow is in place, 2026-10-09: `.github/workflows/codemop.yml`, its first review on PR #2; the two weeks start once our work goes through PRs). (2026-10-09 to 2026-10-23, PRs #2 to #48, and on kempgt.com and Dayworks)
+- [x] Tag `v1`; list on the GitHub Marketplace. (1.0.0 on 2026-10-23: on PyPI, the `v1.0.0` and `v1` tags, a GitHub release, and [the Marketplace](https://github.com/marketplace/actions/codemop-review); kempgt.com and Dayworks use `@v1`)
 - [x] Tidy: `/simplify` over the Phase 3 diff so far. One rule for "the same issue" (`same_issue`), the checklist in its own module, comments that carry their finding's id, the commands on shared helpers (`cli/common.py`, `cli/post.py`, `cli/report.py`), files read once even when chunks ask at the same time, and committing reads only the changed directories' trees
 
 **Done when:** someone else installs it from the README alone and it reviews their PR.
