@@ -1,5 +1,7 @@
 # CodeMop
 
+[![Moppy the mop beside a caution sign: code review that cleans up after itself](https://codemop.com/og.png)](https://codemop.com)
+
 AI code review for pull requests, with the model of your choice. Tick the fixes you want and
 it commits them. **[codemop.com](https://codemop.com)**
 
@@ -20,7 +22,11 @@ it commits them. **[codemop.com](https://codemop.com)**
   by an [eval](https://github.com/sgtwickool/codemop/blob/master/evals/review/README.md), and done in under a minute. Any provider, your own key,
   no CodeMop server
 
-**See it:** [a real review you can tick](https://codemop.com/#real), on codemop.com.
+**See it:** a bug CodeMop found in its own code, with the fix ticked in the summary and
+committed ([the pull request](https://github.com/sgtwickool/codemop/pull/20)). On codemop.com
+there's [a copy you can tick](https://codemop.com/#real).
+
+<img src="https://codemop.com/review.png" width="600" alt="A CodeMop comment on a pull request: a bug, why it's a bug, and a suggested change; below it, CodeMop's summary with the fix ticked and applied in a commit">
 
 <!-- page: quickstart | Quick start | Review every pull request with CodeMop's GitHub Action, in two steps. -->
 ## Quick start: the GitHub Action

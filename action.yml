@@ -2,7 +2,7 @@ name: CodeMop review
 description: AI code review for pull requests, with the model of your choice. Tick the fixes you want and it commits them.
 author: Gregory Kemp
 branding:
-  icon: check-circle
+  icon: droplet
   color: yellow
 
 inputs:
