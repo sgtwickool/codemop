@@ -4,9 +4,9 @@ What changed in each release of the `codemop` package and the GitHub Action. The
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [semantic versioning](https://semver.org/).
 
-## Unreleased
+## 1.0.0 (2026-10-23)
 
-To be 1.0.0, the first release of the GitHub Action.
+The first release of the GitHub Action.
 
 ### Added
 
