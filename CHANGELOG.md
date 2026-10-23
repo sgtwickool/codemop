@@ -4,11 +4,12 @@ What changed in each release of the `codemop` package and the GitHub Action. The
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [semantic versioning](https://semver.org/).
 
-## Unreleased
+## 1.0.1 (2026-10-23)
 
 ### Changed
 
 - The Action's icon on the GitHub Marketplace is a yellow droplet (the wet floor), not a tick
+- The README, which is also the PyPI and Marketplace page, starts with Moppy and shows a real review
 
 ## 1.0.0 (2026-10-23)
 
