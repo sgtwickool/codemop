@@ -36,13 +36,20 @@ sudo systemctl enable --now postgresql
 4. Start the server: `./scripts/run_dev.sh`
 
 Or with Docker, the server and a database together: `docker compose up`. A production image is
-built from `server/Dockerfile.prod`, and published to the GitHub Container Registry from
-`master`:
+published to the GitHub Container Registry from `master`, or you can build it yourself from
+`server/Dockerfile.prod`:
 
 ```bash
+docker pull ghcr.io/sgtwickool/codemop:master
+docker run -p 8000:8000 --env-file .env ghcr.io/sgtwickool/codemop:master
+
+# or build it
 docker build -f server/Dockerfile.prod -t codemop-server .
 docker run -p 8000:8000 --env-file .env codemop-server
 ```
+
+Use the `master` tag for now: the images tagged `latest`, `v1.0.0` and `v1.0.1` can't start, because
+of a bug that's fixed in the next release.
 
 The server applies any pending database migrations when it starts.
 
