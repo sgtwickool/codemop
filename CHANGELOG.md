@@ -4,6 +4,17 @@ What changed in each release of the `codemop` package and the GitHub Action. The
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [semantic versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+
+- Works with version 2 of the Anthropic SDK (API version 2026-10-21)
+
+### Fixed
+
+- The server's Docker images couldn't start: `server/requirements.txt` was missing the tree-sitter
+  packages that repository context needs. CI now starts the image and checks it's healthy
+
 ## 1.0.1 (2026-10-23)
 
 ### Changed

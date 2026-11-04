@@ -107,3 +107,24 @@ jobs:
       env:
         TEST_DATABASE_URL: postgresql://codemop:codemop@localhost:5432/codemop_test
       run: pytest --no-cov
+
+  # The jobs above install the package's dependencies with it. The images install it with
+  # --no-deps, so only starting one shows whether server/requirements.txt has everything
+  server-image:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Build the production image
+      run: docker build -f server/Dockerfile.prod -t codemop-server .
+
+    - name: Start it and check it's healthy
+      run: |
+        docker run -d --name codemop-server -p 8000:8000 \
+          -e DATABASE_URL=sqlite:////tmp/codemop.db -e API_KEY=test -e GITHUB_WEBHOOK_SECRET=test codemop-server
+        for _ in $(seq 1 30); do
+          curl -fsS http://localhost:8000/api/v1/health && exit 0
+          sleep 2
+        done
+        docker logs codemop-server
+        exit 1
