@@ -1,6 +1,6 @@
 # Development image for the CodeMop webhook server, used by docker-compose.yml (which mounts
 # server/src over /app/src so changes reload). Build it from the repository root.
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 RUN useradd -m appuser
 USER appuser
